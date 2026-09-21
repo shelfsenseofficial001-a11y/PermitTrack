@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PermitTrack</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            50: '#eef5ff', 100: '#dceafe', 200: '#b6d4fe', 300: '#84b7fd',
+            400: '#4d92fa', 500: '#256ff0', 600: '#1657d6', 700: '#1546ac',
+            800: '#173c89', 900: '#17346d',
+          },
+          ink: {
+            50: '#eef1f6', 100: '#dbe1ea', 200: '#aab6c9', 300: '#7c8ba5',
+            400: '#4d5f7a', 500: '#2c3c56', 600: '#1c2b42', 700: '#141f34',
+            800: '#0f1826', 900: '#0a1120',
+          },
+        },
+      },
+    },
+  };
+</script>
+<style>
+  [v-cloak] { display: none; }
+  body { font-family: 'Segoe UI', ui-sans-serif, system-ui, sans-serif; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "vue": "https://unpkg.com/vue@3.4.31/dist/vue.esm-browser.prod.js",
+    "vue-router": "https://unpkg.com/vue-router@4.4.0/dist/vue-router.esm-browser.js",
+    "@vue/devtools-api": "https://unpkg.com/@vue/devtools-api@6.6.3/lib/esm/index.js"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div id="app" v-cloak></div>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
