@@ -72,8 +72,8 @@ const CHAT_INJECTION_PATTERN = '/\b(ignore (all|any|previous|prior|the) instruct
     . '|jailbreak|dan mode|developer mode|bypass (your|the) (rules|restrictions|filters))\b/i';
 
 const CHAT_LANG_STRINGS = [
-    'greeting' => ['en' => "Hi%s! I'm the PermitTrack assistant. Ask me about permits, verification or your account.",
-                   'tl' => "Hi%s! Ako ang PermitTrack assistant. Magtanong ka tungkol sa mga permit, verification, o sa iyong account."],
+    'greeting' => ['en' => "Hi%s! I'm Gibs P., your PermitTrack assistant. Ask me about permits, verification or your account.",
+                   'tl' => "Hi%s! Ako si Gibs P., ang PermitTrack assistant mo. Magtanong ka tungkol sa mga permit, verification, o sa iyong account."],
     'thanks' => ['en' => "You're welcome! Anything else I can help with?",
                  'tl' => "Walang anuman! May iba pa ba akong maitutulong?"],
     'ask_language' => ['en' => "Hi! Before we start — which language would you like to use, English or Tagalog?",
@@ -82,8 +82,6 @@ const CHAT_LANG_STRINGS = [
                                    'tl' => "Paumanhin, hindi ko nakuha iyon. Mangyaring pumili ng English o Tagalog."],
     'language_confirmed_en' => ['en' => "Great, we'll continue in English.", 'tl' => "Great, we'll continue in English."],
     'language_confirmed_tl' => ['en' => "Sige, magta-Tagalog tayo mula ngayon.", 'tl' => "Sige, magta-Tagalog tayo mula ngayon."],
-    'off_topic' => ['en' => "I can only help with questions about PermitTrack — permits, verification, businesses, or your account. Please ask something related to that.",
-                     'tl' => "Makakatulong lang ako sa mga tanong tungkol sa PermitTrack — mga permit, verification, negosyo, o ang iyong account. Magtanong ng may kinalaman dito."],
     'security_refusal' => ['en' => "I can't do that. I only answer questions about PermitTrack permits, verification and accounts.",
                             'tl' => "Hindi ko iyan magagawa. Sumasagot lang ako sa mga tanong tungkol sa PermitTrack permits, verification, at mga account."],
     'fallback' => ['en' => "Sorry, I don't have an answer for that yet. I've noted your question so the city team can add one.\nHere are some things I can help with:",
@@ -115,6 +113,43 @@ function chat_t(string $key, string $lang, ...$args): string
 {
     $template = CHAT_LANG_STRINGS[$key][$lang] ?? CHAT_LANG_STRINGS[$key][CHAT_DEFAULT_LANG];
     return $args ? sprintf($template, ...$args) : $template;
+}
+
+/** Off-topic replies: several warm, guiding variants (not one repeated line) each paired with
+ * suggestion chips that steer toward a specific related question, so a visitor who wanders off
+ * topic gets nudged back in a friendly way instead of hitting the same wall twice. */
+const CHAT_OFF_TOPIC_VARIANTS = [
+    'en' => [
+        ['text' => "That's a bit outside what I can help with — I'm your PermitTrack guide! Want to know which permits you're eligible for?",
+         'suggestions' => ['Which permits can I apply for?', 'What can I do as a Normal User?']],
+        ["text" => "I don't have an answer for that one, but I'd love to help with something PermitTrack-related — maybe how to track an application, or what documents a permit needs?",
+         'suggestions' => ['How do I track my application?', 'What are barangay clearances?']],
+        ['text' => "Hmm, that's outside my area — PermitTrack is what I know best! Is there anything about applying for a permit, verifying your account, or a barangay document I can help with?",
+         'suggestions' => ['How do I become a verified Resident?', 'How do I register a business?']],
+        ['text' => "I can't help with that one, but let's get you sorted with PermitTrack instead — want to check your application status, or see how the review process works?",
+         'suggestions' => ["What's my status?", 'How does the permit review process work?']],
+    ],
+    'tl' => [
+        ['text' => "Medyo wala akong masasabi diyan — ako ang gabay mo dito sa PermitTrack! Gusto mo bang malaman kung anong mga permit ang pwede mong i-apply?",
+         'suggestions' => ['Anong mga permit ang maaari kong i-apply?', 'Ano ang magagawa ko bilang Normal User?']],
+        ['text' => "Wala akong sagot diyan, pero gusto kong tumulong sa may kinalaman sa PermitTrack — halimbawa paano subaybayan ang aplikasyon, o anong dokumento ang kailangan ng permit?",
+         'suggestions' => ['Paano ko masusubaybayan ang aking aplikasyon?', 'Ano ang mga barangay clearance?']],
+        ['text' => "Hindi ko masagot iyan — PermitTrack lang talaga ang alam ko! May tanong ka ba tungkol sa pag-apply ng permit, pag-verify ng account, o barangay document?",
+         'suggestions' => ['Paano ako maging verified Resident?', 'Paano ako magrehistro ng negosyo?']],
+        ['text' => "Hindi ko iyan kaya, pero tulungan na lang kita sa PermitTrack — gusto mo bang tingnan ang status ng iyong aplikasyon, o alamin ang proseso ng pagsusuri?",
+         'suggestions' => ['Ano ang status ko?', 'Paano gumagana ang proseso ng pagsusuri ng permit?']],
+    ],
+];
+
+/** Rotates through CHAT_OFF_TOPIC_VARIANTS per session so repeated off-topic messages don't get
+ * the exact same reply twice in a row — see the message above screenshotted by the user. */
+function chat_off_topic_reply(string $lang): array
+{
+    $n = $_SESSION['chat_off_topic_n'] ?? 0;
+    $variants = CHAT_OFF_TOPIC_VARIANTS[$lang] ?? CHAT_OFF_TOPIC_VARIANTS[CHAT_DEFAULT_LANG];
+    $pick = $variants[$n % count($variants)];
+    $_SESSION['chat_off_topic_n'] = $n + 1;
+    return $pick;
 }
 
 /** Reads "English"/"Tagalog"/"Filipino"/"en"/"tl" (and common Filipino spellings) out of a
@@ -308,15 +343,15 @@ function chatbot_reply(string $message, ?array $user, string $lang = CHAT_DEFAUL
     // Checked first, on the raw message, before any other matching — an injection attempt must
     // never be able to disguise itself as a legitimate FAQ query.
     if (chat_is_injection_attempt($message)) {
-        return $base + ['text' => chat_t('security_refusal', $lang), 'intent' => 'security_refusal', 'score' => 10];
+        return array_merge($base, ['text' => chat_t('security_refusal', $lang), 'intent' => 'security_refusal', 'score' => 10]);
     }
 
     if (preg_match('/^(hi|hello|hey|good (morning|afternoon|evening)|kumusta|kamusta|magandang (umaga|hapon|gabi))\b/', $normalized) && str_word_count($normalized) <= 4) {
         $name = $user['first_name'] ?? '';
-        return $base + ['text' => chat_t('greeting', $lang, $name ? " $name" : ''), 'intent' => 'greeting', 'suggestions' => chat_starter_suggestions($user, $lang), 'score' => 10];
+        return array_merge($base, ['text' => chat_t('greeting', $lang, $name ? " $name" : ''), 'intent' => 'greeting', 'suggestions' => chat_starter_suggestions($user, $lang), 'score' => 10]);
     }
     if (preg_match('/^(thanks|thank you|ty|salamat|ok thanks|okay thanks)\b/', $normalized)) {
-        return $base + ['text' => chat_t('thanks', $lang), 'intent' => 'greeting', 'score' => 10];
+        return array_merge($base, ['text' => chat_t('thanks', $lang), 'intent' => 'greeting', 'score' => 10]);
     }
 
     $myStatus = chat_my_status($normalized, $user, $lang);
@@ -339,23 +374,24 @@ function chatbot_reply(string $message, ?array $user, string $lang = CHAT_DEFAUL
     usort($scored, fn($a, $b) => $b['score'] <=> $a['score']);
 
     if (!$scored || $scored[0]['score'] < CHAT_MIN_SCORE) {
-        // Off-topic (no relation to PermitTrack at all) gets a firm refusal, not the softer
-        // "I don't have an answer yet" — that's reserved for genuine system questions the FAQ
-        // table just doesn't cover.
+        // Off-topic (no relation to PermitTrack at all) gets a warm, varied redirect — never the
+        // same line twice in a row — instead of the softer "I don't have an answer yet", which is
+        // reserved for genuine system questions the FAQ table just doesn't cover.
         if (!chat_is_on_topic($tokens)) {
-            return $base + [
-                'text' => chat_t('off_topic', $lang),
+            $offTopic = chat_off_topic_reply($lang);
+            return array_merge($base, [
+                'text' => $offTopic['text'],
                 'intent' => 'off_topic',
-                'suggestions' => chat_starter_suggestions($user, $lang),
+                'suggestions' => $offTopic['suggestions'],
                 'score' => $scored[0]['score'] ?? 0.0,
-            ];
+            ]);
         }
-        return $base + [
+        return array_merge($base, [
             'text' => chat_t('fallback', $lang),
             'intent' => 'fallback',
             'suggestions' => array_slice(array_merge(array_map(fn($s) => chat_faq_question($s['faq'], $lang), array_slice($scored, 0, 2)), chat_starter_suggestions($user, $lang)), 0, 4),
             'score' => $scored[0]['score'] ?? 0.0,
-        ];
+        ]);
     }
 
     $best = $scored[0]['faq'];

@@ -196,6 +196,25 @@ names, etc.) must be verified after applying — run a query back over the speci
 visually diff it, or scan for `REGEXP '[\\x{2500}-\\x{25FF}]'` — rather than trusted just because
 `mysql.exe` exited 0. Pure-ASCII migrations are unaffected and don't need this check.
 
+## 11. Chat bot: bubble animation, renamed to "Gibs P.", warmer off-topic replies, and a real suggestions bug fixed
+
+- `ChatWidget.js`: message bubbles now animate in via the same `<transition-group name="list">`
+  pattern already used by `Notifications.js`/`PermitList.js` (fade + slide up on append) instead
+  of appearing instantly. Header renamed from "PermitTrack Assistant" / "· prototype" to "Gibs P."
+  / "Answers common questions"; aria-labels and the typing indicator updated to match.
+- Off-topic replies (previously one fixed line every time, screenshotted by the user as
+  repetitive) are now `CHAT_OFF_TOPIC_VARIANTS` — 4 warm, guiding EN/TL variants, each paired with
+  topic-specific suggestion chips, rotated per session via `$_SESSION['chat_off_topic_n']` so the
+  same wording never repeats back-to-back.
+- **Found while testing this**: `chatbot_reply()`'s greeting/thanks/security-refusal/off-topic/
+  fallback branches all built their return value as `$base + [...]` — PHP's `+` operator keeps
+  the **left** operand's value on a key collision, so every one of those branches silently
+  discarded its own `suggestions` (and `score`) back to `$base`'s defaults (`[]` and `0.0`).
+  This is not something introduced this session — the pattern was in the original file before any
+  of this work started, so greeting/fallback suggestions have likely never worked. Fixed by
+  switching to `array_merge($base, [...])`, where the later argument wins. Verified live: an
+  off-topic message and a "hello" greeting both now return their intended suggestion chips.
+
 ## Status
 
 | Layer | Status |

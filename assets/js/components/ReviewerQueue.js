@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=67';
-import StaffShell from './StaffShell.js?v=67';
-import { formatDate, permitIconClass } from '../util.js?v=67';
-import { authState } from '../store/auth.js?v=67';
-import Loader from './Loader.js?v=67';
+import { apiGet } from '../api/client.js?v=68';
+import StaffShell from './StaffShell.js?v=68';
+import { formatDate, permitIconClass } from '../util.js?v=68';
+import { authState } from '../store/auth.js?v=68';
+import Loader from './Loader.js?v=68';
 
 const TABS = [
   { key: 'new', label: 'New' },
