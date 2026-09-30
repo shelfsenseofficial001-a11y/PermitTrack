@@ -6,13 +6,22 @@ require __DIR__ . '/lib/chatbot.php';
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Opening message + starter chips
+// Opening message + starter chips. The very first thing any visitor sees is a language choice
+// (English/Tagalog) — nothing else is answered until $_SESSION['chat_lang'] is set, so every
+// later reply in this session is in the language they picked.
 if ($action === 'start' && $method === 'GET') {
     $user = current_user();
+    if (empty($_SESSION['chat_lang'])) {
+        respond([
+            'text' => chat_t('ask_language', CHAT_DEFAULT_LANG),
+            'suggestions' => ['English', 'Tagalog'],
+        ]);
+    }
+    $lang = $_SESSION['chat_lang'];
     $name = $user['first_name'] ?? '';
     respond([
-        'text' => 'Hi' . ($name ? " $name" : '') . "! I'm the PermitTrack assistant. I can answer common questions about permits, verification and your account.",
-        'suggestions' => chat_starter_suggestions($user),
+        'text' => chat_t('greeting', $lang, $name ? " $name" : ''),
+        'suggestions' => chat_starter_suggestions($user, $lang),
     ]);
 }
 
@@ -32,7 +41,30 @@ if ($action === 'ask' && $method === 'POST') {
     }
     $_SESSION['chat_times'][] = $now;
 
-    $reply = chatbot_reply($message, $user);
+    // Still choosing a language: try to read it from this message rather than answer it.
+    if (empty($_SESSION['chat_lang'])) {
+        $picked = chat_detect_language(chat_normalize($message));
+        if ($picked === null) {
+            respond([
+                'text' => chat_t('language_not_understood', CHAT_DEFAULT_LANG),
+                'link' => null,
+                'suggestions' => ['English', 'Tagalog'],
+                'answered' => false,
+            ]);
+        }
+        $_SESSION['chat_lang'] = $picked;
+        $name = $user['first_name'] ?? '';
+        respond([
+            'text' => chat_t($picked === 'tl' ? 'language_confirmed_tl' : 'language_confirmed_en', $picked)
+                . ' ' . chat_t('greeting', $picked, $name ? " $name" : ''),
+            'link' => null,
+            'suggestions' => chat_starter_suggestions($user, $picked),
+            'answered' => true,
+        ]);
+    }
+
+    $lang = $_SESSION['chat_lang'];
+    $reply = chatbot_reply($message, $user, $lang);
 
     // Log questions (not answers) so Admins can see what people ask and what the bot missed
     db()->prepare('INSERT INTO chat_messages (user_id, message, matched_faq_id, intent, score) VALUES (?, ?, ?, ?, ?)')
@@ -42,7 +74,7 @@ if ($action === 'ask' && $method === 'POST') {
         'text' => $reply['text'],
         'link' => $reply['link'],
         'suggestions' => $reply['suggestions'],
-        'answered' => $reply['intent'] !== 'fallback',
+        'answered' => !in_array($reply['intent'], ['fallback', 'off_topic'], true),
     ]);
 }
 

@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=66';
-import StaffShell from './StaffShell.js?v=66';
-import { formatDate } from '../util.js?v=66';
-import Loader from './Loader.js?v=66';
+import { apiGet, apiPost } from '../api/client.js?v=67';
+import StaffShell from './StaffShell.js?v=67';
+import { formatDate } from '../util.js?v=67';
+import Loader from './Loader.js?v=67';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -178,7 +178,7 @@ export default {
     startEditFaq(f, question = '') {
       this.editingFaq = f
         ? { ...f, is_active: !!Number(f.is_active) }
-        : { id: 0, category: 'General', question, answer: '', keywords: question.toLowerCase(), link_path: '', link_label: '', sort_order: 200, is_active: true };
+        : { id: 0, category: 'General', question, question_tl: '', answer: '', answer_tl: '', keywords: question.toLowerCase(), link_path: '', link_label: '', sort_order: 200, is_active: true };
       this.$nextTick(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
     },
     saveFaq() {
@@ -393,6 +393,10 @@ export default {
           <input v-model="editingFaq.question" :class="inputClass" class="mt-1" /></label>
         <label class="sm:col-span-2 text-sm font-semibold text-slate-700">Answer <span class="font-normal text-slate-400">(start a line with "- " for a bullet)</span>
           <textarea v-model="editingFaq.answer" rows="6" :class="inputClass" class="mt-1 font-normal"></textarea></label>
+        <label class="sm:col-span-2 text-sm font-semibold text-slate-700">Tagalog question <span class="font-normal text-slate-400">(optional — shown as the suggestion chip when the visitor chose Tagalog; falls back to the English question above if left blank)</span>
+          <input v-model="editingFaq.question_tl" :class="inputClass" class="mt-1" /></label>
+        <label class="sm:col-span-2 text-sm font-semibold text-slate-700">Tagalog answer <span class="font-normal text-slate-400">(optional — falls back to the English answer above if left blank)</span>
+          <textarea v-model="editingFaq.answer_tl" rows="6" :class="inputClass" class="mt-1 font-normal"></textarea></label>
         <label class="sm:col-span-2 text-sm font-semibold text-slate-700">Keywords <span class="font-normal text-slate-400">(words or phrases people might type, separated by commas — English and Filipino both help)</span>
           <input v-model="editingFaq.keywords" placeholder="e.g. fee, fees, how much, bayad, magkano" :class="inputClass" class="mt-1" /></label>
         <label class="text-sm font-semibold text-slate-700">Category<input v-model="editingFaq.category" :class="inputClass" class="mt-1" /></label>
