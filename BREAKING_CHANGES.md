@@ -76,7 +76,34 @@ submission is rejected outright) and is **not yet implemented** for the
 requires a manual reviewer action (reject + reapply) until a dedicated
 "void for false declaration" action is built.
 
-## 5. Barangay/office staff accounts exist but have no admin UI yet
+## 5. `applications.permit_type` (old enum) is now nullable
+
+Migration `010_permit_type_nullable.sql`. The old 5-value `ENUM` is `NOT
+NULL` in strict SQL mode, so a pipeline submission (`create_v2`) that picks
+one of the 22 new permit types can't write anything valid into it — it's
+left `NULL` and `permit_type_id` + a join to `permit_types.name` is the
+real source of truth for those applications. **Any code that reads
+`application.permit_type` directly (most of the current frontend) will see
+`NULL`/blank for every application filed through the new pipeline path**
+until that frontend is updated to read `permit_type_name` (from the
+`permit_types` join) instead. Applications filed through the old `create`
+action are unaffected — they still populate the enum exactly as before.
+
+## 6. Two parallel submission and review action pairs, by design (for now)
+
+`api/applications.php` has `create` (old, 5-type, untouched) and
+`create_v2` (new, 27-type, pipeline-driven) side by side.
+`api/reviewer.php` has `queue`/`counts`/`decision` (old, CSV-department,
+untouched) and `pipeline_queue`/`pipeline_counts`/`pipeline_decision` (new,
+per-office-current-step) side by side. This was a deliberate choice to
+avoid breaking the 3 departments (OBO/BPLO/CHO) that already work — but it
+means **the frontend has to actively choose which pair to call**, and
+nothing currently does that automatically. Until `NewApplication.js` and
+`ReviewerQueue.js` are updated, `create_v2`/`pipeline_*` are reachable only
+by calling the API directly (verified via a rolled-back smoke test against
+the live DB, not through the UI).
+
+## 7. Barangay/office staff accounts exist but have no admin UI yet
 
 75 Barangay Secretary + 9 office department rows and accounts exist in the
 DB (migration 008) but `Admin.js`'s department/staff management screens
@@ -91,9 +118,9 @@ was sized for ~3 entries to be unusable at 84 until that UI is revisited.
 | Layer | Status |
 | --- | --- |
 | DB schema (barangays, permit_types, pipeline_steps, pipeline_progress, conditions) | Done |
-| `api/lib/pipeline.php` (routing engine) | In progress |
-| `api/applications.php` submission wired to pipeline | In progress |
-| `api/reviewer.php` queue/decision wired to pipeline | In progress |
-| `NewApplication.js` (permit type + branch question UI) | Not started |
-| `ReviewerQueue.js` / `PermitDetail.js` (pipeline stage display) | Not started |
+| `api/lib/pipeline.php` (routing engine) | Done — verified with a rolled-back smoke test against the live DB |
+| `api/applications.php` — `permit_types` + `create_v2` actions | Done, additive (old `eligibility`/`create` untouched) |
+| `api/reviewer.php` — `pipeline_queue`/`pipeline_counts`/`pipeline_decision` | Done, additive (old `queue`/`counts`/`decision` untouched) |
+| `NewApplication.js` (permit type + branch question UI) | Not started — still calls old `eligibility`/`create` |
+| `ReviewerQueue.js` / `PermitDetail.js` (pipeline stage display) | Not started — `detail` now returns `pipeline`, UI doesn't render it yet |
 | `Admin.js` (barangay/office management UI) | Not started |
