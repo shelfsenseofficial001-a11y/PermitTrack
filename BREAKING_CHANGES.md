@@ -125,12 +125,25 @@ was sized for ~3 entries to be unusable at 84 until that UI is revisited.
 | `ReviewerQueue.js` / `ReviewDetail.js` / `PermitDetail.js` (pipeline stage display + decisions) | Done — verified end-to-end in browser, both barangay-secretary and legacy staff paths |
 | `Admin.js` (barangay/office management UI) | Not started |
 
+### Document requirements (added — migration 011)
+
+Fixed: `required_documents_for()` (api/config.php) was still keyed by the old 5-value enum, so
+the new-catalog `NewApplication.js` form collected no documents for any of the 22 new permit
+types. Added `permit_type_documents` (migration 011, seeded for all 27 types) and
+`required_documents_for_type()` in `api/lib/pipeline.php`; `permit_types_catalog()` now attaches
+`required_documents` to each catalog entry, `NewApplication.js` renders upload fields for them,
+and `create_v2` saves them as `application_documents` rows exactly like the legacy `create`
+action does. Verified end-to-end in-browser: submitted a Business License with no files attached
+and confirmed the three required documents show correctly as "Not uploaded yet" with a working
+Re-upload action on the detail page.
+
+Two docs are duplicated between a permit type and its embedded-stage-1 barangay clearance (e.g.
+Business License's "Business Formation Document" list doesn't re-ask for the Barangay Business
+Clearance itself, since that's the pipeline's own first step, not an applicant-uploaded file) —
+by design, not an oversight.
+
 ### Frontend wiring notes (added after browser verification)
 
-- `NewApplication.js` no longer supports document uploads for the 22 new permit types —
-  `required_documents_for()` (api/config.php) is still keyed by the old 5-value enum, so the
-  new-catalog form only collects address/description/conditions, no file inputs. Uploading
-  required documents for a new-pipeline permit type is not implemented yet.
 - `ReviewerQueue.js`/`ReviewDetail.js` decide which mode to use per staff member via
   `authState.user.department_permit_types === '__unassigned__'` — this is the same
   placeholder from migration 008 doing double duty as a UI-mode flag, not just an access-control

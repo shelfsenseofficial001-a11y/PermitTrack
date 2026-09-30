@@ -1,5 +1,5 @@
-import { login, homePathFor } from '../store/auth.js?v=65';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=65';
+import { login, homePathFor } from '../store/auth.js?v=66';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=66';
 
 export default {
   name: 'Login',

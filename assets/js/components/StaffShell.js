@@ -1,6 +1,6 @@
-import { authState, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=65';
-import { apiGet } from '../api/client.js?v=65';
-import { openChangePassword } from '../store/ui.js?v=65';
+import { authState, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=66';
+import { apiGet } from '../api/client.js?v=66';
+import { openChangePassword } from '../store/ui.js?v=66';
 
 export default {
   name: 'StaffShell',
@@ -38,7 +38,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/reviewer" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=65" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=66" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300 tracking-wide">{{ authState.user && authState.user.role === 'admin' ? 'ADMIN · STAFF PORTAL' : 'STAFF PORTAL' }}</div>
