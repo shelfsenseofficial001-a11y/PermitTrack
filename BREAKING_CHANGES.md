@@ -253,6 +253,22 @@ disabled so the model can't be dragged out of the 56px header canvas.
 To swap the skin, replace `skin-ett4.png` or pass a different `skinUrl` prop. Pinning the exact
 version (`@3.4.2`) is deliberate — an unpinned unpkg URL would silently pick up breaking releases.
 
+**Update — motion rewrite + peeking.** skinview3d's canned animations were replaced by one
+procedural "brain" (`GibsBrain` in `GibsMascot.js`): every joint eases toward a target pose via a
+critically damped spring, with breathing (quick inhale, slow exhale, rest), gaze glances, cursor
+tracking and slow drift layered on top — state changes blend instead of snapping. A second
+instance, `GibsPeek.js` (`mode="peek"`), hides past the right edge of the window above the Ask
+button and leans out every 3.5–7s with a "!" and an offer-to-help bubble; clicking him opens the
+chat, and he stays tucked away while it's open. `prefers-reduced-motion` stops the in/out cycle and
+the breathing layer.
+
+Two things to know when working on it:
+- Hidden browser tabs/panes don't run `requestAnimationFrame`, so he never moves there — test in a
+  visible window.
+- skinview3d's `draw()` reschedules itself unconditionally at the end of every frame, so setting
+  `renderPaused` from *inside* an animation callback is silently undone. The peek canvas pauses
+  itself (to save GPU while hidden) via `queueMicrotask`, after the frame finishes.
+
 ## Status
 
 | Layer | Status |
