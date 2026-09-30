@@ -1,8 +1,10 @@
-import { apiGet, apiPost } from '../api/client.js?v=69';
+import { apiGet, apiPost } from '../api/client.js?v=70';
+import GibsMascot from './GibsMascot.js?v=70';
 
 // Floating FAQ assistant for resident / business users (prototype — answers come from api/chat.php)
 export default {
   name: 'ChatWidget',
+  components: { GibsMascot },
   props: {
     // True while another bottom-right floating control (e.g. Landing's "Back to top") is also
     // showing, so this widget lifts above it instead of the two overlapping.
@@ -15,7 +17,12 @@ export default {
       messages: [], // { from: 'bot' | 'user', text, link?, suggestions? }
       draft: '',
       sending: false,
+      mascotState: 'idle', // idle | greeting | thinking | answering | error — see GibsMascot.js
+      mascotTimer: null,
     };
+  },
+  beforeUnmount() {
+    clearTimeout(this.mascotTimer);
   },
   methods: {
     // Splits an answer into paragraphs and "- " bullet lists for display
@@ -32,15 +39,26 @@ export default {
       });
       return out;
     },
+    // Holds mascotState at a value for a bit, then falls back to idle — so "answering"/"error"
+    // read as a momentary reaction rather than getting stuck.
+    setMascot(state, revertAfterMs) {
+      clearTimeout(this.mascotTimer);
+      this.mascotState = state;
+      if (revertAfterMs) {
+        this.mascotTimer = setTimeout(() => { this.mascotState = 'idle'; }, revertAfterMs);
+      }
+    },
     async toggle() {
       this.open = !this.open;
       if (this.open && !this.started) {
         this.started = true;
+        this.setMascot('greeting', 2000);
         try {
           const res = await apiGet('chat.php?action=start');
           this.messages.push({ from: 'bot', text: res.text, suggestions: res.suggestions });
         } catch (e) {
           this.messages.push({ from: 'bot', text: "Sorry, Gibs P. isn't available right now." });
+          this.setMascot('error', 1500);
         }
       }
       if (this.open) this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
@@ -53,12 +71,15 @@ export default {
       this.messages.forEach((m) => { m.suggestions = []; });
       this.messages.push({ from: 'user', text: message });
       this.sending = true;
+      this.setMascot('thinking');
       this.scrollDown();
       try {
         const res = await apiPost('chat.php?action=ask', { message });
         this.messages.push({ from: 'bot', text: res.text, link: res.link, suggestions: res.suggestions });
+        this.setMascot('answering', 1000);
       } catch (e) {
         this.messages.push({ from: 'bot', text: e.message });
+        this.setMascot('error', 1500);
       } finally {
         this.sending = false;
         this.scrollDown();
@@ -86,7 +107,7 @@ export default {
       role="dialog" aria-label="Gibs P., the PermitTrack assistant">
       <header class="bg-ink-700 text-white px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-lg bg-sun-400 text-ink-700 flex items-center justify-center font-bold">?</div>
+          <GibsMascot :state="mascotState" :size="56" />
           <div class="leading-tight">
             <div class="text-sm font-bold">Gibs P.</div>
             <div class="text-[11px] text-ink-300">Answers common questions</div>
