@@ -1,8 +1,13 @@
-import { apiGet, apiPost } from '../api/client.js?v=68';
+import { apiGet, apiPost } from '../api/client.js?v=69';
 
 // Floating FAQ assistant for resident / business users (prototype — answers come from api/chat.php)
 export default {
   name: 'ChatWidget',
+  props: {
+    // True while another bottom-right floating control (e.g. Landing's "Back to top") is also
+    // showing, so this widget lifts above it instead of the two overlapping.
+    liftForFab: { type: Boolean, default: false },
+  },
   data() {
     return {
       open: false,
@@ -71,8 +76,11 @@ export default {
     },
   },
   template: `
-  <!-- On phones it sits above the bottom tab tray (4rem + the home-bar inset); from md up, in the corner -->
-  <div class="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-5 z-40 flex flex-col items-end gap-3">
+  <!-- On phones it sits above the bottom tab tray (4rem + the home-bar inset), which already
+       clears a page-level FAB like Landing's "Back to top"; from md up it normally sits at
+       bottom-5, but lifts higher when liftForFab is set so the two don't overlap. -->
+  <div class="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex flex-col items-end gap-3"
+    :class="liftForFab ? 'md:bottom-[5.25rem]' : 'md:bottom-5'">
     <transition name="chat">
     <section v-if="open" class="origin-bottom-right w-[min(24rem,calc(100vw-2.5rem))] h-[min(34rem,calc(100dvh-13rem))] md:h-[min(34rem,calc(100vh-7rem))] bg-white rounded-2xl shadow-[0_24px_60px_-20px_rgba(16,48,29,0.45)] border border-brand-100 flex flex-col overflow-hidden"
       role="dialog" aria-label="Gibs P., the PermitTrack assistant">

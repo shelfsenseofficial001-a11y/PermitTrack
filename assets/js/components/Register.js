@@ -1,5 +1,5 @@
-import { register } from '../store/auth.js?v=68';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=68';
+import { register } from '../store/auth.js?v=69';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=69';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
