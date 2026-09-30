@@ -1,13 +1,20 @@
-import { apiGet, apiPost } from '../api/client.js?v=74';
-import BaseModal from './BaseModal.js?v=74';
-import GibsMascot from './GibsMascot.js?v=74';
-import GibsPeek from './GibsPeek.js?v=74';
+import { apiGet, apiPost } from '../api/client.js?v=78';
+import BaseModal from './BaseModal.js?v=78';
+import GibsMascot from './GibsMascot.js?v=78';
+import GibsPeek from './GibsPeek.js?v=78';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
 // api/chat.php.
 
-const TYPING_LINES = ['Gibs is thinking…', 'Gibs is flipping through the rulebook…', 'Gibs is checking with the barangay…', 'Gibs is crafting an answer…'];
+const TYPING_LINES = ['Gibs is thinking…', 'Gibs is flipping through the rulebook…', 'Gibs is checking with the barangay…', 'Gibs is putting an answer together…'];
+
+// "Hide Visualization" (hides Gibs) is a per-browser preference, so localStorage is fine (and losing it in a private
+// window is harmless).
+const HIDE_KEY = 'permittrack.hideGibs';
+function readHidden() {
+  try { return localStorage.getItem(HIDE_KEY) === '1'; } catch (e) { return false; }
+}
 
 export default {
   name: 'ChatWidget',
@@ -25,9 +32,10 @@ export default {
       draft: '',
       sending: false,
       typingLine: TYPING_LINES[0],
-      mascotState: 'idle', // idle | greeting | thinking | answering | error — see GibsMascot.js
+      mascotState: 'idle', // idle | greeting | thinking | answering | pondering | error — see GibsMascot.js
       mascotTimer: null,
       confirmReset: false,
+      gibsHidden: readHidden(),
     };
   },
   computed: {
@@ -113,7 +121,8 @@ export default {
       try {
         const res = await apiPost('chat.php?action=ask', { message });
         this.messages.push({ from: 'bot', text: res.text, link: res.link, suggestions: res.suggestions });
-        this.setMascot('answering', 1100);
+        // Off-topic or stumped (answered: false): he thinks it over instead of celebrating.
+        this.setMascot(res.answered === false ? 'pondering' : 'answering', 1100);
       } catch (e) {
         this.messages.push({ from: 'bot', text: e.message });
         this.setMascot('error', 1600);
@@ -126,18 +135,19 @@ export default {
       this.confirmReset = false;
       this.relockScroll();
     },
+    // A new chat starts from the top, language question included (chat.php's start action resets it).
     async resetChat() {
       this.confirmReset = false;
       this.relockScroll();
       this.messages = [];
       this.draft = '';
-      try {
-        await apiPost('chat.php?action=reset', {});
-      } catch (e) {
-        // The conversation is already cleared on screen; the server-side counters are cosmetic.
-      }
       await this.greet();
       this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
+    },
+    // Hides him everywhere — the stage beside the chat and the peeking by the Ask button.
+    toggleGibs() {
+      this.gibsHidden = !this.gibsHidden;
+      try { localStorage.setItem(HIDE_KEY, this.gibsHidden ? '1' : '0'); } catch (e) { /* just not remembered */ }
     },
     // BaseModal releases the page scroll lock when it closes, but the chat dialog is still open.
     relockScroll() {
@@ -160,7 +170,7 @@ export default {
        bottom-5, but lifts higher when liftForFab is set so the two don't overlap. -->
   <div class="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex flex-col items-end gap-3"
     :class="liftForFab ? 'md:bottom-[5.25rem]' : 'md:bottom-5'">
-    <GibsPeek :suppressed="open" :lift-for-fab="liftForFab" @open="openChat" />
+    <GibsPeek v-if="!gibsHidden" :suppressed="open" :lift-for-fab="liftForFab" @open="openChat" />
 
     <button v-show="!open" ref="askButton" type="button" @click="openChat" :aria-expanded="open" aria-label="Open Gibs P., the PermitTrack assistant"
       class="flex items-center gap-2 rounded-full bg-ink-700 text-white pl-3 pr-4 py-3 shadow-lg hover:bg-ink-600 transition">
@@ -173,11 +183,16 @@ export default {
     leave-to-class="opacity-0" leave-active-class="transition-opacity duration-150 ease-in motion-reduce:transition-none">
     <div v-if="open" class="font-inter fixed inset-0 z-50 flex md:items-center md:justify-center md:p-6 bg-ink-900/45 backdrop-blur-[3px]" @click.self="close">
       <section role="dialog" aria-modal="true" aria-labelledby="gibs-title"
-        class="relative w-full h-[100dvh] md:h-[min(44rem,calc(100vh-3rem))] md:max-w-[64rem] flex flex-col md:flex-row bg-white md:rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]">
+        class="relative w-full h-[100dvh] md:h-[min(44rem,calc(100vh-3rem))] flex flex-col md:flex-row bg-white md:rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
+        :class="gibsHidden ? 'md:max-w-[38rem]' : 'md:max-w-[64rem]'">
 
         <!-- The stage: Gibs, big and in full view. It's a plain white room for now. -->
-        <div class="relative shrink-0 h-[34vh] md:h-auto md:w-[42%] bg-white border-b md:border-b-0 md:border-r border-slate-100">
+        <div v-if="!gibsHidden" class="relative shrink-0 h-[34vh] md:h-auto md:w-[42%] bg-white border-b md:border-b-0 md:border-r border-slate-100">
           <GibsMascot mode="stage" fill :state="stageState" />
+          <button type="button" @click="toggleGibs" aria-label="Hide Visualization" title="Hide Visualization"
+            class="absolute top-3 right-3 z-10 p-2.5 rounded-xl bg-white/90 text-slate-400 ring-1 ring-slate-200 hover:text-slate-700 hover:bg-slate-50 transition">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.16 3.19M6.6 6.6C3.9 8.4 2 12 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/><path d="m2 2 20 20"/></svg>
+          </button>
           <p class="hidden md:block absolute bottom-4 inset-x-0 text-center text-[11px] text-slate-400 pointer-events-none">Drag to spin me around</p>
         </div>
 
@@ -188,6 +203,12 @@ export default {
               <h2 id="gibs-title" class="text-sm font-bold text-ink-700">Gibs P. <span class="font-medium text-slate-400">· PermitTrack assistant</span></h2>
               <p class="text-[11px] text-slate-400 mt-0.5">Please don't share passwords or ID numbers here.</p>
             </div>
+            <!-- Hiding lives on the stage itself; once hidden, the way back is here. -->
+            <button v-if="gibsHidden" type="button" @click="toggleGibs" aria-label="Show Visualization"
+              class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 px-2.5 sm:px-3 py-2 rounded-xl hover:bg-slate-100 hover:text-slate-700 transition">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span class="hidden sm:inline">Show Visualization</span>
+            </button>
             <button type="button" @click="confirmReset = true" :disabled="sending || messages.length < 2"
               class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 px-3 py-2 rounded-xl hover:bg-brand-50 disabled:text-slate-300 disabled:hover:bg-transparent transition">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>

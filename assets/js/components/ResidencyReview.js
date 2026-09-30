@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=74';
-import StaffShell from './StaffShell.js?v=74';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=74';
-import Loader from './Loader.js?v=74';
+import { apiGet, apiPost } from '../api/client.js?v=78';
+import StaffShell from './StaffShell.js?v=78';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=78';
+import Loader from './Loader.js?v=78';
 
 export default {
   name: 'ResidencyReview',

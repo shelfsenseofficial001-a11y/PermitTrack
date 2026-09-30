@@ -279,11 +279,29 @@ arms + "!", error = facepalm + "?!", and random idle quirks (stretch, shifty eye
 wrist, a small wave). Stage zoom is 0.55 so hops and raised arms never clip.
 
 "New chat" clears the conversation after a `BaseModal` confirmation ("Reset now" / "Continue
-current chat") and calls the new `POST api/chat.php?action=reset`, which clears only the running
-off-topic/opener rotation — **the language choice is kept**. Because `BaseModal` releases the body
+current chat") and calls `start` again. Because `BaseModal` releases the body
 scroll lock when it closes, `ChatWidget.relockScroll()` re-applies it while the chat is still open.
 Bot strings were rewritten to be playful, and answers now start with a random `CHAT_OPENERS` line
 (never the same one twice in a row, tracked in `$_SESSION['chat_last_opener']`).
+
+**Update — random reactions, language follows the user, hide toggle.**
+- Reactions are dealt from pools (`REACTIONS` in `GibsMascot.js`: 9 answer bits, 5 "pondering",
+  3 error, 4 greeting, plus 3 thinking styles and 7 idle quirks) through a shuffle bag, so none
+  repeats until its pool is used up, and never back-to-back. Each bit is several beats long with
+  its own pops/hops. New state `pondering` — `ChatWidget` uses it whenever a reply comes back
+  `answered: false` (off-topic, stumped, or language not understood) instead of celebrating.
+- **`chat.php?action=start` now always resets the conversation** (`chat_lang`, off-topic
+  rotation, last opener) and asks English/Tagalog first. The `reset` action was removed — "New
+  chat" just calls `start`. Anything else that calls `start` will wipe the chat language.
+- Language: a short reply naming a language picks it. If the first message is a real question,
+  `chat_guess_language()` (Tagalog vs English function-word counts) picks the main language from it
+  and answers straight away. Mid-chat, a message clearly in the other language switches
+  `chat_lang` to it, so a Tagalog message always gets a Tagalog answer; short/ambiguous messages
+  ("hi", "building permit") keep the current language.
+- "Hide Visualization" (eye icon, top-right of the stage) removes the stage *and* the peeking Gibs;
+  "Show Visualization" in the chat header brings him back. Stored per browser in localStorage
+  (`permittrack.hideGibs`).
+- Bot copy no longer uses Minecraft references.
 
 ## Status
 

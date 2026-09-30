@@ -8,7 +8,9 @@
 //   mode="stage"  full body, drag to rotate — the big panel beside the chat (ChatWidget.js)
 //   mode="peek"   hidden past the right edge of the window, leaning out to peek (GibsPeek.js)
 //
-// state (driven by ChatWidget.js): idle | listening | greeting | thinking | answering | error
+// state (driven by ChatWidget.js): idle | listening | greeting | thinking | answering | pondering | error
+// Each of greeting/answering/pondering/error plays a random bit from its REACTIONS pool, dealt so
+// the same one never comes up twice in a row.
 
 const SKINVIEW3D_SRC = 'https://unpkg.com/skinview3d@3.4.2/bundles/skinview3d.bundle.js';
 let skinview3dPromise = null;
@@ -57,16 +59,319 @@ function breathCurve(p) {
 
 const rand = (min, max) => min + Math.random() * (max - min);
 
+// Hands items out in shuffled order: nothing repeats until the whole set has been used, and the
+// last one of a round never opens the next — so the same bit never plays twice in a row.
+class Bag {
+  constructor(items) {
+    this.items = items;
+    this.left = [];
+    this.last = null;
+  }
+
+  next() {
+    if (!this.left.length) {
+      this.left = [...this.items];
+      for (let i = this.left.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [this.left[i], this.left[j]] = [this.left[j], this.left[i]];
+      }
+      const n = this.left.length;
+      if (n > 1 && this.left[n - 1] === this.last) [this.left[0], this.left[n - 1]] = [this.left[n - 1], this.left[0]];
+    }
+    this.last = this.left.pop();
+    return this.last;
+  }
+}
+
 // Peek framing, in the skin's own units (the model is 32 tall, centered on the origin). The canvas
 // right edge is the "wall": at showX he leans out from behind it, at hideX he's fully past it.
 const PEEK = { showX: 8.5, hideX: 30, lean: 0.5, yaw: -0.25, y: -1.5 };
 
-const JOINTS = ['peek', 'roll', 'yaw', 'headX', 'headY', 'headZ', 'lArmX', 'lArmZ', 'rArmX', 'rArmZ', 'lLegX', 'rLegX', 'hop'];
+// Springs ease these toward each frame's target pose.
+const JOINTS = ['peek', 'roll', 'yaw', 'pitch', 'headX', 'headY', 'headZ', 'lArmX', 'lArmZ', 'rArmX', 'rArmZ', 'lLegX', 'rLegX', 'hop'];
 
-// Bits of body language he does on his own while idle, so he never just stands there.
-const QUIRK_TIME = { thought: [2.8, 3.8], stretch: [2.2, 2.6], shifty: [1.8, 2.1], watch: [2.2, 2.6], wave: [1.7, 2] };
-const STAGE_QUIRKS = Object.keys(QUIRK_TIME);
-const PEEK_QUIRKS = ['thought', 'shifty'];
+// Sign guide (he faces you): headX < 0 looks up · headY > 0 turns toward the chat (your right) ·
+// arm X < 0 swings forward/up · lArmZ > 0 / rArmZ < 0 lifts the arm out to the side (the opposite
+// sign brings it across his body) · leg X < 0 kicks forward · pitch > 0 bows toward you ·
+// roll > 0 leans to your left. add* values skip the springs, for quick wiggles.
+
+const smoothDecay = (k, from, rate) => (k < from ? 0 : Math.exp(-(k - from) * rate));
+
+const wave = (k, P, a) => {
+  const up = Math.min(1, k / 0.35);
+  P.rArmX = -0.25; P.rArmZ = -2.55 * up;
+  P.addRArmZ = Math.sin(k * 13) * 0.3 * up * a;
+  P.headZ = -0.1; P.headX = -0.06;
+};
+const salute = (P) => {
+  P.rArmX = -2.6; P.rArmZ = 0.5; // flat hand at the brow
+  P.headX = -0.08; P.pitch = -0.06; // chest out
+};
+const chin = (P) => {
+  P.headX = -0.3; P.headY = -0.32; P.headZ = 0.13;
+  P.rArmX = -1.95; P.rArmZ = 0.5; // hand to chin
+  P.yaw = -0.08;
+};
+
+// Reactions: short bits of acting, several beats long. Each kind has a pool that ReactionBags deals
+// from, so he doesn't answer the same way twice in a row. pose(k, P, a) sets the pose k seconds in;
+// fx are [second, "!"/"?"/…] pops and hops are [second, upward kick] jumps.
+const REACTIONS = {
+  // A normal answer landed.
+  answer: {
+    tada: {
+      dur: 2.3, fx: [[0.05, '!']], hops: [[0, 40]],
+      pose(k, P, a) {
+        if (k < 1.1) { P.lArmX = -0.15; P.lArmZ = 2.35; P.rArmX = -0.15; P.rArmZ = -2.35; P.headX = -0.15; return; }
+        // ...then hands on hips, with a smug little nod
+        P.lArmX = 0.25; P.lArmZ = 0.5; P.rArmX = 0.25; P.rArmZ = -0.5; P.pitch = -0.05;
+        P.headX = -0.1; P.addHeadX = Math.sin((k - 1.1) * 7) * 0.07 * a;
+      },
+    },
+    fingerGuns: {
+      dur: 2.1, fx: [[0.55, '✦'], [1.05, '✦']], hops: [],
+      pose(k, P, a) {
+        if (k > 1.55) return; // holstered
+        P.lArmX = -1.5; P.lArmZ = -0.1; P.rArmX = -1.5; P.rArmZ = 0.1; P.headZ = 0.14;
+        // "pew, pew" — a kick of recoil on each shot
+        const recoil = (smoothDecay(k, 0.5, 9) + smoothDecay(k, 1.0, 9)) * 0.5 * a;
+        P.addLArmX = -recoil; P.addRArmX = -recoil;
+      },
+    },
+    pointAtChat: {
+      dur: 2.3, fx: [[0.25, '!']], hops: [[0, 16]],
+      pose(k, P, a) {
+        if (k < 1.3) {
+          // "It's right there!" — turns and points at the answer
+          P.headY = 0.5; P.headX = 0.05; P.yaw = 0.28;
+          P.lArmX = -1.35; P.lArmZ = 0.8; P.addLArmZ = Math.sin(k * 10) * 0.06 * a;
+          return;
+        }
+        P.headY = 0.05; P.addHeadX = Math.sin((k - 1.3) * 9) * 0.12 * a; // back to you: "yep, that one"
+      },
+    },
+    chefsKiss: {
+      dur: 2.1, fx: [[0.8, '✦']], hops: [],
+      pose(k, P) {
+        if (k < 0.75) { P.rArmX = -2.05; P.rArmZ = 0.42; P.headX = -0.05; P.headZ = -0.06; return; }
+        if (k < 1.6) { P.rArmX = -1.4; P.rArmZ = -1.15; P.headX = -0.22; P.headZ = 0.1; P.pitch = -0.05; }
+      },
+    },
+    victoryDance: {
+      dur: 2.3, fx: [[0.1, '♪'], [1.1, '♪']], hops: [[0.37, 12], [1.1, 12]],
+      pose(k, P, a) {
+        if (k > 1.9) return;
+        const s = Math.sin(k * 8.5) * a;
+        P.lArmX = -0.3; P.lArmZ = 1.25; P.rArmX = -0.3; P.rArmZ = -1.25;
+        P.addLArmZ = s * 0.8; P.addRArmZ = s * 0.8;
+        P.addRoll = s * 0.07; P.headZ = -s * 0.12; P.lLegX = s * 0.28; P.rLegX = -s * 0.28;
+        P.addHeadX = Math.abs(Math.cos(k * 8.5)) * 0.06 * a;
+      },
+    },
+    salute: {
+      dur: 2.0, fx: [[0.35, '!']], hops: [],
+      pose(k, P, a) {
+        if (k < 1.2) { salute(P); return; }
+        P.addHeadX = Math.sin((k - 1.2) * 10) * 0.1 * a; // snap down, crisp nod
+      },
+    },
+    bow: {
+      dur: 2.2, fx: [[1.0, '✦']], hops: [],
+      pose(k, P) {
+        // A butler's bow: "at your service"
+        if (k < 0.2 || k > 1.25) return;
+        P.pitch = 0.38; P.headX = 0.15;
+        P.rArmX = -0.95; P.rArmZ = 0.7; P.lArmX = 0.55; P.lArmZ = 0.1;
+      },
+    },
+    bigBrain: {
+      dur: 2.2, fx: [[1.05, '!']], hops: [[1.0, 14]],
+      pose(k, P, a) {
+        if (k < 1.0) {
+          // tap, tap on the temple...
+          P.rArmX = -2.35; P.rArmZ = 0.95; P.headZ = -0.14;
+          P.addRArmX = Math.max(0, Math.sin(k * 18)) * 0.12 * a;
+          return;
+        }
+        if (k < 1.8) { P.rArmX = -2.95; P.rArmZ = 0.1; P.headX = -0.12; } // ...one finger up: "Eureka!"
+      },
+    },
+    fistPump: {
+      dur: 1.9, fx: [[0.1, '!']], hops: [[0, 22], [0.45, 18]],
+      pose(k, P, a) {
+        if (k > 1.25) return;
+        P.rArmX = -0.35; P.rArmZ = -2.0; P.addRArmZ = Math.sin(k * 14) * 0.45 * a;
+        P.headX = -0.1; P.lArmZ = 0.25;
+      },
+    },
+  },
+
+  // The question was off-topic (or stumped him): he thinks it over, or gets lost in thought.
+  ponder: {
+    daydream: {
+      dur: 3.3, fx: [[0.5, '?'], [2.55, '!']], hops: [[2.5, 16]],
+      pose(k, P, a) {
+        if (k < 2.45) {
+          P.headX = -0.36; P.headY = -0.42; P.headZ = 0.1; P.yaw = -0.12;
+          P.addRoll = Math.sin(k * 1.5) * 0.04 * a; P.breathPeriod = 5.5;
+          return;
+        }
+        // Snaps out of it — "huh? oh!"
+        P.headY = 0.3; P.headX = 0.05;
+        P.addHeadY = Math.sin((k - 2.45) * 16) * 0.1 * a * smoothDecay(k, 2.45, 3);
+      },
+    },
+    headScratch: {
+      dur: 2.8, fx: [[0.35, '?'], [1.6, '?']], hops: [],
+      pose(k, P, a) {
+        P.rArmX = -2.75; P.rArmZ = 0.55; P.addRArmZ = Math.sin(k * 17) * 0.1 * a;
+        P.headZ = 0.16; P.headX = 0.06; P.headY = -0.1;
+      },
+    },
+    chinStroke: {
+      dur: 3.0, fx: [[0.3, '?'], [1.6, '…']], hops: [],
+      pose(k, P, a) {
+        chin(P);
+        P.headY = Math.sin(k * 1.2) * 0.4; // looks slowly from side to side, weighing it up
+        P.addRArmX = Math.sin(k * 5) * 0.05 * a;
+        P.lArmX = -0.55; P.lArmZ = -0.45; // other arm folded under
+      },
+    },
+    puppyTilt: {
+      dur: 2.6, fx: [[0.2, '?'], [1.0, '?']], hops: [],
+      pose(k, P) {
+        P.headZ = Math.floor(k / 0.75) % 2 ? -0.3 : 0.3; // head tilts one way, then the other
+        P.headX = 0.05;
+        P.lArmX = -0.45; P.lArmZ = 0.45; P.rArmX = -0.45; P.rArmZ = -0.45; // palms-up "no idea"
+      },
+    },
+    cloudWatch: {
+      dur: 3.2, fx: [[0.6, '?'], [2.4, '…']], hops: [],
+      pose(k, P, a) {
+        if (k < 2.3) {
+          // Points at a cloud that looks suspiciously like a permit form
+          P.headX = -0.45; P.yaw = -0.35 + k * 0.12;
+          if (k > 0.8 && k < 2.1) { P.lArmX = -2.6; P.lArmZ = 0.2; }
+          return;
+        }
+        P.addHeadY = Math.sin((k - 2.3) * 14) * 0.12 * a * smoothDecay(k, 2.3, 2.5); // shakes it off
+      },
+    },
+  },
+
+  // A request failed.
+  error: {
+    facepalm: {
+      dur: 2.2, fx: [[0.1, '?!']], hops: [],
+      pose(k, P, a) {
+        P.rArmX = -2.35; P.rArmZ = 0.62;
+        P.headX = 0.3; P.headY = -0.12; P.headZ = 0.08; P.roll = 0.02;
+        P.addHeadY = Math.sin(k * 9) * 0.08 * Math.exp(-k * 1.5) * a;
+      },
+    },
+    wasntMe: {
+      dur: 2.0, fx: [[0.1, '?!']], hops: [[0, 14]],
+      pose(k, P) {
+        // Hands up, eyes darting: "I didn't touch anything!"
+        P.lArmX = -2.8; P.lArmZ = 0.35; P.rArmX = -2.8; P.rArmZ = -0.35;
+        P.headY = Math.floor(k / 0.3) % 2 ? 0.5 : -0.5; P.headX = -0.05;
+      },
+    },
+    slump: {
+      dur: 2.3, fx: [[0.3, '…']], hops: [],
+      pose(k, P) {
+        P.pitch = 0.1; P.headX = 0.45;
+        P.lArmX = 0.1; P.lArmZ = -0.05; P.rArmX = 0.1; P.rArmZ = 0.05; P.breathPeriod = 5;
+      },
+    },
+  },
+
+  // Hello!
+  greet: {
+    wave: { dur: 2.0, fx: [[0.1, '!']], hops: [[0, 26]], pose: (k, P, a) => wave(k, P, a) },
+    bothHands: {
+      dur: 2.0, fx: [[0.1, '!']], hops: [[0, 20], [0.55, 14]],
+      pose(k, P, a) {
+        const up = Math.min(1, k / 0.35);
+        P.lArmX = -0.2; P.lArmZ = 2.5 * up; P.rArmX = -0.2; P.rArmZ = -2.5 * up;
+        P.addLArmZ = Math.sin(k * 12) * 0.28 * up * a; P.addRArmZ = -P.addLArmZ;
+        P.headX = -0.08;
+      },
+    },
+    saluteHi: {
+      dur: 2.2, fx: [[0.3, '!']], hops: [],
+      pose(k, P, a) {
+        if (k < 0.9) salute(P);
+        else wave(k - 0.9, P, a);
+      },
+    },
+    peekaboo: {
+      dur: 2.1, fx: [[0.95, '!']], hops: [[0.9, 24]],
+      pose(k, P) {
+        if (k < 0.85) { P.lArmX = -2.3; P.lArmZ = -0.5; P.rArmX = -2.3; P.rArmZ = 0.5; P.headX = 0.1; return; }
+        if (k < 1.7) { P.lArmX = -0.4; P.lArmZ = 1.6; P.rArmX = -0.4; P.rArmZ = -1.6; P.headX = -0.1; } // "boo!"
+      },
+    },
+  },
+};
+
+// While a reply is on its way — a different way of thinking each time.
+const THINKING = {
+  chinTap(t, P, a) {
+    chin(P);
+    P.addHeadX = Math.sin(t * 2.3) * 0.045 * a; // slow "hmm" nods...
+    P.rLegX = -0.24 * Math.max(0, Math.sin(t * 8.5)) * a; // ...and an impatient foot tap
+    return '?';
+  },
+  armsFolded(t, P, a) {
+    P.headX = -0.34; P.headY = 0.22; P.headZ = -0.08;
+    P.lArmX = -0.75; P.lArmZ = -0.55; P.rArmX = -0.75; P.rArmZ = 0.55;
+    P.addRoll = Math.sin(t * 1.6) * 0.035 * a; // rocking on his heels
+    return '?';
+  },
+  takingNotes(t, P, a) {
+    P.headX = 0.34; P.headY = 0.1;
+    P.lArmX = -1.3; P.lArmZ = -0.3; // the notepad...
+    P.rArmX = -1.2; P.rArmZ = 0.38; P.addRArmZ = Math.sin(t * 18) * 0.08 * a; // ...and a very busy pencil
+    return '…';
+  },
+};
+
+// Idle quirks: bits of body language he does on his own so he never just stands there.
+const QUIRKS = {
+  thought: { time: [2.8, 3.8], fx: '?', pose: (q, P) => chin(P) },
+  stretch: {
+    time: [2.2, 2.6],
+    pose(q, P) { P.lArmX = -0.1; P.lArmZ = 2.85; P.rArmX = -0.1; P.rArmZ = -2.85; P.headX = -0.28; P.headZ = 0.04; },
+  },
+  shifty: {
+    time: [1.8, 2.1],
+    pose(q, P) { P.headY = Math.floor(q / 0.42) % 2 ? 0.62 : -0.62; P.headX = 0.06; P.yaw = P.headY * 0.15; },
+  },
+  watch: {
+    time: [2.2, 2.6], // checks an imaginary wristwatch
+    pose(q, P) { P.lArmX = -1.45; P.lArmZ = -0.35; P.headX = 0.38; P.headY = 0.22; },
+  },
+  wave: { time: [1.7, 2], fx: '!', pose: (q, P, a) => wave(q, P, a) },
+  yawn: {
+    time: [2.4, 2.8],
+    pose(q, P) { P.lArmX = -2.15; P.lArmZ = -0.45; P.headX = -0.32; P.pitch = -0.05; P.breathPeriod = 5.5; },
+  },
+  kickPebble: {
+    time: [1.8, 2.2],
+    pose(q, P, a) {
+      P.headX = 0.4; P.headY = 0.1;
+      if (q > 0.6 && q < 1.0) P.rLegX = -0.65 * a;
+      if (q > 1.0) P.headY = 0.45; // ...and watches it roll away
+    },
+  },
+};
+
+// One bag per pool, shared by every Gibs on the page, so reopening the chat doesn't reset them.
+const bags = {};
+const deal = (key, items) => (bags[key] = bags[key] || new Bag(items)).next();
+
+const STATE_REACTION = { answering: 'answer', pondering: 'ponder', error: 'error', greeting: 'greet' };
 
 class GibsBrain {
   constructor(mode, calm) {
@@ -74,7 +379,6 @@ class GibsBrain {
     this.calm = calm;
     this.state = 'idle';
     this.t = 0;
-    this.stateSince = 0;
     this.ch = {};
     JOINTS.forEach((k) => { this.ch[k] = { x: 0, v: 0 }; });
     this.peekTarget = mode === 'peek' ? 0 : 1;
@@ -86,12 +390,12 @@ class GibsBrain {
     this.nextWeightAt = 0;
     this.pointer = null; // { x, y } in [-1, 1] relative to the canvas
     this.pointerAt = -99;
-    this.quirk = null;
-    this.quirkStart = 0;
-    this.quirkUntil = -1;
-    this.lastQuirk = null;
+    this.reaction = null; // { def, start, lastK }
+    this.thinking = null;
+    this.thinkingSince = 0;
+    this.nextThinkFxAt = 0;
+    this.quirk = null; // { def, start, until }
     this.nextQuirkAt = rand(4, 7);
-    this.nextQuestionAt = 0;
     this.spotted = false;
     this.hiddenSettled = false;
     this.onEffect = null;
@@ -105,14 +409,21 @@ class GibsBrain {
   setState(state) {
     if (state === this.state) return;
     this.state = state;
-    this.stateSince = this.t;
     this.quirk = null;
+    const kind = STATE_REACTION[state];
+    if (kind) {
+      const name = deal(kind, Object.keys(REACTIONS[kind]));
+      this.reaction = { def: REACTIONS[kind][name], start: this.t, lastK: -1 };
+    } else if (state === 'listening' || state === 'thinking') {
+      this.reaction = null; // you've moved on; so does he
+    }
+    // Going back to idle lets a reaction finish its bit instead of cutting it off.
+    if (state === 'thinking') {
+      this.thinking = THINKING[deal('thinking', Object.keys(THINKING))];
+      this.thinkingSince = this.t;
+      this.nextThinkFxAt = this.t + 0.5;
+    }
     this.nextQuirkAt = Math.max(this.nextQuirkAt, this.t + rand(4, 7));
-    const jump = this.calm ? 0 : 1;
-    if (state === 'answering') { this.ch.hop.v = 44 * jump; this.emit('!'); }
-    if (state === 'greeting') { this.ch.hop.v = 26 * jump; this.emit('!'); }
-    if (state === 'error') this.emit('?!');
-    if (state === 'thinking') this.nextQuestionAt = this.t + 0.5;
   }
 
   setPeek(out) {
@@ -127,15 +438,19 @@ class GibsBrain {
   }
 
   startQuirk(t) {
-    const pool = (this.mode === 'peek' ? PEEK_QUIRKS : STAGE_QUIRKS).filter((q) => q !== this.lastQuirk);
-    const q = pool[Math.floor(Math.random() * pool.length)];
-    this.quirk = q;
-    this.lastQuirk = q;
-    this.quirkStart = t;
-    this.quirkUntil = t + rand(...QUIRK_TIME[q]);
-    this.nextQuirkAt = this.quirkUntil + (this.mode === 'peek' ? rand(7, 12) : rand(5, 10));
-    if (q === 'thought') this.emit('?');
-    if (q === 'wave') this.emit('!');
+    const pool = this.mode === 'peek' ? ['thought', 'shifty'] : Object.keys(QUIRKS);
+    const def = QUIRKS[deal('quirk-' + this.mode, pool)];
+    this.quirk = { def, start: t, until: t + rand(...def.time) };
+    this.nextQuirkAt = this.quirk.until + (this.mode === 'peek' ? rand(7, 12) : rand(5, 10));
+    if (def.fx) this.emit(def.fx);
+  }
+
+  // Fires the reaction's "!"/"?" pops and hops as their moments pass.
+  cue(r, k) {
+    const a = this.calm ? 0 : 1;
+    r.def.fx.forEach(([at, kind]) => { if (at > r.lastK && at <= k) this.emit(kind); });
+    r.def.hops.forEach(([at, v]) => { if (at > r.lastK && at <= k) this.ch.hop.v = v * a; });
+    r.lastK = k;
   }
 
   update(player, rawDt) {
@@ -145,7 +460,6 @@ class GibsBrain {
     const ch = this.ch;
     const skin = player.skin;
     const peekMode = this.mode === 'peek';
-    const since = t - this.stateSince;
     const a = this.calm ? 0 : 1; // amplitude of the living, breathing layer
 
     // --- where he looks: a new glance every second or three, or the cursor if it just moved
@@ -166,81 +480,36 @@ class GibsBrain {
       this.nextWeightAt = t + rand(3.5, 7);
     }
 
-    // --- target pose for the current state
-    let headX = gazeX, headY = gazeY, headZ = 0;
-    let roll = this.weight * 0.6, yaw = gazeY * 0.22 + (peekMode ? 0 : drift(t * 0.15, 9) * 0.08 * a);
-    let lArmX = 0, lArmZ = 0.06, rArmX = 0, rArmZ = -0.06;
-    let lLegX = 0, rLegX = 0;
-    let addHeadX = 0, addHeadY = 0, addRArmZ = 0;
-    let breathPeriod = 4.2;
-
-    const thinkPose = () => {
-      headX = -0.3; headY = -0.32; headZ = 0.13;
-      rArmX = -1.95; rArmZ = 0.5; // hand to chin
-      yaw = -0.08;
-    };
-    const wave = (from) => {
-      const up = Math.min(1, (t - from) / 0.35);
-      rArmX = -0.25; rArmZ = -2.55 * up;
-      addRArmZ = Math.sin((t - from) * 13) * 0.3 * up * a;
+    // --- target pose, starting from relaxed and looking around
+    const P = {
+      headX: gazeX, headY: gazeY, headZ: 0,
+      roll: this.weight * 0.6, yaw: gazeY * 0.22 + (peekMode ? 0 : drift(t * 0.15, 9) * 0.08 * a), pitch: 0,
+      lArmX: 0, lArmZ: 0.06, rArmX: 0, rArmZ: -0.06, lLegX: 0, rLegX: 0,
+      addHeadX: 0, addHeadY: 0, addLArmX: 0, addLArmZ: 0, addRArmX: 0, addRArmZ: 0, addRoll: 0,
+      breathPeriod: 4.2,
     };
 
-    switch (this.state) {
-      case 'listening':
-        // You're typing: he turns to the chat, leans in, and nods along.
-        headY = 0.42; headX = 0.12; headZ = -0.05; roll = -0.03; yaw = 0.15;
-        addHeadX = Math.sin(t * 3.2) * 0.035 * a;
-        break;
-      case 'thinking':
-        thinkPose();
-        addHeadX = Math.sin(t * 2.3) * 0.045 * a; // slow "hmm" nods...
-        rLegX = -0.24 * Math.max(0, Math.sin(t * 8.5)) * a; // ...and an impatient foot tap
-        if (t >= this.nextQuestionAt) { this.emit('?'); this.nextQuestionAt = t + rand(1.7, 2.6); }
-        breathPeriod = 3.8;
-        break;
-      case 'greeting':
-        wave(this.stateSince);
-        headX = -0.06; headZ = -0.1; roll = -0.03;
-        breathPeriod = 3.4;
-        break;
-      case 'answering':
-        // "Ta-da!" — both arms up in a V.
-        lArmX = -0.15; lArmZ = 2.35; rArmX = -0.15; rArmZ = -2.35;
-        headX = -0.15;
-        breathPeriod = 3.4;
-        break;
-      case 'error':
-        // Facepalm.
-        rArmX = -2.35; rArmZ = 0.62;
-        headX = 0.3; headY = -0.12; headZ = 0.08; roll = 0.02;
-        addHeadY = Math.sin(since * 9) * 0.08 * Math.exp(-since * 1.5) * a;
-        break;
-      default: {
-        if (!this.quirk && t >= this.nextQuirkAt && !this.calm) this.startQuirk(t);
-        if (this.quirk && t >= this.quirkUntil) this.quirk = null;
-        const qt = t - this.quirkStart;
-        switch (this.quirk) {
-          case 'thought': // drifts off: looks up and away, hand to chin
-            thinkPose();
-            break;
-          case 'stretch': // big stretch, head back
-            lArmX = -0.1; lArmZ = 2.85; rArmX = -0.1; rArmZ = -2.85;
-            headX = -0.28; headZ = 0.04;
-            break;
-          case 'shifty': // suspicious glances left, right, left
-            headY = Math.floor(qt / 0.42) % 2 ? 0.62 : -0.62;
-            headX = 0.06; yaw = headY * 0.15;
-            break;
-          case 'watch': // checks an imaginary wristwatch
-            lArmX = -1.45; lArmZ = -0.35;
-            headX = 0.38; headY = 0.22;
-            break;
-          case 'wave': // a quick "hey!"
-            wave(this.quirkStart);
-            break;
-          default:
-        }
+    if (this.state === 'listening') {
+      // You're typing: he turns to the chat, leans in, and nods along.
+      P.headY = 0.42; P.headX = 0.12; P.headZ = -0.05; P.roll = -0.03; P.yaw = 0.15;
+      P.addHeadX = Math.sin(t * 3.2) * 0.035 * a;
+    } else if (this.state === 'thinking' && this.thinking) {
+      const fx = this.thinking(t - this.thinkingSince, P, a);
+      P.breathPeriod = 3.8;
+      if (t >= this.nextThinkFxAt) { this.emit(fx); this.nextThinkFxAt = t + rand(1.7, 2.6); }
+    } else if (this.reaction) {
+      const r = this.reaction;
+      const k = t - r.start;
+      this.cue(r, k);
+      r.def.pose(k, P, a);
+      if (k >= r.def.dur) {
+        this.reaction = null;
+        this.nextQuirkAt = Math.max(this.nextQuirkAt, t + rand(4, 7));
       }
+    } else {
+      if (!this.quirk && t >= this.nextQuirkAt && !this.calm) this.startQuirk(t);
+      if (this.quirk && t >= this.quirk.until) this.quirk = null;
+      if (this.quirk) this.quirk.def.pose(t - this.quirk.start, P, a);
     }
 
     // "!" the moment he's far enough out to have spotted you.
@@ -252,39 +521,44 @@ class GibsBrain {
 
     // --- ease every joint toward its target
     springTo(ch.peek, this.peekTarget, 3.4, dt);
-    springTo(ch.roll, roll, 3.5, dt);
-    springTo(ch.yaw, yaw, 3.5, dt);
-    springTo(ch.headX, headX, 8, dt);
-    springTo(ch.headY, headY, 7, dt);
-    springTo(ch.headZ, headZ, 6, dt);
-    springTo(ch.lArmX, lArmX, 6.5, dt);
-    springTo(ch.lArmZ, lArmZ, 6.5, dt);
-    springTo(ch.rArmX, rArmX, 6.5, dt);
-    springTo(ch.rArmZ, rArmZ, 6.5, dt);
-    springTo(ch.lLegX, lLegX, 14, dt);
-    springTo(ch.rLegX, rLegX, 14, dt);
+    springTo(ch.roll, P.roll, 3.5, dt);
+    springTo(ch.yaw, P.yaw, 3.5, dt);
+    springTo(ch.pitch, peekMode ? 0 : P.pitch, 4, dt);
+    springTo(ch.headX, P.headX, 8, dt);
+    springTo(ch.headY, P.headY, 7, dt);
+    springTo(ch.headZ, P.headZ, 6, dt);
+    springTo(ch.lArmX, P.lArmX, 6.5, dt);
+    springTo(ch.lArmZ, P.lArmZ, 6.5, dt);
+    springTo(ch.rArmX, P.rArmX, 6.5, dt);
+    springTo(ch.rArmZ, P.rArmZ, 6.5, dt);
+    springTo(ch.lLegX, P.lLegX, 14, dt);
+    springTo(ch.rLegX, P.rLegX, 14, dt);
     springTo(ch.hop, 0, 7, dt);
 
     // --- breathing and micro-movements, layered on top
-    this.breathPhase = (this.breathPhase + dt / (breathPeriod + Math.sin(t * 0.07) * 0.4)) % 1;
+    this.breathPhase = (this.breathPhase + dt / (P.breathPeriod + Math.sin(t * 0.07) * 0.4)) % 1;
     const b = breathCurve(this.breathPhase) * a;
     const hx = drift(t * 0.6, 4.1) * 0.025 * a;
     const hy = drift(t * 0.55, 1.3) * 0.035 * a;
     const hz = drift(t * 0.4, 2.2) * 0.03 * a;
 
+    // Bowing pivots on his feet (y = -16), not his middle, so he doesn't slide off his shadow.
+    const pitch = ch.pitch.x;
     const peekP = peekMode ? ch.peek.x : 0;
     player.position.x = peekMode ? PEEK.hideX + (PEEK.showX - PEEK.hideX) * peekP : 0;
-    player.position.y = (peekMode ? PEEK.y : 0) + ch.hop.x;
-    player.rotation.z = ch.roll.x + PEEK.lean * peekP + drift(t * 0.25, 7) * 0.012 * a;
+    player.position.y = (peekMode ? PEEK.y : 0) + ch.hop.x - 16 * (1 - Math.cos(pitch));
+    player.position.z = 16 * Math.sin(pitch);
+    player.rotation.x = pitch;
+    player.rotation.z = ch.roll.x + P.addRoll + PEEK.lean * peekP + drift(t * 0.25, 7) * 0.012 * a;
     player.rotation.y = ch.yaw.x + PEEK.yaw * peekP;
 
-    skin.head.rotation.set(ch.headX.x + addHeadX + hx - 0.03 * b, ch.headY.x + addHeadY + hy, ch.headZ.x + hz);
+    skin.head.rotation.set(ch.headX.x + P.addHeadX + hx - 0.03 * b, ch.headY.x + P.addHeadY + hy, ch.headZ.x + hz);
     skin.head.position.y = 0.2 * b;
     skin.body.scale.set(1 + 0.012 * b, 1, 1 + 0.03 * b);
     skin.leftArm.position.y = -2 + 0.16 * b;
     skin.rightArm.position.y = -2 + 0.16 * b;
-    skin.leftArm.rotation.set(ch.lArmX.x + drift(t * 0.45, 3) * 0.03 * a, 0, ch.lArmZ.x + 0.025 * b);
-    skin.rightArm.rotation.set(ch.rArmX.x + drift(t * 0.45, 5) * 0.03 * a, 0, ch.rArmZ.x + addRArmZ - 0.025 * b);
+    skin.leftArm.rotation.set(ch.lArmX.x + P.addLArmX + drift(t * 0.45, 3) * 0.03 * a, 0, ch.lArmZ.x + P.addLArmZ + 0.025 * b);
+    skin.rightArm.rotation.set(ch.rArmX.x + P.addRArmX + drift(t * 0.45, 5) * 0.03 * a, 0, ch.rArmZ.x + P.addRArmZ - 0.025 * b);
     skin.leftLeg.rotation.set(ch.lLegX.x, 0, 0);
     skin.rightLeg.rotation.set(ch.rLegX.x, 0, 0);
 
@@ -411,7 +685,11 @@ export default {
         clamp((e.clientY - (rect.top + rect.height * 0.25)) / scale),
       );
     },
-    // "!" / "?" / "?!" pops above his head, wherever his head currently is on screen.
+    fxClass(kind) {
+      if (kind === '♪') return 'gibs-fx-note';
+      return kind === '?' || kind === '…' ? 'gibs-fx-q' : 'gibs-fx-bang';
+    },
+    // "!" / "?" / "?!" / "♪" / "✦" / "…" pops above his head, wherever his head is on screen.
     spawnEffect(kind) {
       if (!this.viewer) return;
       const v = this.viewer.camera.position.clone();
@@ -438,7 +716,7 @@ export default {
     <div v-if="mode === 'stage' && !ready" class="absolute inset-0 flex items-center justify-center text-sm font-medium text-slate-400">
       {{ failed ? 'Gibs wandered off — the chat still works!' : 'Waking Gibs up…' }}
     </div>
-    <span v-for="fx in effects" :key="fx.id" class="gibs-fx" :class="fx.kind === '!' ? 'gibs-fx-bang' : 'gibs-fx-q'"
+    <span v-for="fx in effects" :key="fx.id" class="gibs-fx" :class="fxClass(fx.kind)"
       :style="{ left: fx.x + 'px', top: fx.y + 'px' }">{{ fx.kind }}</span>
   </div>
   `,

@@ -1,6 +1,6 @@
-import { authState, changePassword, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=74';
-import { inputClass } from './AuthLayout.js?v=74';
-import BaseModal from './BaseModal.js?v=74';
+import { authState, changePassword, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=78';
+import { inputClass } from './AuthLayout.js?v=78';
+import BaseModal from './BaseModal.js?v=78';
 
 // Change password as a dialog over the current page. With `forced` (a temporary password
 // set by an Admin), it cannot be dismissed — the only ways out are a new password or signing out.
