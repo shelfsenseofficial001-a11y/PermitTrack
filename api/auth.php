@@ -101,9 +101,9 @@ if ($action === 'register' && $method === 'POST') {
 
     $fullName = trim(preg_replace('/\s+/', ' ', "$first $middle $last"));
     db()->prepare(
-        'INSERT INTO users (role, email, phone, password_hash, full_name, first_name, middle_name, last_name, birthdate,
+        'INSERT INTO users (role, account_type, email, phone, password_hash, full_name, first_name, middle_name, last_name, birthdate,
                             address_line, barangay, city, postal_code, privacy_consent_at, onboarding_completed)
-         VALUES (\'applicant\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)'
+         VALUES (\'applicant\', \'unregistered\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)'
     )->execute([
         $email, $phone, password_hash($password, PASSWORD_BCRYPT), $fullName, $first, $middle ?: null, $last, $birthdate,
         $addressLine, $barangay, $city, $postal,

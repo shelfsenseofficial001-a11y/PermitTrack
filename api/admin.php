@@ -101,8 +101,8 @@ if ($action === 'staff_create' && $method === 'POST') {
 
     $password = temporary_password();
     db()->prepare(
-        "INSERT INTO users (role, department_id, email, password_hash, must_change_password, full_name, first_name, last_name, onboarding_completed, email_verified_at)
-         VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, NOW())"
+        "INSERT INTO users (role, account_type, department_id, email, password_hash, must_change_password, full_name, first_name, last_name, onboarding_completed, email_verified_at)
+         VALUES (?, 'staff', ?, ?, ?, 1, ?, ?, ?, 1, NOW())"
     )->execute([$role, $departmentId, $email, password_hash($password, PASSWORD_BCRYPT), "$first $last", $first, $last]);
     $id = (int)db()->lastInsertId();
     audit((int)$admin['id'], 'admin.staff_created', 'user', $id, "$first $last ($role)");
