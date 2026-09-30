@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=79';
-import BaseModal from './BaseModal.js?v=79';
-import GibsMascot from './GibsMascot.js?v=79';
-import GibsPeek from './GibsPeek.js?v=79';
+import { apiGet, apiPost } from '../api/client.js?v=80';
+import BaseModal from './BaseModal.js?v=80';
+import GibsMascot from './GibsMascot.js?v=80';
+import GibsPeek from './GibsPeek.js?v=80';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
@@ -174,7 +174,7 @@ export default {
 
     <button v-show="!open" ref="askButton" type="button" @click="openChat" :aria-expanded="open" aria-label="Open Gibs P., the PermitTrack assistant"
       class="flex items-center gap-2 rounded-full bg-ink-700 text-white pl-3 pr-4 py-3 shadow-lg hover:bg-ink-600 transition">
-      <span class="w-7 h-7 rounded-full bg-sun-400 text-ink-700 flex items-center justify-center font-bold text-sm">?</span>
+      <img src="assets/images/gibsIcon.png" alt="" width="28" height="28" class="w-7 h-7 rounded-md ring-1 ring-white/25 [image-rendering:pixelated]" />
       <span class="text-sm font-semibold">Ask</span>
     </button>
   </div>
