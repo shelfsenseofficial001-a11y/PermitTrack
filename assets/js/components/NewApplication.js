@@ -1,6 +1,6 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=78';
-import AppShell from './AppShell.js?v=78';
-import { authState } from '../store/auth.js?v=78';
+import { apiGet, apiPostForm } from '../api/client.js?v=79';
+import AppShell from './AppShell.js?v=79';
+import { authState } from '../store/auth.js?v=79';
 
 const TRACK_LABELS = {
   construction: 'Construction & Property',

@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=78';
-import BaseModal from './BaseModal.js?v=78';
-import GibsMascot from './GibsMascot.js?v=78';
-import GibsPeek from './GibsPeek.js?v=78';
+import { apiGet, apiPost } from '../api/client.js?v=79';
+import BaseModal from './BaseModal.js?v=79';
+import GibsMascot from './GibsMascot.js?v=79';
+import GibsPeek from './GibsPeek.js?v=79';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
@@ -199,6 +199,8 @@ export default {
         <!-- The chat -->
         <div class="flex-1 min-h-0 flex flex-col bg-meadow/40">
           <header class="flex items-center gap-2 px-5 py-3.5 bg-white border-b border-slate-100 shrink-0">
+            <img src="assets/images/gibsIcon.png" alt="" width="36" height="36"
+              class="w-9 h-9 shrink-0 rounded-lg ring-1 ring-black/10 [image-rendering:pixelated]" />
             <div class="min-w-0 flex-1 leading-tight">
               <h2 id="gibs-title" class="text-sm font-bold text-ink-700">Gibs P. <span class="font-medium text-slate-400">· PermitTrack assistant</span></h2>
               <p class="text-[11px] text-slate-400 mt-0.5">Please don't share passwords or ID numbers here.</p>
