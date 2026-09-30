@@ -1,14 +1,15 @@
-import { apiGet } from '../api/client.js?v=60';
-import AppShell from './AppShell.js?v=60';
-import PermitList from './PermitList.js?v=60';
-import { authState, loadCurrentUser } from '../store/auth.js?v=60';
+import { apiGet } from '../api/client.js?v=64';
+import AppShell from './AppShell.js?v=64';
+import PermitList from './PermitList.js?v=64';
+import { authState, loadCurrentUser } from '../store/auth.js?v=64';
+import Loader from './Loader.js?v=64';
 
 // How many permits the dashboard previews before sending you to My Permits
 const PREVIEW_COUNT = 3;
 
 export default {
   name: 'Dashboard',
-  components: { AppShell, PermitList },
+  components: { AppShell, PermitList, Loader },
   data() {
     return {
       apps: [],
@@ -142,7 +143,7 @@ export default {
       </div>
     </div>
 
-    <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
+    <Loader v-if="loading" kind="dashboard" />
 
     <template v-else>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">

@@ -1,13 +1,14 @@
-import { authState, logout, listAccounts, switchAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=60';
-import { apiGet, apiPost } from '../api/client.js?v=60';
-import ChatWidget from './ChatWidget.js?v=60';
-import AddAccountModal from './AddAccountModal.js?v=60';
-import { timeAgo } from '../util.js?v=60';
-import { uiState, openChangePassword } from '../store/ui.js?v=60';
+import { authState, logout, listAccounts, switchAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=64';
+import { apiGet, apiPost } from '../api/client.js?v=64';
+import ChatWidget from './ChatWidget.js?v=64';
+import AddAccountModal from './AddAccountModal.js?v=64';
+import { timeAgo } from '../util.js?v=64';
+import { uiState, openChangePassword } from '../store/ui.js?v=64';
+import Loader from './Loader.js?v=64';
 
 export default {
   name: 'AppShell',
-  components: { ChatWidget, AddAccountModal },
+  components: { ChatWidget, AddAccountModal, Loader },
   data() {
     return {
       authState, uiState, menuOpen: false, accountsOpen: false, accounts: [], accountsLoading: false,
@@ -145,7 +146,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/dashboard" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=60" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=64" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
@@ -182,7 +183,7 @@ export default {
                 <router-link to="/notifications" @click="notifOpen = false" class="text-xs font-semibold text-sun-300 hover:underline">View all</router-link>
               </div>
 
-              <p v-if="notifLoading" class="px-3 py-6 text-center text-xs text-ink-300">Loading…</p>
+              <Loader v-if="notifLoading" variant="inline" kind="notifications" class="justify-center py-5 text-ink-300" />
 
               <div v-else-if="!notifications.length" class="flex flex-col items-center text-center px-4 py-7">
                 <span class="w-11 h-11 rounded-full bg-white/5 flex items-center justify-center mb-3">
@@ -258,7 +259,7 @@ export default {
                 <!-- Accounts signed in on this browser (opens inside the menu, on the right) -->
                 <transition name="expand">
                 <div v-if="accountsOpen" class="mt-1 rounded-xl bg-black/20 border border-white/10 p-1.5">
-                  <div v-if="accountsLoading" class="px-3 py-2 text-xs text-ink-300">Loading…</div>
+                  <Loader v-if="accountsLoading" variant="inline" kind="accounts" class="px-2 text-ink-300" />
                   <button v-for="a in accounts" :key="a.id" type="button" @click="chooseAccount(a)" :disabled="switching"
                     class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-white/10" :aria-current="a.current ? 'true' : null">
                     <span class="w-3.5 h-3.5 rounded-full shrink-0 flex items-center justify-center" :class="a.current ? 'ring-2 ring-emerald-400' : 'ring-1 ring-white/20'">

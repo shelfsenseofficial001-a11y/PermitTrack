@@ -1,6 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=60';
-import StaffShell from './StaffShell.js?v=60';
-import { formatDate } from '../util.js?v=60';
+import { apiGet, apiPost } from '../api/client.js?v=64';
+import StaffShell from './StaffShell.js?v=64';
+import { formatDate } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -34,7 +35,7 @@ const AUDIT_LABELS = {
 
 export default {
   name: 'Admin',
-  components: { StaffShell },
+  components: { StaffShell, Loader },
   data() {
     return {
       tabs: TABS,
@@ -236,7 +237,7 @@ export default {
       </div>
     </div>
 
-    <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
+    <Loader v-if="loading" kind="admin" />
 
     <!-- Overview -->
     <div v-else-if="tab === 'overview' && summary" class="grid grid-cols-2 lg:grid-cols-4 gap-4">

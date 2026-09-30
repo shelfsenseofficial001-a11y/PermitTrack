@@ -1,5 +1,5 @@
-import { login, homePathFor } from '../store/auth.js?v=60';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=60';
+import { login, homePathFor } from '../store/auth.js?v=64';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=64';
 
 export default {
   name: 'Login',
@@ -28,7 +28,7 @@ export default {
     },
   },
   template: `
-  <AuthLayout>
+  <AuthLayout :loading="loading" loading-kind="login">
     <span class="inline-flex items-center text-xs font-semibold uppercase tracking-wider leading-none text-[#1f7a3a] bg-[#f3f9e3] rounded-full px-3 py-1.5 mb-3">Residents &amp; Businesses</span>
 
     <h1 class="text-3xl font-bold tracking-tight text-slate-900 mb-2">Welcome back</h1>

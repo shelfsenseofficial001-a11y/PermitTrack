@@ -1,5 +1,5 @@
-import { register } from '../store/auth.js?v=60';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=60';
+import { register } from '../store/auth.js?v=64';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=64';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
@@ -91,7 +91,7 @@ export default {
     },
   },
   template: `
-  <AuthLayout eyebrow="Create your account" headline="Start with a free account — browse permits and track everything in one place.">
+  <AuthLayout :loading="loading" loading-kind="register" eyebrow="Create your account" headline="Start with a free account — browse permits and track everything in one place.">
     <h1 class="text-3xl font-bold tracking-tight text-slate-900 mb-3">Create an account</h1>
 
     <div class="mb-5" aria-live="polite">

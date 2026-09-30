@@ -6,6 +6,10 @@
     RewriteRule ^ %1#/%2 [R=302,NE,L]
 </IfModule>
 
+# Missing files (a mistyped .php, a dead asset link) get the branded page instead of the
+# bare Apache one. Unknown *app* addresses are handled by the router's own 404 screen.
+ErrorDocument 404 /PermitTrack-main/404.html
+
 # Always revalidate scripts and the page so code changes show up without a hard refresh.
 <IfModule mod_headers.c>
     <FilesMatch "\.(js|html)$">

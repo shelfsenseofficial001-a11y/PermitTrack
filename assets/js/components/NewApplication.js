@@ -1,6 +1,6 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=60';
-import AppShell from './AppShell.js?v=60';
-import { authState } from '../store/auth.js?v=60';
+import { apiGet, apiPostForm } from '../api/client.js?v=64';
+import AppShell from './AppShell.js?v=64';
+import { authState } from '../store/auth.js?v=64';
 
 const PERMIT_TYPES = [
   { value: 'Food Service', label: 'Food Service' },

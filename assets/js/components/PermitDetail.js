@@ -1,12 +1,13 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=60';
-import AppShell from './AppShell.js?v=60';
-import StatusStepper from './StatusStepper.js?v=60';
-import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=60';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=64';
+import AppShell from './AppShell.js?v=64';
+import StatusStepper from './StatusStepper.js?v=64';
+import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 export default {
   name: 'PermitDetail',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell, StatusStepper },
+  components: { AppShell, StatusStepper, Loader },
   data() {
     return {
       app: null,
@@ -69,7 +70,7 @@ export default {
   },
   template: `
   <AppShell>
-    <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
+    <Loader v-if="loading" kind="detail" />
     <template v-else-if="app">
       <router-link to="/dashboard" :class="backButtonClass">
         <span :class="backIconClass"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span>

@@ -1,7 +1,8 @@
-import { apiGet } from '../api/client.js?v=60';
-import StaffShell from './StaffShell.js?v=60';
-import { formatDate, permitIconClass } from '../util.js?v=60';
-import { authState } from '../store/auth.js?v=60';
+import { apiGet } from '../api/client.js?v=64';
+import StaffShell from './StaffShell.js?v=64';
+import { formatDate, permitIconClass } from '../util.js?v=64';
+import { authState } from '../store/auth.js?v=64';
+import Loader from './Loader.js?v=64';
 
 const TABS = [
   { key: 'new', label: 'New' },
@@ -17,7 +18,7 @@ const PRIORITY_STYLES = {
 
 export default {
   name: 'ReviewerQueue',
-  components: { StaffShell },
+  components: { StaffShell, Loader },
   data() {
     return {
       tabs: TABS,
@@ -109,7 +110,7 @@ export default {
 
     <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{{ activeTabLabel }} applications</h2>
 
-    <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
+    <Loader v-if="loading" kind="queue" />
 
     <div v-else-if="!apps.length" class="bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center text-slate-500">
       Nothing in this queue right now.
