@@ -1,7 +1,7 @@
-import { apiGet } from '../api/client.js?v=78';
-import StaffShell from './StaffShell.js?v=78';
-import { formatDate } from '../util.js?v=78';
-import Loader from './Loader.js?v=78';
+import { apiGet } from '../api/client.js?v=79';
+import StaffShell from './StaffShell.js?v=79';
+import { formatDate } from '../util.js?v=79';
+import Loader from './Loader.js?v=79';
 
 const TABS = [
   { key: 'pending', label: 'Waiting for review' },
