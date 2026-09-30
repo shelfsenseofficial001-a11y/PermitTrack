@@ -1,10 +1,11 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js';
-import AppShell from './AppShell.js';
-import StatusStepper from './StatusStepper.js';
-import { permitNumber, permitIconClass, formatDate } from '../util.js';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=60';
+import AppShell from './AppShell.js?v=60';
+import StatusStepper from './StatusStepper.js?v=60';
+import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=60';
 
 export default {
   name: 'PermitDetail',
+  setup: () => ({ backButtonClass, backIconClass }),
   components: { AppShell, StatusStepper },
   data() {
     return {
@@ -70,8 +71,8 @@ export default {
   <AppShell>
     <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
     <template v-else-if="app">
-      <router-link to="/dashboard" class="text-sm text-slate-500 hover:text-brand-600 inline-flex items-center gap-1">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      <router-link to="/dashboard" :class="backButtonClass">
+        <span :class="backIconClass"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span>
         Back to Dashboard
       </router-link>
 
@@ -121,7 +122,7 @@ export default {
 
         <div class="bg-white rounded-xl border border-slate-200 p-6 flex flex-col">
           <h2 class="font-bold text-ink-700 mb-4">Activity &amp; Messages</h2>
-          <div class="flex-1 space-y-3 max-h-80 overflow-y-auto pr-1">
+          <div class="flex-1 space-y-3 max-h-80 overflow-y-auto scroll-soft pr-1">
             <div v-for="item in activity" :key="item.id" class="text-sm">
               <template v-if="item.type === 'status_change'">
                 <div class="text-xs text-slate-400">{{ formatDate(item.created_at) }} — {{ item.body }}</div>

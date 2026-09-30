@@ -1,0 +1,2 @@
+# Private app data (outbox log, uploads of IDs). Never serve it over the web.
+Require all denied

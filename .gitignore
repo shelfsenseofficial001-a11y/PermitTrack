@@ -2,3 +2,7 @@ uploads/*
 !uploads/.htaccess
 .DS_Store
 Thumbs.db
+api/config.local.php
+storage/*
+!storage/.htaccess
+database/backups/
