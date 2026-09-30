@@ -1,8 +1,8 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=64';
-import AppShell from './AppShell.js?v=64';
-import StatusStepper from './StatusStepper.js?v=64';
-import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
-import Loader from './Loader.js?v=64';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=65';
+import AppShell from './AppShell.js?v=65';
+import StatusStepper from './StatusStepper.js?v=65';
+import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=65';
+import Loader from './Loader.js?v=65';
 
 export default {
   name: 'PermitDetail',
@@ -36,6 +36,17 @@ export default {
       this.app = detailRes.application;
       this.activity = activityRes.activity;
       this.loading = false;
+    },
+    // Pipeline apps (27-type flow) carry pipeline rows; legacy apps (5-type flow) have none.
+    // See BREAKING_CHANGES.md #3.
+    stepClass(status) {
+      return {
+        approved: 'bg-brand-100 text-brand-700',
+        rejected: 'bg-red-100 text-red-700',
+        current: 'bg-sun-400 text-ink-700',
+        pending: 'bg-slate-100 text-slate-400',
+        skipped: 'bg-slate-50 text-slate-300',
+      }[status] || 'bg-slate-100 text-slate-400';
     },
     async reupload(doc, event) {
       const file = event.target.files[0];
@@ -79,18 +90,36 @@ export default {
 
       <div class="mt-4 flex items-start justify-between flex-wrap gap-3">
         <div class="flex items-center gap-4">
-          <div class="w-11 h-11 rounded-lg flex items-center justify-center shrink-0" :class="permitIconClass(app.permit_type)">
+          <div class="w-11 h-11 rounded-lg flex items-center justify-center shrink-0" :class="permitIconClass(app.permit_type || app.permit_type_name)">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </div>
           <div>
-            <h1 class="text-xl font-bold text-ink-700">{{ app.permit_type }} Permit</h1>
+            <h1 class="text-xl font-bold text-ink-700">{{ app.permit_type || app.permit_type_name }} Permit</h1>
             <div class="text-sm text-slate-500">{{ app.property_address }} &middot; Permit #{{ permitNumber(app) }}</div>
           </div>
         </div>
         <span class="text-xs font-bold px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 h-fit">{{ app.status }}</span>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+      <!-- Pipeline apps (27-type flow): show each office in order. Legacy apps (5-type flow,
+           empty app.pipeline) keep the original single-stage stepper. -->
+      <div v-if="app.pipeline && app.pipeline.length" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+        <h2 class="font-bold text-ink-700 mb-4">Where your application is</h2>
+        <ol class="space-y-3">
+          <li v-for="step in app.pipeline" :key="step.id" class="flex items-center gap-3 text-sm">
+            <span class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold" :class="stepClass(step.status)">
+              <svg v-if="step.status === 'approved'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+              <svg v-else-if="step.status === 'rejected'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <template v-else>&middot;</template>
+            </span>
+            <div class="min-w-0">
+              <div class="font-semibold text-slate-700">{{ step.department_name }}</div>
+              <div class="text-xs text-slate-400">{{ step.step_label }}</div>
+            </div>
+          </li>
+        </ol>
+      </div>
+      <div v-else class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
         <StatusStepper :stages="app.stages" :active-index="app.stage_index" :rejected="app.status === 'Rejected'" />
       </div>
 

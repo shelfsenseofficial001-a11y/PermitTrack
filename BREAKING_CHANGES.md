@@ -121,6 +121,22 @@ was sized for ~3 entries to be unusable at 84 until that UI is revisited.
 | `api/lib/pipeline.php` (routing engine) | Done — verified with a rolled-back smoke test against the live DB |
 | `api/applications.php` — `permit_types` + `create_v2` actions | Done, additive (old `eligibility`/`create` untouched) |
 | `api/reviewer.php` — `pipeline_queue`/`pipeline_counts`/`pipeline_decision` | Done, additive (old `queue`/`counts`/`decision` untouched) |
-| `NewApplication.js` (permit type + branch question UI) | Not started — still calls old `eligibility`/`create` |
-| `ReviewerQueue.js` / `PermitDetail.js` (pipeline stage display) | Not started — `detail` now returns `pipeline`, UI doesn't render it yet |
+| `NewApplication.js` (permit type + branch question UI) | Done — verified end-to-end in browser (submit → routing → approval) |
+| `ReviewerQueue.js` / `ReviewDetail.js` / `PermitDetail.js` (pipeline stage display + decisions) | Done — verified end-to-end in browser, both barangay-secretary and legacy staff paths |
 | `Admin.js` (barangay/office management UI) | Not started |
+
+### Frontend wiring notes (added after browser verification)
+
+- `NewApplication.js` no longer supports document uploads for the 22 new permit types —
+  `required_documents_for()` (api/config.php) is still keyed by the old 5-value enum, so the
+  new-catalog form only collects address/description/conditions, no file inputs. Uploading
+  required documents for a new-pipeline permit type is not implemented yet.
+- `ReviewerQueue.js`/`ReviewDetail.js` decide which mode to use per staff member via
+  `authState.user.department_permit_types === '__unassigned__'` — this is the same
+  placeholder from migration 008 doing double duty as a UI-mode flag, not just an access-control
+  default. If that placeholder value is ever changed, both the API layer (`config.php`,
+  `reviewer.php`) and these two components need to change together.
+- Verified in-browser as a full round trip: applicant submits a Fencing Permit answering "yes" to
+  the waterway branch question → routed to Barangay Salitran I Secretariat → barangay secretary
+  logs in, sees it in `pipeline_queue`, approves it → application correctly advances to OBO and
+  is no longer actionable by the barangay account ("not your office" guard fires correctly).

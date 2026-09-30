@@ -79,7 +79,18 @@ const USER_COLUMNS = 'id, role, account_type, email, phone, full_name, first_nam
     (SELECT COUNT(*) FROM businesses b WHERE b.user_id = users.id AND b.status = \'approved\') AS approved_businesses,
     department_id, is_active, must_change_password, last_login_at, created_at,
     (SELECT d.name FROM departments d WHERE d.id = users.department_id) AS department_name,
+    (SELECT d.code FROM departments d WHERE d.id = users.department_id) AS department_code,
     (SELECT d.permit_types FROM departments d WHERE d.id = users.department_id AND d.is_active = 1) AS department_permit_types';
+
+/**
+ * Whether a staff member's department runs the new per-office pipeline (barangay secretariats
+ * and the 9 offices added in migration 008) rather than the original CSV-based department model
+ * (OBO/BPLO/CHO). See BREAKING_CHANGES.md #1 and #6.
+ */
+function is_pipeline_staff(array $user): bool
+{
+    return $user['role'] === 'staff' && ($user['department_permit_types'] ?? '') === '__unassigned__';
+}
 
 function current_user(): ?array
 {

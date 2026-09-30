@@ -1,8 +1,8 @@
-import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=64';
-import AppShell from './AppShell.js?v=64';
-import { authState, loadCurrentUser } from '../store/auth.js?v=64';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
-import Loader from './Loader.js?v=64';
+import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=65';
+import AppShell from './AppShell.js?v=65';
+import { authState, loadCurrentUser } from '../store/auth.js?v=65';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=65';
+import Loader from './Loader.js?v=65';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
