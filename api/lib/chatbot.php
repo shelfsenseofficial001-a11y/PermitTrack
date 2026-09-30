@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/business.php'; // PERMIT_ELIGIBILITY, approved_businesses()
+require_once __DIR__ . '/business.php'; // approved_businesses()
+require_once __DIR__ . '/pipeline.php'; // permit_types_catalog(), required_documents_for_type()
 
 /*
  * Built-in FAQ chat bot (prototype).
@@ -21,13 +22,26 @@ const CHAT_STOPWORDS = [
     'be', 'with', 'about', 'you', 'your', 'this', 'that', 'there', 'want', 'need', 'get', 'have', 'has', 'hi',
 ];
 
-/** Words people use for each permit type (for "what does X need?" questions). */
-const CHAT_PERMIT_WORDS = [
-    'Food Service' => ['food', 'restaurant', 'carinderia', 'eatery', 'cafe', 'kainan', 'food service'],
-    'Building/Renovation' => ['building', 'renovation', 'renovate', 'construction', 'construct', 'repair house', 'extension', 'bahay'],
-    'Sign' => ['sign', 'signage', 'billboard', 'tarpaulin'],
-    'Business License' => ['business license', 'business permit', "mayor's permit", 'mayors permit', 'license'],
+/** Colloquial words people use for each permit type (for "what does X need?" questions), on top
+ * of the type's own name — the 27-type catalog (permit_types) is the source of truth, this just
+ * adds the phrases nobody would type verbatim. */
+const CHAT_PERMIT_SYNONYMS = [
+    'Food Service' => ['food', 'restaurant', 'carinderia', 'eatery', 'cafe', 'kainan', 'canteen', 'food service'],
+    'Building Permit' => ['building', 'renovation', 'renovate', 'construction', 'construct', 'repair house', 'extension', 'bahay'],
+    'Occupancy Permit' => ['occupancy', 'move in', 'moving in', 'certificate of occupancy'],
+    'Fencing Permit' => ['fence', 'fencing', 'pader', 'bakod'],
+    'Demolition Permit' => ['demolish', 'demolition', 'tear down', 'giba'],
+    'Excavation/Road-Cut Permit' => ['excavation', 'excavate', 'digging', 'road cut', 'roadcut'],
+    'Sign Permit' => ['sign', 'signage', 'billboard', 'tarpaulin'],
+    'Business License' => ['business license', 'business permit', "mayor's permit", 'mayors permit'],
     'Special Event' => ['event', 'special event', 'party', 'concert', 'fiesta', 'gathering'],
+    'Liquor/Tobacco License' => ['liquor', 'alcohol', 'tobacco', 'cigarette'],
+    'MTOP/TODA Permit' => ['tricycle', 'toda', 'mtop', 'padyak'],
+    'Market Stall/Vending Permit' => ['market stall', 'vending', 'vendor', 'tiangge', 'stall'],
+    'Certificate of Good Moral Character' => ['good moral', 'moral character'],
+    'Certificate of Indigency' => ['indigency', 'indigent'],
+    'Certificate to File Action' => ['file action', 'lupon', 'cfa'],
+    'First-Time Jobseeker Certificate' => ['jobseeker', 'first time job', 'ra 11261'],
 ];
 
 function chat_normalize(string $text): string
@@ -84,27 +98,47 @@ function chat_starter_suggestions(?array $user): array
     return $picks;
 }
 
+/** "What does a Fencing Permit need?" — matched against the live 27-type catalog, not a
+ * hardcoded list, so a new permit type added to permit_types is answerable immediately. */
 function chat_permit_requirements(string $normalized): ?array
 {
     $asksRequirements = preg_match('/\b(need|needs|requirement|requirements|require|required|documents?|papers?|kailangan)\b/', $normalized);
     if (!$asksRequirements) {
         return null;
     }
-    foreach (CHAT_PERMIT_WORDS as $type => $words) {
-        foreach ($words as $w) {
-            if (str_contains(" $normalized ", ' ' . $w . ' ')) {
-                $docs = required_documents_for($type);
-                $rule = PERMIT_ELIGIBILITY[$type];
-                $who = $rule['resident'] ? 'verified Residents, or Business Owners for a verified business' : 'Business Owners, for a verified business';
-                return [
-                    'text' => "A $type permit needs these documents:\n- " . implode("\n- ", $docs) . "\nIt can be filed by $who.",
-                    'link' => ['path' => '/applications/new', 'label' => 'See this permit'],
-                    'intent' => 'permit_requirements',
-                ];
+    static $types = null;
+    if ($types === null) {
+        $types = db()->query('SELECT id, name, track, resident_eligible, business_eligible FROM permit_types WHERE is_active = 1')->fetchAll();
+    }
+    $padded = " $normalized ";
+    $best = null;
+    $bestLen = 0;
+    foreach ($types as $type) {
+        $candidates = array_merge([$type['name']], CHAT_PERMIT_SYNONYMS[$type['name']] ?? []);
+        foreach ($candidates as $phrase) {
+            $phrase = chat_normalize($phrase);
+            if ($phrase !== '' && str_contains($padded, " $phrase ") && strlen($phrase) > $bestLen) {
+                $bestLen = strlen($phrase);
+                $best = $type;
             }
         }
     }
-    return null;
+    if (!$best) {
+        return null;
+    }
+
+    $docs = required_documents_for_type((int)$best['id']);
+    $docsText = $docs ? "\n- " . implode("\n- ", $docs) : "\n(no extra documents — it's issued directly by the barangay)";
+    $who = match (true) {
+        (bool)$best['resident_eligible'] && (bool)$best['business_eligible'] => 'verified Residents, or Business Owners for a verified business',
+        (bool)$best['business_eligible'] => 'Business Owners, for a verified business',
+        default => 'verified Residents',
+    };
+    return [
+        'text' => "A {$best['name']} needs these documents:{$docsText}\nIt can be filed by $who.",
+        'link' => ['path' => '/applications/new', 'label' => 'See this permit'],
+        'intent' => 'permit_requirements',
+    ];
 }
 
 /** "What's my status?" — a summary of the signed-in user's own account. */
@@ -132,10 +166,25 @@ function chat_my_status(string $normalized, ?array $user): ?array
         $state = ['draft' => 'draft, not submitted', 'pending' => 'under review', 'approved' => 'verified ✓', 'rejected' => 'needs changes'][$b['status']];
         $lines[] = "- Business \"{$b['business_name']}\": $state";
     }
-    $apps = db()->prepare("SELECT permit_type, status FROM applications WHERE applicant_id = ? ORDER BY created_at DESC LIMIT 5");
+    // permit_type is null for applications filed through the 27-type pipeline (migration 010) —
+    // permit_types.name is the real source of truth for those. See BREAKING_CHANGES.md #5.
+    $apps = db()->prepare(
+        "SELECT a.id, a.permit_type, pt.name AS permit_type_name, a.status FROM applications a
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
+         WHERE a.applicant_id = ? ORDER BY a.created_at DESC LIMIT 5"
+    );
     $apps->execute([$user['id']]);
     foreach ($apps->fetchAll() as $a) {
-        $lines[] = "- {$a['permit_type']} permit: {$a['status']}";
+        $label = $a['permit_type'] ?: $a['permit_type_name'] ?: 'Permit';
+        $current = db()->prepare(
+            "SELECT p.step_label, d.name AS department_name FROM application_pipeline_progress p
+             JOIN departments d ON d.id = p.department_id
+             WHERE p.application_id = ? AND p.status = 'current' LIMIT 1"
+        );
+        $current->execute([$a['id']]);
+        $stage = $current->fetch();
+        $where = $stage ? " — currently with {$stage['department_name']} ({$stage['step_label']})" : '';
+        $lines[] = "- $label permit: {$a['status']}$where";
     }
     return ['text' => implode("\n", $lines), 'link' => ['path' => '/dashboard', 'label' => 'Open my dashboard'], 'intent' => 'my_status'];
 }

@@ -113,6 +113,30 @@ was sized for ~3 entries to be unusable at 84 until that UI is revisited.
 
 ---
 
+## 8. Chat bot updated for the pipeline (migration 014 + api/lib/chatbot.php)
+
+The chat bot (`api/lib/chatbot.php`) had three separate dependencies on the old 5-type model,
+none of which raised an error — they just silently gave wrong or incomplete answers:
+
+- `CHAT_PERMIT_WORDS` was a hardcoded 5-entry array, so "what does a fencing permit need"
+  matched nothing. Replaced with a live query against `permit_types` (all 27, matched by name +
+  a `CHAT_PERMIT_SYNONYMS` list of colloquial terms), so a permit type added to the DB later is
+  answerable immediately without an app code change.
+- `chat_permit_requirements()` called the old `required_documents_for()` (business.php, 5-type
+  map) and `PERMIT_ELIGIBILITY` (same). Now calls `required_documents_for_type()` and reads
+  `resident_eligible`/`business_eligible` straight off `permit_types`.
+- `chat_my_status()` selected `applications.permit_type` directly — null for every pipeline
+  application (migration 010). It would have silently printed "permit: Submitted" with no type
+  name. Now joins `permit_types.name` as a fallback and additionally reports the current pipeline
+  stage ("currently with Barangay Burol I Secretariat") when the application has one.
+
+FAQ content (`faq_entries`) updated: 4 existing answers rewritten to describe the 27-type
+catalog and multi-office routing instead of the old 5 types; 4 new entries added (how the
+multi-office review works, why branch questions exist, what standalone barangay clearances are,
+why the barangay on file matters). Verified via a rolled-back DB smoke test covering every new
+code path, then live through the actual chat widget in-browser (fencing permit question, zero
+console errors, correct JSON response).
+
 ## Status
 
 | Layer | Status |
