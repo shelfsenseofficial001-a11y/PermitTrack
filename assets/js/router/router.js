@@ -1,29 +1,66 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
-import { authState, loadCurrentUser } from '../store/auth.js';
+import { authState, loadCurrentUser, homePathFor } from '../store/auth.js?v=60';
 
-import Login from '../components/Login.js';
-import Onboarding from '../components/Onboarding.js';
-import Dashboard from '../components/Dashboard.js';
-import PermitDetail from '../components/PermitDetail.js';
-import NewApplication from '../components/NewApplication.js';
-import ReviewerQueue from '../components/ReviewerQueue.js';
-import ReviewDetail from '../components/ReviewDetail.js';
+import Landing from '../components/Landing.js?v=60';
+import Login from '../components/Login.js?v=60';
+import Register from '../components/Register.js?v=60';
+import Verify from '../components/Verify.js?v=60';
+import StaffLogin from '../components/StaffLogin.js?v=60';
+import Dashboard from '../components/Dashboard.js?v=60';
+import MyPermits from '../components/MyPermits.js?v=60';
+import Notifications from '../components/Notifications.js?v=60';
+import PermitDetail from '../components/PermitDetail.js?v=60';
+import NewApplication from '../components/NewApplication.js?v=60';
+import ReviewerQueue from '../components/ReviewerQueue.js?v=60';
+import ReviewDetail from '../components/ReviewDetail.js?v=60';
+import ResidencyUpgrade from '../components/ResidencyUpgrade.js?v=60';
+import ResidencyQueue from '../components/ResidencyQueue.js?v=60';
+import ResidencyReview from '../components/ResidencyReview.js?v=60';
+import BusinessForm from '../components/BusinessForm.js?v=60';
+import BusinessQueue from '../components/BusinessQueue.js?v=60';
+import BusinessReview from '../components/BusinessReview.js?v=60';
+import Admin from '../components/Admin.js?v=60';
+import Profile from '../components/Profile.js?v=60';
+import { openChangePassword } from '../store/ui.js?v=60';
 
 const routes = [
-  { path: '/', redirect: '/login' },
+  // Signed-out visitors get the landing page; signed-in users go to their home (guard below)
+  { path: '/', component: Landing, meta: { public: true } },
   { path: '/login', component: Login, meta: { public: true } },
-  { path: '/onboarding', component: Onboarding, meta: { role: 'applicant' } },
-  { path: '/dashboard', component: Dashboard, meta: { role: 'applicant' } },
+  { path: '/register', component: Register, meta: { public: true } },
+  { path: '/verify', component: Verify, meta: { public: true } },
+  { path: '/staff/login', component: StaffLogin, meta: { public: true } },
+  { path: '/staff', redirect: '/staff/login' },
+  { path: "/dashboard", component: Dashboard, meta: { role: "applicant" } },
+  { path: "/permits", component: MyPermits, meta: { role: "applicant" } },
+  { path: '/notifications', component: Notifications, meta: { role: 'applicant' } },
   { path: '/applications/new', component: NewApplication, meta: { role: 'applicant' } },
   { path: '/applications/:id', component: PermitDetail, meta: { role: 'applicant' } },
+  { path: '/residency', component: ResidencyUpgrade, meta: { role: 'applicant' } },
+  { path: '/businesses/new', component: BusinessForm, meta: { role: 'applicant' } },
+  { path: '/businesses/:id', component: BusinessForm, meta: { role: 'applicant' } },
   { path: '/reviewer', component: ReviewerQueue, meta: { role: 'staff' } },
   { path: '/reviewer/applications/:id', component: ReviewDetail, meta: { role: 'staff' } },
+  { path: '/staff/residency', component: ResidencyQueue, meta: { role: 'staff' } },
+  { path: '/staff/residency/:id', component: ResidencyReview, meta: { role: 'staff' } },
+  { path: '/staff/businesses', component: BusinessQueue, meta: { role: 'staff' } },
+  { path: '/staff/businesses/:id', component: BusinessReview, meta: { role: 'staff' } },
+  { path: '/admin/:tab?', component: Admin, meta: { role: 'admin' } },
+  { path: '/account', component: Profile },
+  // Changing a password is a dialog now; old links and bookmarks are handled in the guard below
+  { path: '/account/password', component: { template: '' } },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
 export const router = createRouter({
   history: createWebHashHistory(),
   routes,
 });
+
+// Admin can open every staff page (superadmin)
+function hasRole(user, role) {
+  return user.role === role || (role === 'staff' && user.role === 'admin');
+}
 
 router.beforeEach(async (to) => {
   if (!authState.loaded) {
@@ -32,23 +69,31 @@ router.beforeEach(async (to) => {
 
   const user = authState.user;
 
+  if (to.path === '/') {
+    return user ? homePathFor(user) : true;
+  }
+
+  // The old Change password page: open the dialog over the home page instead. Done here
+  // rather than as a route redirect because only now is it known whether anyone is signed in.
+  if (to.path === '/account/password') {
+    if (user) openChangePassword();
+    return homePathFor(user);
+  }
+
+  // Login pages stay reachable while signed in, so users can switch accounts
   if (to.meta.public) {
-    if (user) {
-      return user.role === 'staff' ? '/reviewer' : (user.onboarding_completed ? '/dashboard' : '/onboarding');
-    }
     return true;
   }
 
   if (!user) {
-    return '/login';
+    // Staff and Admin pages send signed-out visitors to the staff login page
+    return to.meta.role === 'staff' || to.meta.role === 'admin' ? '/staff/login' : '/login';
   }
 
-  if (to.meta.role && to.meta.role !== user.role) {
-    return user.role === 'staff' ? '/reviewer' : '/dashboard';
-  }
+  // A temporary password is enforced by the dialog in app.js, which covers every page
 
-  if (user.role === 'applicant' && !user.onboarding_completed && to.path !== '/onboarding') {
-    return '/onboarding';
+  if (to.meta.role && !hasRole(user, to.meta.role)) {
+    return homePathFor(user);
   }
 
   return true;

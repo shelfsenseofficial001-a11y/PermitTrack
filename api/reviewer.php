@@ -1,15 +1,29 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/support.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
+/** SQL condition limiting applications to the staff member's department (always true for "all"). */
+function department_filter(array $user, string $alias = 'a'): string
+{
+    $types = reviewable_permit_types($user);
+    if ($types === null) {
+        return '1=1';
+    }
+    if (!$types) {
+        return '1=0';
+    }
+    return "$alias.permit_type IN (" . implode(',', array_map(fn($t) => db()->quote($t), $types)) . ')';
+}
+
 if ($action === 'queue' && $method === 'GET') {
-    require_role('staff');
+    $user = require_role('staff');
     $tab = (string)($_GET['tab'] ?? 'new');
 
-    $where = "a.status NOT IN ('Approved','Rejected')";
+    $where = department_filter($user) . " AND a.status NOT IN ('Approved','Rejected')";
     if ($tab === 'new') {
         $where .= " AND a.status = 'Submitted'";
     } elseif ($tab === 'awaiting_applicant') {
@@ -28,16 +42,17 @@ if ($action === 'queue' && $method === 'GET') {
 }
 
 if ($action === 'counts' && $method === 'GET') {
-    require_role('staff');
+    $user = require_role('staff');
+    $dept = department_filter($user);
     $pdo = db();
 
-    $new = $pdo->query("SELECT COUNT(*) c FROM applications WHERE status = 'Submitted'")->fetch()['c'];
+    $new = $pdo->query("SELECT COUNT(*) c FROM applications a WHERE $dept AND a.status = 'Submitted'")->fetch()['c'];
     $awaiting = $pdo->query(
-        "SELECT COUNT(*) c FROM applications a WHERE a.status NOT IN ('Approved','Rejected')
+        "SELECT COUNT(*) c FROM applications a WHERE $dept AND a.status NOT IN ('Approved','Rejected')
          AND EXISTS (SELECT 1 FROM application_documents d WHERE d.application_id = a.id AND d.status = 'Needs Re-upload')"
     )->fetch()['c'];
     $inProgress = $pdo->query(
-        "SELECT COUNT(*) c FROM applications a WHERE a.status IN ('Under Review','Inspection Scheduled','Inspector Notes')
+        "SELECT COUNT(*) c FROM applications a WHERE $dept AND a.status IN ('Under Review','Inspection Scheduled','Inspector Notes')
          AND NOT EXISTS (SELECT 1 FROM application_documents d WHERE d.application_id = a.id AND d.status = 'Needs Re-upload')"
     )->fetch()['c'];
 
@@ -62,6 +77,10 @@ if ($action === 'decision' && $method === 'POST') {
     if (!$app) {
         fail('Application not found.', 404);
     }
+    $types = reviewable_permit_types($user);
+    if ($types !== null && !in_array($app['permit_type'], $types, true)) {
+        fail("{$app['permit_type']} permits are handled by another department.", 403);
+    }
 
     $pdo = db();
     $pdo->beginTransaction();
@@ -78,6 +97,23 @@ if ($action === 'decision' && $method === 'POST') {
     }
 
     $pdo->commit();
+
+    // Every stage the permit reaches reaches the applicant too: in-app via the activity row
+    // above (which the bell reads), and by email or SMS here.
+    $messages = [
+        'Under Review' => 'is now under review by City Staff.',
+        'Inspection Scheduled' => 'has an inspection scheduled. Someone should be on site.',
+        'Inspector Notes' => 'has inspector notes waiting for you.',
+        'Approved' => 'has been approved. You can view it in PermitTrack.',
+        'Rejected' => 'was not approved. Open it in PermitTrack to see why.',
+    ];
+    $tail = $messages[$status] ?? ('moved to "' . $status . '".');
+    notify_user(
+        (int)$app['applicant_id'],
+        'Your ' . $app['permit_type'] . ' permit: ' . $status,
+        'Your ' . $app['permit_type'] . ' permit at ' . $app['property_address'] . ' ' . $tail
+            . ($notes !== '' ? "\n\nReviewer note: " . $notes : '')
+    );
 
     respond(['ok' => true]);
 }

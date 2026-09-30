@@ -4,30 +4,186 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>PermitTrack</title>
+<link rel="icon" href="favicon.ico?v=60" sizes="any" />
+<link rel="icon" type="image/png" href="assets/images/PermitTrackIcon.png?v=60" />
+<link rel="apple-touch-icon" href="assets/images/PermitTrackIcon.png?v=60" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
     theme: {
       extend: {
         colors: {
+          // Green primary (matches the login gradient)
           brand: {
-            50: '#eef5ff', 100: '#dceafe', 200: '#b6d4fe', 300: '#84b7fd',
-            400: '#4d92fa', 500: '#256ff0', 600: '#1657d6', 700: '#1546ac',
-            800: '#173c89', 900: '#17346d',
+            50: '#f0f8ec', 100: '#dcefd3', 200: '#b9dfa9', 300: '#8fcb7b',
+            400: '#5eaf52', 500: '#37923c', 600: '#1f7a3a', 700: '#196330',
+            800: '#164f29', 900: '#123f22',
           },
+          // Deep forest neutrals for headers and headings
           ink: {
-            50: '#eef1f6', 100: '#dbe1ea', 200: '#aab6c9', 300: '#7c8ba5',
-            400: '#4d5f7a', 500: '#2c3c56', 600: '#1c2b42', 700: '#141f34',
-            800: '#0f1826', 900: '#0a1120',
+            50: '#eef3ee', 100: '#d9e4da', 200: '#b3c8b5', 300: '#8aa68d',
+            400: '#5d7d61', 500: '#3a5a3f', 600: '#22402a', 700: '#10301d',
+            800: '#0b2415', 900: '#07180e',
           },
+          // Yellow accent
+          sun: {
+            50: '#fffbe6', 100: '#fff3b8', 200: '#fde97a', 300: '#fbe36a',
+            400: '#f7cf1b', 500: '#e5b800', 600: '#b38f00', 700: '#6b5300',
+          },
+          // Light yellow-green page background
+          meadow: '#f5f9e8',
         },
       },
     },
   };
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
   [v-cloak] { display: none; }
-  body { font-family: 'Segoe UI', ui-sans-serif, system-ui, sans-serif; }
+  /* Always reserve the scrollbar gutter, so short pages line up with long ones
+     and the layout never shifts when a modal locks scrolling. */
+  html { overflow-y: scroll; scrollbar-gutter: stable; }
+
+  /* Scrollbars in the site's greens: a soft track on the page background, a brand-green
+     thumb that deepens on hover. Firefox gets the two-colour form; Chromium/WebKit the
+     fuller one. .no-scrollbar (below) still wins where a rail would be noise. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: #8fcb7b #eaf3dc;
+  }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: #eaf3dc; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb {
+    background: #8fcb7b;
+    border-radius: 999px;
+    border: 3px solid #eaf3dc;   /* inset, so the thumb reads as a pill */
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #37923c; }
+  ::-webkit-scrollbar-corner { background: #eaf3dc; }
+
+  /* Panels on the dark header (the notification feed) need the inverse treatment */
+  .scroll-dark { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) transparent; }
+  .scroll-dark::-webkit-scrollbar { width: 8px; }
+  .scroll-dark::-webkit-scrollbar-track { background: transparent; }
+  .scroll-dark::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.22);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-dark::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); background-clip: content-box; }
+
+  /* Scroll areas inside white cards: slimmer, lower contrast than the page rail */
+  .scroll-soft { scrollbar-width: thin; scrollbar-color: #c9e3b8 transparent; }
+  .scroll-soft::-webkit-scrollbar { width: 8px; }
+  .scroll-soft::-webkit-scrollbar-track { background: transparent; }
+  .scroll-soft::-webkit-scrollbar-thumb {
+    background: #c9e3b8;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-soft::-webkit-scrollbar-thumb:hover { background: #8fcb7b; background-clip: content-box; }
+
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* ---------------------------------------------------------------------------------------
+     Motion system — named Vue transitions shared across the app (<transition name="…">).
+     One easing curve everywhere; things leave faster than they arrive so the UI feels quick.
+     --------------------------------------------------------------------------------------- */
+  :root { --ease-out: cubic-bezier(.2,.7,.2,1); --ease-in: cubic-bezier(.4,0,1,1); }
+
+  /* page — route changes. Only the page body moves; headers and the tab tray stay put.
+     (Durations are passed to <transition> in app.js, since the root itself doesn't animate.) */
+  .page-enter-active .page-body { transition: opacity .24s var(--ease-out), transform .24s var(--ease-out); }
+  .page-leave-active .page-body { transition: opacity .12s var(--ease-in), transform .12s var(--ease-in); }
+  .page-enter-from .page-body { opacity: 0; transform: translateY(10px); }
+  .page-leave-to .page-body { opacity: 0; transform: translateY(-4px); }
+
+  /* modal — closing a dialog (opening is handled inside BaseModal) */
+  .modal-leave-active { transition: opacity .18s var(--ease-in); }
+  .modal-leave-active [role="dialog"] { transition: transform .18s var(--ease-in); }
+  .modal-leave-to { opacity: 0; }
+  .modal-leave-to [role="dialog"] { transform: translateY(8px) scale(.97); }
+
+  /* pop — menus and popovers that drop from a button */
+  .pop-enter-active { transition: opacity .16s var(--ease-out), transform .16s var(--ease-out); }
+  .pop-leave-active { transition: opacity .12s var(--ease-in), transform .12s var(--ease-in); }
+  .pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-6px) scale(.97); }
+
+  /* chat — the assistant rising from its button in the corner */
+  .chat-enter-active { transition: opacity .22s var(--ease-out), transform .22s var(--ease-out); }
+  .chat-leave-active { transition: opacity .14s var(--ease-in), transform .14s var(--ease-in); }
+  .chat-enter-from, .chat-leave-to { opacity: 0; transform: translateY(14px) scale(.96); }
+
+  /* expand — content unfolding below its trigger (accordions, FAQ answers, sub-lists) */
+  .expand-enter-active { transition: opacity .22s var(--ease-out), transform .22s var(--ease-out); }
+  .expand-leave-active { transition: opacity .12s var(--ease-in); }
+  .expand-enter-from { opacity: 0; transform: translateY(-6px); }
+  .expand-leave-to { opacity: 0; }
+
+  /* fade / swap — plain cross-fades; swap is used with mode="out-in" for view ↔ edit */
+  .fade-enter-active, .swap-enter-active { transition: opacity .18s var(--ease-out); }
+  .fade-leave-active, .swap-leave-active { transition: opacity .1s var(--ease-in); }
+  .fade-enter-from, .fade-leave-to, .swap-enter-from, .swap-leave-to { opacity: 0; }
+
+  /* list — items entering, leaving and sliding into their new places (TransitionGroup) */
+  .list-move, .list-enter-active { transition: opacity .22s var(--ease-out), transform .26s var(--ease-out); }
+  .list-leave-active { transition: opacity .12s var(--ease-in); position: absolute; left: 0; right: 0; }
+  .list-enter-from { opacity: 0; transform: translateY(8px); }
+  .list-leave-to { opacity: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter-active .page-body, .page-leave-active .page-body,
+    .modal-leave-active, .modal-leave-active [role="dialog"],
+    .pop-enter-active, .pop-leave-active, .chat-enter-active, .chat-leave-active,
+    .expand-enter-active, .expand-leave-active, .fade-enter-active, .fade-leave-active,
+    .swap-enter-active, .swap-leave-active, .list-move, .list-enter-active, .list-leave-active {
+      transition-duration: .01s !important;
+    }
+    .page-enter-from .page-body, .page-leave-to .page-body, .modal-leave-to [role="dialog"],
+    .pop-enter-from, .pop-leave-to, .chat-enter-from, .chat-leave-to,
+    .expand-enter-from, .list-enter-from { transform: none !important; }
+  }
+
+  /* Landing page: sections rise into place as they scroll into view */
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
+  .reveal.is-visible { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+  .font-inter { font-family: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif; }
+  /* Abstract mesh gradient used on the login panel */
+  .pt-gradient {
+    background:
+      linear-gradient(to top, rgba(6,40,20,0.45) 0%, rgba(6,40,20,0) 40%),
+      radial-gradient(ellipse 42% 55% at 12% 48%, #06331a 0%, #1f7a3a 40%, rgba(31,122,58,0) 72%),
+      radial-gradient(ellipse 75% 55% at 100% 0%, #f7cf1b 0%, #fbe36a 35%, rgba(251,227,106,0) 70%),
+      radial-gradient(ellipse 45% 60% at 72% 42%, #f6fbd9 0%, rgba(246,251,217,0) 70%),
+      radial-gradient(ellipse 55% 35% at 0% 0%, #d9f99d 0%, rgba(217,249,157,0) 70%),
+      radial-gradient(ellipse 70% 40% at 10% 100%, #3f8f3a 0%, rgba(63,143,58,0) 75%),
+      radial-gradient(ellipse 60% 50% at 90% 90%, #fff3a8 0%, rgba(255,243,168,0) 70%),
+      linear-gradient(160deg, #c9e98c 0%, #a3d468 50%, #f1ee9e 100%);
+    background-size: 140% 140%;
+    animation: pt-drift 18s ease-in-out infinite alternate;
+  }
+  @keyframes pt-drift {
+    0%   { background-position: 0% 0%; }
+    100% { background-position: 30% 20%; }
+  }
+  @media (prefers-reduced-motion: reduce) { .pt-gradient { animation: none; } }
+  body { font-family: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif; }
+  /* Wide banner version of the gradient: forest → yellow-green → yellow */
+  .pt-gradient-wide {
+    background:
+      linear-gradient(90deg, rgba(6,51,26,0.55) 0%, rgba(6,51,26,0.3) 45%, rgba(6,51,26,0) 75%),
+      radial-gradient(ellipse 40% 90% at 0% 60%, #06331a 0%, rgba(6,51,26,0) 75%),
+      radial-gradient(ellipse 35% 120% at 100% 0%, #f7cf1b 0%, #fbe36a 35%, rgba(251,227,106,0) 75%),
+      radial-gradient(ellipse 30% 90% at 62% 70%, #f6fbd9 0%, rgba(246,251,217,0) 70%),
+      linear-gradient(100deg, #1f7a3a 0%, #3f8f3a 28%, #a3d468 58%, #d9f09a 78%, #f7e27a 100%);
+  }
 </style>
 <script type="importmap">
 {
@@ -39,8 +195,8 @@
 }
 </script>
 </head>
-<body class="bg-slate-50 text-slate-900">
+<body class="bg-meadow text-slate-900">
   <div id="app" v-cloak></div>
-  <script type="module" src="assets/js/app.js"></script>
+  <script type="module" src="assets/js/app.js?v=60"></script>
 </body>
 </html>

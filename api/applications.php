@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/config.php';
+require __DIR__ . '/lib/business.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -24,6 +25,23 @@ function application_summary(array $app): array
 if ($action === 'required_documents' && $method === 'GET') {
     $type = (string)($_GET['type'] ?? '');
     respond(['documents' => required_documents_for($type)]);
+}
+
+// Which permit types this user can file, and for which of their businesses
+if ($action === 'eligibility' && $method === 'GET') {
+    $user = require_role('applicant');
+    $isResident = in_array('Resident', $user['levels'], true);
+    $businesses = approved_businesses((int)$user['id']);
+    $types = [];
+    foreach (PERMIT_ELIGIBILITY as $type => $rule) {
+        $types[] = [
+            'value' => $type,
+            'as_resident' => $rule['resident'] && $isResident,
+            'as_business' => $rule['business'] && count($businesses) > 0,
+            'business_only' => !$rule['resident'],
+        ];
+    }
+    respond(['permit_types' => $types, 'businesses' => $businesses, 'is_resident' => $isResident]);
 }
 
 if ($action === 'list' && $method === 'GET') {
@@ -84,11 +102,25 @@ if ($action === 'detail' && $method === 'GET') {
     }
 
     $applicantStmt = db()->prepare(
-        'SELECT u.full_name, u.email, u.account_type, bp.business_name, bp.ein, bp.phone, bp.address
-         FROM users u LEFT JOIN business_profiles bp ON bp.user_id = u.id WHERE u.id = ?'
+        'SELECT full_name, email, phone, resident_status, address_line, barangay, city, postal_code FROM users WHERE id = ?'
     );
     $applicantStmt->execute([$app['applicant_id']]);
     $app['applicant'] = $applicantStmt->fetch();
+
+    // The verified business this permit was filed for, if any
+    $app['business'] = null;
+    if ($app['business_id']) {
+        $bizStmt = db()->prepare(
+            'SELECT id, status, business_name, trade_name, ownership_type, line_of_business, registration_number, tin,
+                    address_line, barangay, city, postal_code, business_email, business_phone
+             FROM businesses WHERE id = ?'
+        );
+        $bizStmt->execute([$app['business_id']]);
+        $app['business'] = $bizStmt->fetch() ?: null;
+        if ($app['business']) {
+            $app['business']['ownership_label'] = OWNERSHIP_TYPES[$app['business']['ownership_type']]['label'] ?? null;
+        }
+    }
 
     $docsStmt = db()->prepare('SELECT * FROM application_documents WHERE application_id = ? ORDER BY id');
     $docsStmt->execute([$id]);
@@ -99,15 +131,46 @@ if ($action === 'detail' && $method === 'GET') {
 
 if ($action === 'create' && $method === 'POST') {
     $user = require_role('applicant');
+    // Normal Users can browse only; applying needs a verified label
+    if (!can_apply($user)) {
+        fail('Only verified Residents or Business Owners can apply for permits. Verify your account first.', 403);
+    }
 
     $permitType = trim((string)($_POST['permit_type'] ?? ''));
     $propertyAddress = trim((string)($_POST['property_address'] ?? ''));
-    $businessName = trim((string)($_POST['business_name'] ?? ''));
     $description = trim((string)($_POST['project_description'] ?? ''));
+    $businessId = (int)($_POST['business_id'] ?? 0);
 
-    $validTypes = ['Food Service', 'Building/Renovation', 'Sign', 'Business License', 'Special Event'];
-    if (!in_array($permitType, $validTypes, true)) {
+    if (!isset(PERMIT_ELIGIBILITY[$permitType])) {
         fail('Please choose a valid permit type.');
+    }
+    $rule = PERMIT_ELIGIBILITY[$permitType];
+    $businessName = '';
+    if ($businessId) {
+        // Filed for a business: it must be this user's and approved
+        $business = null;
+        foreach (approved_businesses((int)$user['id']) as $b) {
+            if ((int)$b['id'] === $businessId) {
+                $business = $b;
+            }
+        }
+        if (!$business) {
+            fail('Please choose one of your verified businesses.');
+        }
+        if (!$rule['business']) {
+            fail("A $permitType permit can't be filed for a business.");
+        }
+        $businessName = $business['business_name'];
+        if ($propertyAddress === '') {
+            $propertyAddress = "{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}";
+        }
+    } else {
+        if (!$rule['resident']) {
+            fail("A $permitType permit must be filed for one of your verified businesses.");
+        }
+        if (!in_array('Resident', $user['levels'], true)) {
+            fail("Only verified Residents can file a $permitType permit as an individual. Choose one of your businesses, or verify your residency.", 403);
+        }
     }
     if ($propertyAddress === '') {
         fail('Property address is required.');
@@ -120,10 +183,10 @@ if ($action === 'create' && $method === 'POST') {
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare(
-        'INSERT INTO applications (applicant_id, permit_type, property_address, business_name, project_description, priority)
-         VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO applications (applicant_id, business_id, permit_type, property_address, business_name, project_description, priority)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
-    $stmt->execute([$user['id'], $permitType, $propertyAddress, $businessName ?: null, $description ?: null, $priority]);
+    $stmt->execute([$user['id'], $businessId ?: null, $permitType, $propertyAddress, $businessName ?: null, $description ?: null, $priority]);
     $appId = (int)$pdo->lastInsertId();
 
     $required = required_documents_for($permitType);

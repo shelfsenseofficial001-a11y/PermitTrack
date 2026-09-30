@@ -62,6 +62,6 @@ CREATE TABLE application_activity (
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- Demo staff account: password is "password123"
+-- Demo staff account: password is "Password123!"
 INSERT INTO users (role, account_type, email, password_hash, full_name, onboarding_completed)
-VALUES ('staff', 'resident', 'staff@permittrack.city', '$2y$10$3hyH.ZDYxi3bD7sJypww9.6Vf5l/jlCHeht636P8RiMFPA6JV0/TO', 'Jordan Reyes', 1);
+VALUES ('staff', 'resident', 'staff@hotmail.com', '$2y$10$hmPWXOOOOcky2Ev1RKOi/.6ZJUJiQvGWB4Zaf1PDMPUd87yLsMtHu', 'Jordan Reyes', 1);

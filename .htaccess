@@ -1,0 +1,14 @@
+# The app uses hash routes (index.html#/staff/login). Redirect the clean
+# URLs people tend to type to the matching hash route instead of a 404.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} ^(.*?/)(staff/login|staff|login|dashboard)/?$
+    RewriteRule ^ %1#/%2 [R=302,NE,L]
+</IfModule>
+
+# Always revalidate scripts and the page so code changes show up without a hard refresh.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(js|html)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
