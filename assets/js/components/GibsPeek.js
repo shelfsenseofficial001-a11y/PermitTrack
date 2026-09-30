@@ -1,10 +1,10 @@
-import GibsMascot from './GibsMascot.js?v=71';
+import GibsMascot from './GibsMascot.js?v=74';
 
 // Gibs P. sneaking a look from behind the right edge of the window every so often, offering help.
 // The canvas's right edge is flush with the window edge, so the window itself is the "wall" he
 // peeks around. Clicking him opens the chat; he stays tucked away while the chat is open.
 
-const LINES = ['Psst… need help?', 'Got a permit question?', 'Need a hand?', 'Stuck? Ask me!'];
+const LINES = ['Psst… need help?', 'Psst! Over here!', "Stuck? I don't bite.", 'I know permit stuff. Ask me!', 'Permit questions? I got you.'];
 const rand = (min, max) => min + Math.random() * (max - min);
 
 export default {

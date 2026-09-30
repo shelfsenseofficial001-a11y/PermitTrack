@@ -72,22 +72,22 @@ const CHAT_INJECTION_PATTERN = '/\b(ignore (all|any|previous|prior|the) instruct
     . '|jailbreak|dan mode|developer mode|bypass (your|the) (rules|restrictions|filters))\b/i';
 
 const CHAT_LANG_STRINGS = [
-    'greeting' => ['en' => "Hi%s! I'm Gibs P., your PermitTrack assistant. Ask me about permits, verification or your account.",
-                   'tl' => "Hi%s! Ako si Gibs P., ang PermitTrack assistant mo. Magtanong ka tungkol sa mga permit, verification, o sa iyong account."],
-    'thanks' => ['en' => "You're welcome! Anything else I can help with?",
-                 'tl' => "Walang anuman! May iba pa ba akong maitutulong?"],
-    'ask_language' => ['en' => "Hi! Before we start — which language would you like to use, English or Tagalog?",
-                        'tl' => "Hi! Bago tayo magsimula — aling wika ang gusto mong gamitin, English o Tagalog?"],
-    'language_not_understood' => ['en' => "Sorry, I didn't catch that. Please choose English or Tagalog.",
-                                   'tl' => "Paumanhin, hindi ko nakuha iyon. Mangyaring pumili ng English o Tagalog."],
-    'language_confirmed_en' => ['en' => "Great, we'll continue in English.", 'tl' => "Great, we'll continue in English."],
-    'language_confirmed_tl' => ['en' => "Sige, magta-Tagalog tayo mula ngayon.", 'tl' => "Sige, magta-Tagalog tayo mula ngayon."],
-    'security_refusal' => ['en' => "I can't do that. I only answer questions about PermitTrack permits, verification and accounts.",
-                            'tl' => "Hindi ko iyan magagawa. Sumasagot lang ako sa mga tanong tungkol sa PermitTrack permits, verification, at mga account."],
-    'fallback' => ['en' => "Sorry, I don't have an answer for that yet. I've noted your question so the city team can add one.\nHere are some things I can help with:",
-                    'tl' => "Paumanhin, wala pa akong sagot diyan. Naitala ko ang iyong tanong para madagdagan ito ng city team.\nNarito ang ilang maitutulong ko:"],
-    'sign_in_for_status' => ['en' => 'Sign in to your resident or business account and I can tell you where things stand.',
-                              'tl' => 'Mag-sign in sa iyong resident o business account para malaman ko ang kasalukuyang status.'],
+    'greeting' => ['en' => "Hi%s! I'm Gibs P., your PermitTrack sidekick. I know permits, verification and accounts — and I'm way faster than the line at City Hall. What can I help with?",
+                   'tl' => "Hi%s! Ako si Gibs P., ang PermitTrack sidekick mo. Alam ko ang tungkol sa permits, verification, at accounts — at promise, mas mabilis ako kaysa sa pila sa City Hall. Ano'ng maitutulong ko?"],
+    'thanks' => ['en' => "Anytime! That's what I'm here for (well, that and looking this good). Anything else?",
+                 'tl' => "Walang anuman! 'Yan talaga ang trabaho ko (at magpa-pogi na rin). May iba pa ba?"],
+    'ask_language' => ['en' => "Hey there! Before we start — English or Tagalog? (I'm fluent in both. Also in Creeper, but that's mostly hissing.)",
+                        'tl' => "Hey there! Bago tayo magsimula — English o Tagalog? (Marunong ako sa dalawa. Pati Creeper, pero puro sitsit lang 'yon.)"],
+    'language_not_understood' => ['en' => "Hmm, that one flew right over my blocky head. Just tap English or Tagalog!",
+                                   'tl' => "Hmm, lumipad 'yon sa ulo kong kuwadrado. I-tap mo lang ang English o Tagalog!"],
+    'language_confirmed_en' => ['en' => "English it is!", 'tl' => "English it is!"],
+    'language_confirmed_tl' => ['en' => "Tagalog tayo! Game!", 'tl' => "Tagalog tayo! Game!"],
+    'security_refusal' => ['en' => "Nice try! My rules are tougher than bedrock. I'm sticking to permits, verification and accounts.",
+                            'tl' => "Nice try! Mas matibay pa sa bedrock ang rules ko. Permits, verification, at accounts lang ang sagot ko."],
+    'fallback' => ['en' => "Ooh, you stumped me! That one's not in my notebook yet — I've jotted it down so the city team can teach me. Meanwhile, I can help with these:",
+                    'tl' => "Ay, natalo mo ako diyan! Wala pa 'yan sa notebook ko — isinulat ko na para maturuan ako ng city team. Habang wala pa, ito ang kaya ko:"],
+    'sign_in_for_status' => ['en' => "I'd love to peek at your status, but you'll need to sign in first — I'm nosy, not a hacker!",
+                              'tl' => "Gusto kong silipin ang status mo, pero mag-sign in ka muna — usisero ako, hindi hacker!"],
     'your_account' => ['en' => 'Your account: %s.', 'tl' => 'Ang iyong account: %s.'],
     'residency_verified' => ['en' => '- Residency: verified ✓', 'tl' => '- Residency: verified ✓'],
     'residency_pending' => ['en' => '- Residency: under review', 'tl' => '- Residency: sinusuri pa'],
@@ -120,26 +120,50 @@ function chat_t(string $key, string $lang, ...$args): string
  * topic gets nudged back in a friendly way instead of hitting the same wall twice. */
 const CHAT_OFF_TOPIC_VARIANTS = [
     'en' => [
-        ['text' => "That's a bit outside what I can help with — I'm your PermitTrack guide! Want to know which permits you're eligible for?",
+        ['text' => "Ha! If I knew that, I'd have my own game show. Permits, though? I'm a whiz — want to see which ones you can apply for?",
          'suggestions' => ['Which permits can I apply for?', 'What can I do as a Normal User?']],
-        ["text" => "I don't have an answer for that one, but I'd love to help with something PermitTrack-related — maybe how to track an application, or what documents a permit needs?",
+        ['text' => "That's above my pay grade (I get paid in cookies). But ask me how to track an application and watch me shine!",
          'suggestions' => ['How do I track my application?', 'What are barangay clearances?']],
-        ['text' => "Hmm, that's outside my area — PermitTrack is what I know best! Is there anything about applying for a permit, verifying your account, or a barangay document I can help with?",
+        ['text' => "Sorry, my brain is 100% blocks and permits. Need a hand getting verified, or registering a business?",
          'suggestions' => ['How do I become a verified Resident?', 'How do I register a business?']],
-        ['text' => "I can't help with that one, but let's get you sorted with PermitTrack instead — want to check your application status, or see how the review process works?",
+        ['text' => "I'd answer, but my contract says permits only (I read the fine print). Want to check your status, or see how the review works?",
          'suggestions' => ["What's my status?", 'How does the permit review process work?']],
     ],
     'tl' => [
-        ['text' => "Medyo wala akong masasabi diyan — ako ang gabay mo dito sa PermitTrack! Gusto mo bang malaman kung anong mga permit ang pwede mong i-apply?",
+        ['text' => "Haha! Kung alam ko 'yan, may sarili na akong game show. Pero sa permits? Eksperto ako — gusto mo bang makita kung anong permit ang pwede mo?",
          'suggestions' => ['Anong mga permit ang maaari kong i-apply?', 'Ano ang magagawa ko bilang Normal User?']],
-        ['text' => "Wala akong sagot diyan, pero gusto kong tumulong sa may kinalaman sa PermitTrack — halimbawa paano subaybayan ang aplikasyon, o anong dokumento ang kailangan ng permit?",
+        ['text' => "Lagpas na 'yan sa sweldo ko (cookies lang ang bayad sa'kin). Pero tanungin mo ako kung paano subaybayan ang aplikasyon, at magpapakitang-gilas ako!",
          'suggestions' => ['Paano ko masusubaybayan ang aking aplikasyon?', 'Ano ang mga barangay clearance?']],
-        ['text' => "Hindi ko masagot iyan — PermitTrack lang talaga ang alam ko! May tanong ka ba tungkol sa pag-apply ng permit, pag-verify ng account, o barangay document?",
+        ['text' => "Sorry, puro blocks at permits lang ang laman ng utak ko. Kailangan mo ba ng tulong sa pag-verify o sa pagrehistro ng negosyo?",
          'suggestions' => ['Paano ako maging verified Resident?', 'Paano ako magrehistro ng negosyo?']],
-        ['text' => "Hindi ko iyan kaya, pero tulungan na lang kita sa PermitTrack — gusto mo bang tingnan ang status ng iyong aplikasyon, o alamin ang proseso ng pagsusuri?",
+        ['text' => "Sasagutin ko sana, pero permits lang ang nasa kontrata ko (binasa ko pa 'yung fine print). Gusto mo bang tingnan ang status mo o ang proseso ng pagsusuri?",
          'suggestions' => ['Ano ang status ko?', 'Paano gumagana ang proseso ng pagsusuri ng permit?']],
     ],
 ];
+
+/** A playful one-liner Gibs says before a real answer, so every reply has a bit of personality
+ * while the actual answer underneath stays exactly as written. Never the same one twice in a row. */
+const CHAT_OPENERS = [
+    'en' => [
+        'Ooh, good one! Here\'s the scoop:', 'Say no more — I\'ve got you:', 'Easy peasy, permit squeezy:',
+        'Crafting your answer… done!', 'No queue, no ticket number. Here you go:', 'Love this question. Don\'t tell the others:',
+        'Let me mine that for you:', 'Fresh from the City Hall oven:',
+    ],
+    'tl' => [
+        'Uy, magandang tanong \'yan! Heto:', 'Sagot agad, walang pila!', 'Madali lang \'yan, kaibigan:',
+        'Hinukay ko pa \'to para sa\'yo:', 'Chill ka lang, ako na bahala:', 'Bagong luto galing City Hall:',
+        'Game! Ito ang sagot:', 'Ayos \'yan, heto ang kailangan mo:',
+    ],
+];
+
+function chat_opener(string $lang): string
+{
+    $pool = CHAT_OPENERS[$lang] ?? CHAT_OPENERS[CHAT_DEFAULT_LANG];
+    $choices = array_values(array_diff($pool, [$_SESSION['chat_last_opener'] ?? '']));
+    $pick = $choices[array_rand($choices)];
+    $_SESSION['chat_last_opener'] = $pick;
+    return $pick;
+}
 
 /** Rotates through CHAT_OFF_TOPIC_VARIANTS per session so repeated off-topic messages don't get
  * the exact same reply twice in a row — see the message above screenshotted by the user. */
@@ -363,10 +387,15 @@ function chatbot_reply(string $message, ?array $user, string $lang = CHAT_DEFAUL
 
     $myStatus = chat_my_status($normalized, $user, $lang);
     if ($myStatus) {
+        // The signed-out reply is already a quip; only real status reports get an opener.
+        if ($user && $user['role'] === 'applicant') {
+            $myStatus['text'] = chat_opener($lang) . "\n" . $myStatus['text'];
+        }
         return array_merge($base, $myStatus, ['score' => 10]);
     }
     $permitReq = chat_permit_requirements($normalized, $lang);
     if ($permitReq) {
+        $permitReq['text'] = chat_opener($lang) . "\n" . $permitReq['text'];
         return array_merge($base, $permitReq, ['score' => 10]);
     }
 
@@ -403,7 +432,7 @@ function chatbot_reply(string $message, ?array $user, string $lang = CHAT_DEFAUL
 
     $best = $scored[0]['faq'];
     return [
-        'text' => chat_faq_answer($best, $lang),
+        'text' => chat_opener($lang) . "\n" . chat_faq_answer($best, $lang),
         'link' => $best['link_path'] ? ['path' => $best['link_path'], 'label' => $best['link_label'] ?: 'Open'] : null,
         'suggestions' => array_values(array_unique(array_map(fn($s) => chat_faq_question($s['faq'], $lang), array_slice($scored, 1, 3)))),
         'intent' => 'faq',

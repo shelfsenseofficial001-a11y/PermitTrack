@@ -5,10 +5,10 @@
 // eases toward a target pose through a critically damped spring, and breathing, gaze shifts and
 // slow drifts are layered on top, so state changes blend instead of snapping.
 //
-//   mode="portrait"  the chat header avatar (drag to rotate)
-//   mode="peek"      hidden past the right edge of the window, leaning out to peek (GibsPeek.js)
+//   mode="stage"  full body, drag to rotate — the big panel beside the chat (ChatWidget.js)
+//   mode="peek"   hidden past the right edge of the window, leaning out to peek (GibsPeek.js)
 //
-// state (driven by ChatWidget.js): idle | greeting | thinking | answering | error
+// state (driven by ChatWidget.js): idle | listening | greeting | thinking | answering | error
 
 const SKINVIEW3D_SRC = 'https://unpkg.com/skinview3d@3.4.2/bundles/skinview3d.bundle.js';
 let skinview3dPromise = null;
@@ -61,7 +61,12 @@ const rand = (min, max) => min + Math.random() * (max - min);
 // right edge is the "wall": at showX he leans out from behind it, at hideX he's fully past it.
 const PEEK = { showX: 8.5, hideX: 30, lean: 0.5, yaw: -0.25, y: -1.5 };
 
-const JOINTS = ['peek', 'roll', 'yaw', 'headX', 'headY', 'headZ', 'lArmX', 'lArmZ', 'rArmX', 'rArmZ', 'hop'];
+const JOINTS = ['peek', 'roll', 'yaw', 'headX', 'headY', 'headZ', 'lArmX', 'lArmZ', 'rArmX', 'rArmZ', 'lLegX', 'rLegX', 'hop'];
+
+// Bits of body language he does on his own while idle, so he never just stands there.
+const QUIRK_TIME = { thought: [2.8, 3.8], stretch: [2.2, 2.6], shifty: [1.8, 2.1], watch: [2.2, 2.6], wave: [1.7, 2] };
+const STAGE_QUIRKS = Object.keys(QUIRK_TIME);
+const PEEK_QUIRKS = ['thought', 'shifty'];
 
 class GibsBrain {
   constructor(mode, calm) {
@@ -79,10 +84,13 @@ class GibsBrain {
     this.nextGlanceAt = 0;
     this.weight = 0;
     this.nextWeightAt = 0;
-    this.pointer = null; // { x, y } in [-1, 1] relative to the canvas center
+    this.pointer = null; // { x, y } in [-1, 1] relative to the canvas
     this.pointerAt = -99;
-    this.thoughtUntil = -1;
-    this.nextThoughtAt = rand(12, 20);
+    this.quirk = null;
+    this.quirkStart = 0;
+    this.quirkUntil = -1;
+    this.lastQuirk = null;
+    this.nextQuirkAt = rand(4, 7);
     this.nextQuestionAt = 0;
     this.spotted = false;
     this.hiddenSettled = false;
@@ -98,8 +106,11 @@ class GibsBrain {
     if (state === this.state) return;
     this.state = state;
     this.stateSince = this.t;
-    if (state === 'answering') { this.ch.hop.v = this.calm ? 0 : 42; this.emit('!'); }
-    if (state === 'greeting') this.emit('!');
+    this.quirk = null;
+    this.nextQuirkAt = Math.max(this.nextQuirkAt, this.t + rand(4, 7));
+    const jump = this.calm ? 0 : 1;
+    if (state === 'answering') { this.ch.hop.v = 44 * jump; this.emit('!'); }
+    if (state === 'greeting') { this.ch.hop.v = 26 * jump; this.emit('!'); }
     if (state === 'error') this.emit('?!');
     if (state === 'thinking') this.nextQuestionAt = this.t + 0.5;
   }
@@ -113,6 +124,18 @@ class GibsBrain {
   lookAt(nx, ny) {
     this.pointer = { x: nx, y: ny };
     this.pointerAt = this.t;
+  }
+
+  startQuirk(t) {
+    const pool = (this.mode === 'peek' ? PEEK_QUIRKS : STAGE_QUIRKS).filter((q) => q !== this.lastQuirk);
+    const q = pool[Math.floor(Math.random() * pool.length)];
+    this.quirk = q;
+    this.lastQuirk = q;
+    this.quirkStart = t;
+    this.quirkUntil = t + rand(...QUIRK_TIME[q]);
+    this.nextQuirkAt = this.quirkUntil + (this.mode === 'peek' ? rand(7, 12) : rand(5, 10));
+    if (q === 'thought') this.emit('?');
+    if (q === 'wave') this.emit('!');
   }
 
   update(player, rawDt) {
@@ -145,8 +168,9 @@ class GibsBrain {
 
     // --- target pose for the current state
     let headX = gazeX, headY = gazeY, headZ = 0;
-    let roll = this.weight * 0.6, yaw = gazeY * 0.22;
+    let roll = this.weight * 0.6, yaw = gazeY * 0.22 + (peekMode ? 0 : drift(t * 0.15, 9) * 0.08 * a);
     let lArmX = 0, lArmZ = 0.06, rArmX = 0, rArmZ = -0.06;
+    let lLegX = 0, rLegX = 0;
     let addHeadX = 0, addHeadY = 0, addRArmZ = 0;
     let breathPeriod = 4.2;
 
@@ -155,48 +179,75 @@ class GibsBrain {
       rArmX = -1.95; rArmZ = 0.5; // hand to chin
       yaw = -0.08;
     };
+    const wave = (from) => {
+      const up = Math.min(1, (t - from) / 0.35);
+      rArmX = -0.25; rArmZ = -2.55 * up;
+      addRArmZ = Math.sin((t - from) * 13) * 0.3 * up * a;
+    };
 
     switch (this.state) {
+      case 'listening':
+        // You're typing: he turns to the chat, leans in, and nods along.
+        headY = 0.42; headX = 0.12; headZ = -0.05; roll = -0.03; yaw = 0.15;
+        addHeadX = Math.sin(t * 3.2) * 0.035 * a;
+        break;
       case 'thinking':
         thinkPose();
-        addHeadX = Math.sin(t * 2.3) * 0.045 * a; // slow "hmm" nods
+        addHeadX = Math.sin(t * 2.3) * 0.045 * a; // slow "hmm" nods...
+        rLegX = -0.24 * Math.max(0, Math.sin(t * 8.5)) * a; // ...and an impatient foot tap
         if (t >= this.nextQuestionAt) { this.emit('?'); this.nextQuestionAt = t + rand(1.7, 2.6); }
         breathPeriod = 3.8;
         break;
-      case 'greeting': {
-        const up = Math.min(1, since / 0.35);
-        rArmX = -0.25; rArmZ = -2.55 * up; // raise the arm out to the side...
-        addRArmZ = Math.sin(since * 13) * 0.3 * up * a; // ...and wave the hand
+      case 'greeting':
+        wave(this.stateSince);
         headX = -0.06; headZ = -0.1; roll = -0.03;
         breathPeriod = 3.4;
         break;
-      }
       case 'answering':
-        lArmX = -0.35; lArmZ = 0.5; rArmX = -0.35; rArmZ = -0.5;
-        headX = -0.12;
+        // "Ta-da!" — both arms up in a V.
+        lArmX = -0.15; lArmZ = 2.35; rArmX = -0.15; rArmZ = -2.35;
+        headX = -0.15;
         breathPeriod = 3.4;
         break;
       case 'error':
-        headX = 0.2; lArmZ = 0.02; rArmZ = -0.02;
-        addHeadY = Math.sin(since * 14) * 0.4 * Math.exp(-since * 1.7) * a; // "no, no" that fades out
+        // Facepalm.
+        rArmX = -2.35; rArmZ = 0.62;
+        headX = 0.3; headY = -0.12; headZ = 0.08; roll = 0.02;
+        addHeadY = Math.sin(since * 9) * 0.08 * Math.exp(-since * 1.5) * a;
         break;
-      default:
-        // Every so often he drifts off: looks up and away, hand to chin, "?"
-        if (t >= this.nextThoughtAt) {
-          this.thoughtUntil = t + rand(2.8, 4);
-          this.nextThoughtAt = t + rand(14, 26);
-          this.emit('?');
+      default: {
+        if (!this.quirk && t >= this.nextQuirkAt && !this.calm) this.startQuirk(t);
+        if (this.quirk && t >= this.quirkUntil) this.quirk = null;
+        const qt = t - this.quirkStart;
+        switch (this.quirk) {
+          case 'thought': // drifts off: looks up and away, hand to chin
+            thinkPose();
+            break;
+          case 'stretch': // big stretch, head back
+            lArmX = -0.1; lArmZ = 2.85; rArmX = -0.1; rArmZ = -2.85;
+            headX = -0.28; headZ = 0.04;
+            break;
+          case 'shifty': // suspicious glances left, right, left
+            headY = Math.floor(qt / 0.42) % 2 ? 0.62 : -0.62;
+            headX = 0.06; yaw = headY * 0.15;
+            break;
+          case 'watch': // checks an imaginary wristwatch
+            lArmX = -1.45; lArmZ = -0.35;
+            headX = 0.38; headY = 0.22;
+            break;
+          case 'wave': // a quick "hey!"
+            wave(this.quirkStart);
+            break;
+          default:
         }
-        if (t < this.thoughtUntil) thinkPose();
+      }
     }
 
     // "!" the moment he's far enough out to have spotted you.
     const p = ch.peek.x;
-    if (peekMode) {
-      if (!this.spotted && this.peekTarget === 1 && p > 0.7) {
-        this.spotted = true;
-        this.emit('!');
-      }
+    if (peekMode && !this.spotted && this.peekTarget === 1 && p > 0.7) {
+      this.spotted = true;
+      this.emit('!');
     }
 
     // --- ease every joint toward its target
@@ -210,6 +261,8 @@ class GibsBrain {
     springTo(ch.lArmZ, lArmZ, 6.5, dt);
     springTo(ch.rArmX, rArmX, 6.5, dt);
     springTo(ch.rArmZ, rArmZ, 6.5, dt);
+    springTo(ch.lLegX, lLegX, 14, dt);
+    springTo(ch.rLegX, rLegX, 14, dt);
     springTo(ch.hop, 0, 7, dt);
 
     // --- breathing and micro-movements, layered on top
@@ -232,8 +285,8 @@ class GibsBrain {
     skin.rightArm.position.y = -2 + 0.16 * b;
     skin.leftArm.rotation.set(ch.lArmX.x + drift(t * 0.45, 3) * 0.03 * a, 0, ch.lArmZ.x + 0.025 * b);
     skin.rightArm.rotation.set(ch.rArmX.x + drift(t * 0.45, 5) * 0.03 * a, 0, ch.rArmZ.x + addRArmZ - 0.025 * b);
-    skin.leftLeg.rotation.set(0, 0, 0);
-    skin.rightLeg.rotation.set(0, 0, 0);
+    skin.leftLeg.rotation.set(ch.lLegX.x, 0, 0);
+    skin.rightLeg.rotation.set(ch.rLegX.x, 0, 0);
 
     // Fully tucked away: tell the component it can stop rendering until he peeks again.
     if (peekMode && this.peekTarget === 0 && !this.hiddenSettled && ch.peek.x < 0.002 && Math.abs(ch.peek.v) < 0.01) {
@@ -249,17 +302,20 @@ export default {
   name: 'GibsMascot',
   props: {
     state: { type: String, default: 'idle' },
-    mode: { type: String, default: 'portrait' }, // portrait | peek
+    mode: { type: String, default: 'stage' }, // stage | peek
     peek: { type: Boolean, default: false }, // peek mode only: leaning out, or tucked away
-    width: { type: Number, default: 64 },
-    height: { type: Number, default: 64 },
+    // Stage mode fills its container and follows it as it resizes; peek mode uses width/height.
+    fill: { type: Boolean, default: false },
+    width: { type: Number, default: 300 },
+    height: { type: Number, default: 400 },
     skinUrl: { type: String, default: 'assets/images/skin-ett4.png' },
   },
   data() {
-    return { failed: false, ready: false, effects: [] };
+    return { failed: false, ready: false, effects: [], w: this.width, h: this.height, shadow: null };
   },
   async mounted() {
     const calm = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    if (this.fill) this.measure();
     try {
       await ensureLibraryLoaded();
       if (this.unmounted) return;
@@ -267,15 +323,16 @@ export default {
       const peekMode = this.mode === 'peek';
       this.viewer = new sv.SkinViewer({
         canvas: this.$refs.canvas,
-        width: this.width,
-        height: this.height,
+        width: this.w,
+        height: this.h,
         skin: this.skinUrl,
-        zoom: peekMode ? 1 : 0.85,
+        // Stage leaves headroom for hops, "ta-da" arms and the "!"/"?" pops above his head.
+        zoom: peekMode ? 1 : 0.55,
         enableControls: !peekMode,
       });
       this.viewer.background = null;
       if (!peekMode) {
-        // Rotate only — zoom/pan would let him escape a small canvas.
+        // Rotate only — zoom/pan would let him escape the stage.
         this.viewer.controls.enableZoom = false;
         this.viewer.controls.enablePan = false;
       }
@@ -290,6 +347,11 @@ export default {
       });
       this.viewer.animation = new sv.FunctionAnimation((player, progress, delta) => this.brain.update(player, delta));
       window.addEventListener('pointermove', this.onPointerMove, { passive: true });
+      if (this.fill && window.ResizeObserver) {
+        this.resizeObserver = new ResizeObserver(() => this.resize());
+        this.resizeObserver.observe(this.$el);
+      }
+      this.placeShadow();
       this.ready = true;
     } catch (e) {
       this.failed = true;
@@ -298,6 +360,7 @@ export default {
   beforeUnmount() {
     this.unmounted = true;
     window.removeEventListener('pointermove', this.onPointerMove);
+    if (this.resizeObserver) this.resizeObserver.disconnect();
     (this.effectTimers || []).forEach(clearTimeout);
     if (this.viewer) this.viewer.dispose();
   },
@@ -312,26 +375,52 @@ export default {
     },
   },
   methods: {
+    measure() {
+      const r = this.$el.getBoundingClientRect();
+      this.w = Math.max(1, Math.round(r.width));
+      this.h = Math.max(1, Math.round(r.height));
+    },
+    resize() {
+      const w = this.w, h = this.h;
+      this.measure();
+      if (this.viewer && (w !== this.w || h !== this.h)) {
+        this.viewer.setSize(this.w, this.h);
+        this.placeShadow();
+      }
+    },
+    // Screen position (px, within the canvas) of a point in the model's space.
+    project(x, y, z) {
+      const v = this.viewer.camera.position.clone().set(x, y, z);
+      v.project(this.viewer.camera);
+      return { x: ((v.x + 1) / 2) * this.w, y: ((1 - v.y) / 2) * this.h };
+    },
+    // A soft contact shadow under his feet, so he stands on the stage instead of floating.
+    placeShadow() {
+      if (this.mode !== 'stage' || !this.viewer) return;
+      const left = this.project(-8, -16, 0);
+      const right = this.project(8, -16, 0);
+      this.shadow = { x: (left.x + right.x) / 2, y: left.y, w: (right.x - left.x) * 1.3 };
+    },
     onPointerMove(e) {
       if (!this.brain) return;
       const rect = this.$refs.canvas.getBoundingClientRect();
       const clamp = (v) => Math.max(-1, Math.min(1, v));
+      const scale = this.mode === 'stage' ? 420 : 320;
       this.brain.lookAt(
-        clamp((e.clientX - (rect.left + rect.width / 2)) / 320),
-        clamp((e.clientY - (rect.top + rect.height * 0.3)) / 320),
+        clamp((e.clientX - (rect.left + rect.width / 2)) / scale),
+        clamp((e.clientY - (rect.top + rect.height * 0.25)) / scale),
       );
     },
     // "!" / "?" / "?!" pops above his head, wherever his head currently is on screen.
     spawnEffect(kind) {
       if (!this.viewer) return;
-      const head = this.viewer.playerObject.skin.head;
       const v = this.viewer.camera.position.clone();
-      head.getWorldPosition(v);
-      v.y += 10;
+      this.viewer.playerObject.skin.head.getWorldPosition(v);
+      v.y += 14;
       v.project(this.viewer.camera);
-      const inset = this.mode === 'peek' ? 22 : 8;
-      const x = Math.min(this.width - inset, Math.max(inset, ((v.x + 1) / 2) * this.width));
-      const y = Math.max(this.mode === 'peek' ? 0 : 4, ((1 - v.y) / 2) * this.height);
+      const inset = this.mode === 'peek' ? 22 : 16;
+      const x = Math.min(this.w - inset, Math.max(inset, ((v.x + 1) / 2) * this.w));
+      const y = Math.max(4, ((1 - v.y) / 2) * this.h);
       const id = ++effectId;
       this.effects.push({ id, kind, x, y });
       this.effectTimers = this.effectTimers || [];
@@ -341,10 +430,15 @@ export default {
     },
   },
   template: `
-  <div class="relative shrink-0" :style="{ width: width + 'px', height: height + 'px' }">
-    <canvas ref="canvas" :class="[mode === 'portrait' ? 'rounded-lg cursor-grab active:cursor-grabbing' : '', ready ? '' : 'opacity-0']"></canvas>
-    <div v-if="mode === 'portrait' && (failed || !ready)" class="absolute inset-0 rounded-lg bg-sun-400 text-ink-700 flex items-center justify-center font-bold">?</div>
-    <span v-for="fx in effects" :key="fx.id" class="gibs-fx" :class="[fx.kind === '!' ? 'gibs-fx-bang' : 'gibs-fx-q', mode === 'portrait' ? 'gibs-fx-sm' : '']"
+  <div class="relative" :class="fill ? 'w-full h-full' : 'shrink-0'" :style="fill ? null : { width: width + 'px', height: height + 'px' }">
+    <div v-if="shadow && ready" class="gibs-shadow" aria-hidden="true"
+      :style="{ left: shadow.x + 'px', top: shadow.y + 'px', width: shadow.w + 'px' }"></div>
+    <canvas ref="canvas" class="relative" :class="[mode === 'stage' ? 'cursor-grab active:cursor-grabbing' : '', ready ? '' : 'opacity-0']"
+      :title="mode === 'stage' ? 'Drag to spin Gibs around' : null"></canvas>
+    <div v-if="mode === 'stage' && !ready" class="absolute inset-0 flex items-center justify-center text-sm font-medium text-slate-400">
+      {{ failed ? 'Gibs wandered off — the chat still works!' : 'Waking Gibs up…' }}
+    </div>
+    <span v-for="fx in effects" :key="fx.id" class="gibs-fx" :class="fx.kind === '!' ? 'gibs-fx-bang' : 'gibs-fx-q'"
       :style="{ left: fx.x + 'px', top: fx.y + 'px' }">{{ fx.kind }}</span>
   </div>
   `,
