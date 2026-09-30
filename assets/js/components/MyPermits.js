@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=68';
-import AppShell from './AppShell.js?v=68';
-import PermitList from './PermitList.js?v=68';
-import { authState } from '../store/auth.js?v=68';
-import Loader from './Loader.js?v=68';
+import { apiGet } from '../api/client.js?v=69';
+import AppShell from './AppShell.js?v=69';
+import PermitList from './PermitList.js?v=69';
+import { authState } from '../store/auth.js?v=69';
+import Loader from './Loader.js?v=69';
 
 // Every permit the signed-in applicant has ever filed, with a status filter and search.
 export default {
