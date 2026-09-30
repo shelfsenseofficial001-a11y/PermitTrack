@@ -1,8 +1,8 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=74';
-import StaffShell from './StaffShell.js?v=74';
-import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=74';
-import Loader from './Loader.js?v=74';
-import { authState } from '../store/auth.js?v=74';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=78';
+import StaffShell from './StaffShell.js?v=78';
+import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=78';
+import Loader from './Loader.js?v=78';
+import { authState } from '../store/auth.js?v=78';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 

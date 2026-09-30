@@ -6,30 +6,15 @@ require __DIR__ . '/lib/chatbot.php';
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Opening message + starter chips. The very first thing any visitor sees is a language choice
-// (English/Tagalog) — nothing else is answered until $_SESSION['chat_lang'] is set, so every
-// later reply in this session is in the language they picked.
+// Starts a conversation (first open on a page, or "New chat"): forgets the last one, and the very
+// first thing Gibs does is ask English or Tagalog — nothing else is answered until
+// $_SESSION['chat_lang'] is set.
 if ($action === 'start' && $method === 'GET') {
-    $user = current_user();
-    if (empty($_SESSION['chat_lang'])) {
-        respond([
-            'text' => chat_t('ask_language', CHAT_DEFAULT_LANG),
-            'suggestions' => ['English', 'Tagalog'],
-        ]);
-    }
-    $lang = $_SESSION['chat_lang'];
-    $name = $user['first_name'] ?? '';
+    unset($_SESSION['chat_lang'], $_SESSION['chat_off_topic_n'], $_SESSION['chat_last_opener']);
     respond([
-        'text' => chat_t('greeting', $lang, $name ? " $name" : ''),
-        'suggestions' => chat_starter_suggestions($user, $lang),
+        'text' => chat_t('ask_language', CHAT_DEFAULT_LANG),
+        'suggestions' => ['English', 'Tagalog'],
     ]);
-}
-
-// "New chat": forget this conversation's running jokes. The language choice is kept — it's a
-// preference, not part of the conversation.
-if ($action === 'reset' && $method === 'POST') {
-    unset($_SESSION['chat_off_topic_n'], $_SESSION['chat_last_opener']);
-    respond(['ok' => true]);
 }
 
 if ($action === 'ask' && $method === 'POST') {
@@ -48,9 +33,16 @@ if ($action === 'ask' && $method === 'POST') {
     }
     $_SESSION['chat_times'][] = $now;
 
-    // Still choosing a language: try to read it from this message rather than answer it.
+    $normalized = chat_normalize($message);
+    $written = chat_guess_language($normalized); // null when it's too short/mixed to tell
+    $prefix = '';
+
+    // Still choosing a language. A short reply naming one ("English", "Tagalog po") picks it and gets
+    // the greeting. If they skipped the question and just asked something, the language they wrote
+    // it in becomes the main language and the question gets answered right away.
     if (empty($_SESSION['chat_lang'])) {
-        $picked = chat_detect_language(chat_normalize($message));
+        $named = count(explode(' ', $normalized)) <= 4 ? chat_detect_language($normalized) : null;
+        $picked = $named ?? $written;
         if ($picked === null) {
             respond([
                 'text' => chat_t('language_not_understood', CHAT_DEFAULT_LANG),
@@ -60,18 +52,25 @@ if ($action === 'ask' && $method === 'POST') {
             ]);
         }
         $_SESSION['chat_lang'] = $picked;
-        $name = $user['first_name'] ?? '';
-        respond([
-            'text' => chat_t($picked === 'tl' ? 'language_confirmed_tl' : 'language_confirmed_en', $picked)
-                . ' ' . chat_t('greeting', $picked, $name ? " $name" : ''),
-            'link' => null,
-            'suggestions' => chat_starter_suggestions($user, $picked),
-            'answered' => true,
-        ]);
+        $confirmed = chat_t($picked === 'tl' ? 'language_confirmed_tl' : 'language_confirmed_en', $picked);
+        if ($named !== null) {
+            $name = $user['first_name'] ?? '';
+            respond([
+                'text' => $confirmed . ' ' . chat_t('greeting', $picked, $name ? " $name" : ''),
+                'link' => null,
+                'suggestions' => chat_starter_suggestions($user, $picked),
+                'answered' => true,
+            ]);
+        }
+        $prefix = $confirmed . ' ';
+    } elseif ($written !== null) {
+        // Mid-chat: answer in whatever language they just wrote in, and keep using it from here.
+        $_SESSION['chat_lang'] = $written;
     }
 
     $lang = $_SESSION['chat_lang'];
     $reply = chatbot_reply($message, $user, $lang);
+    $reply['text'] = $prefix . $reply['text'];
 
     // Log questions (not answers) so Admins can see what people ask and what the bot missed
     db()->prepare('INSERT INTO chat_messages (user_id, message, matched_faq_id, intent, score) VALUES (?, ?, ?, ?, ?)')

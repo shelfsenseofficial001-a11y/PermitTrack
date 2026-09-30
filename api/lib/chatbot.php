@@ -76,14 +76,14 @@ const CHAT_LANG_STRINGS = [
                    'tl' => "Hi%s! Ako si Gibs P., ang PermitTrack sidekick mo. Alam ko ang tungkol sa permits, verification, at accounts — at promise, mas mabilis ako kaysa sa pila sa City Hall. Ano'ng maitutulong ko?"],
     'thanks' => ['en' => "Anytime! That's what I'm here for (well, that and looking this good). Anything else?",
                  'tl' => "Walang anuman! 'Yan talaga ang trabaho ko (at magpa-pogi na rin). May iba pa ba?"],
-    'ask_language' => ['en' => "Hey there! Before we start — English or Tagalog? (I'm fluent in both. Also in Creeper, but that's mostly hissing.)",
-                        'tl' => "Hey there! Bago tayo magsimula — English o Tagalog? (Marunong ako sa dalawa. Pati Creeper, pero puro sitsit lang 'yon.)"],
-    'language_not_understood' => ['en' => "Hmm, that one flew right over my blocky head. Just tap English or Tagalog!",
-                                   'tl' => "Hmm, lumipad 'yon sa ulo kong kuwadrado. I-tap mo lang ang English o Tagalog!"],
+    'ask_language' => ['en' => "Hey there! Before we start — English or Tagalog? (I'm fluent in both. My Spanish is limited to \"¿dónde está el City Hall?\")",
+                        'tl' => "Hey there! Bago tayo magsimula — English o Tagalog? (Marunong ako sa dalawa. Sa Spanish, \"¿dónde está el City Hall?\" lang ang alam ko.)"],
+    'language_not_understood' => ['en' => "Hmm, that one flew right over my head. Just tap English or Tagalog!",
+                                   'tl' => "Hmm, lumipad 'yon sa ulo ko. I-tap mo lang ang English o Tagalog!"],
     'language_confirmed_en' => ['en' => "English it is!", 'tl' => "English it is!"],
     'language_confirmed_tl' => ['en' => "Tagalog tayo! Game!", 'tl' => "Tagalog tayo! Game!"],
-    'security_refusal' => ['en' => "Nice try! My rules are tougher than bedrock. I'm sticking to permits, verification and accounts.",
-                            'tl' => "Nice try! Mas matibay pa sa bedrock ang rules ko. Permits, verification, at accounts lang ang sagot ko."],
+    'security_refusal' => ['en' => "Nice try! My rules are stricter than a notarized affidavit. I'm sticking to permits, verification and accounts.",
+                            'tl' => "Nice try! Mas mahigpit pa sa notaryadong affidavit ang rules ko. Permits, verification, at accounts lang ang sagot ko."],
     'fallback' => ['en' => "Ooh, you stumped me! That one's not in my notebook yet — I've jotted it down so the city team can teach me. Meanwhile, I can help with these:",
                     'tl' => "Ay, natalo mo ako diyan! Wala pa 'yan sa notebook ko — isinulat ko na para maturuan ako ng city team. Habang wala pa, ito ang kaya ko:"],
     'sign_in_for_status' => ['en' => "I'd love to peek at your status, but you'll need to sign in first — I'm nosy, not a hacker!",
@@ -124,7 +124,7 @@ const CHAT_OFF_TOPIC_VARIANTS = [
          'suggestions' => ['Which permits can I apply for?', 'What can I do as a Normal User?']],
         ['text' => "That's above my pay grade (I get paid in cookies). But ask me how to track an application and watch me shine!",
          'suggestions' => ['How do I track my application?', 'What are barangay clearances?']],
-        ['text' => "Sorry, my brain is 100% blocks and permits. Need a hand getting verified, or registering a business?",
+        ['text' => "Sorry, my brain is 100% permits and paperwork. Need a hand getting verified, or registering a business?",
          'suggestions' => ['How do I become a verified Resident?', 'How do I register a business?']],
         ['text' => "I'd answer, but my contract says permits only (I read the fine print). Want to check your status, or see how the review works?",
          'suggestions' => ["What's my status?", 'How does the permit review process work?']],
@@ -134,7 +134,7 @@ const CHAT_OFF_TOPIC_VARIANTS = [
          'suggestions' => ['Anong mga permit ang maaari kong i-apply?', 'Ano ang magagawa ko bilang Normal User?']],
         ['text' => "Lagpas na 'yan sa sweldo ko (cookies lang ang bayad sa'kin). Pero tanungin mo ako kung paano subaybayan ang aplikasyon, at magpapakitang-gilas ako!",
          'suggestions' => ['Paano ko masusubaybayan ang aking aplikasyon?', 'Ano ang mga barangay clearance?']],
-        ['text' => "Sorry, puro blocks at permits lang ang laman ng utak ko. Kailangan mo ba ng tulong sa pag-verify o sa pagrehistro ng negosyo?",
+        ['text' => "Sorry, puro permits at papeles lang ang laman ng utak ko. Kailangan mo ba ng tulong sa pag-verify o sa pagrehistro ng negosyo?",
          'suggestions' => ['Paano ako maging verified Resident?', 'Paano ako magrehistro ng negosyo?']],
         ['text' => "Sasagutin ko sana, pero permits lang ang nasa kontrata ko (binasa ko pa 'yung fine print). Gusto mo bang tingnan ang status mo o ang proseso ng pagsusuri?",
          'suggestions' => ['Ano ang status ko?', 'Paano gumagana ang proseso ng pagsusuri ng permit?']],
@@ -146,12 +146,12 @@ const CHAT_OFF_TOPIC_VARIANTS = [
 const CHAT_OPENERS = [
     'en' => [
         'Ooh, good one! Here\'s the scoop:', 'Say no more — I\'ve got you:', 'Easy peasy, permit squeezy:',
-        'Crafting your answer… done!', 'No queue, no ticket number. Here you go:', 'Love this question. Don\'t tell the others:',
-        'Let me mine that for you:', 'Fresh from the City Hall oven:',
+        'Answer coming right up… done!', 'No queue, no ticket number. Here you go:', 'Love this question. Don\'t tell the others:',
+        'I dug through the files for you:', 'Fresh from the City Hall oven:',
     ],
     'tl' => [
         'Uy, magandang tanong \'yan! Heto:', 'Sagot agad, walang pila!', 'Madali lang \'yan, kaibigan:',
-        'Hinukay ko pa \'to para sa\'yo:', 'Chill ka lang, ako na bahala:', 'Bagong luto galing City Hall:',
+        'Hinalungkat ko pa \'to sa files para sa\'yo:', 'Chill ka lang, ako na bahala:', 'Bagong luto galing City Hall:',
         'Game! Ito ang sagot:', 'Ayos \'yan, heto ang kailangan mo:',
     ],
 ];
@@ -184,6 +184,39 @@ function chat_detect_language(string $normalized): ?string
         return 'tl';
     }
     if (preg_match('/\b(english|en|ingles)\b/', $normalized)) {
+        return 'en';
+    }
+    return null;
+}
+
+/** Common function words, used to tell which language a message is written in (Taglish included). */
+const CHAT_TL_MARKERS = [
+    'ang', 'ng', 'mga', 'sa', 'ko', 'ako', 'ikaw', 'ka', 'mo', 'siya', 'kami', 'tayo', 'natin', 'namin', 'ninyo',
+    'niyo', 'nila', 'po', 'ba', 'na', 'naman', 'lang', 'din', 'rin', 'pa', 'paano', 'pano', 'ano', 'anong', 'sino',
+    'saan', 'nasaan', 'kailan', 'gaano', 'bakit', 'magkano', 'ilan', 'gusto', 'pwede', 'puwede', 'kailangan', 'hindi', 'oo',
+    'opo', 'wala', 'meron', 'salamat', 'yung', 'ito', 'iyan', 'yan', 'dito', 'doon', 'para', 'kung', 'pero', 'nga',
+    'kasi', 'talaga', 'kumusta', 'kamusta', 'mag', 'paki', 'sige', 'dapat', 'ano\'ng',
+];
+const CHAT_EN_MARKERS = [
+    'the', 'is', 'are', 'am', 'was', 'were', 'what', 'how', 'where', 'when', 'why', 'who', 'which', 'do', 'does',
+    'did', 'can', 'could', 'would', 'should', 'will', 'i', 'my', 'me', 'you', 'your', 'a', 'an', 'to', 'of', 'for',
+    'in', 'on', 'with', 'and', 'it', 'this', 'that', 'please', 'need', 'want', 'get', 'have', 'has', 'thanks',
+    'thank', 'hello', 'there', 'im', "i'm", 'not', "don't", 'dont', 'if', 'from', 'be', "what's", 'whats',
+];
+
+/** Which language a free-typed message is in: 'tl', 'en', or null when it's too short or mixed to
+ * tell (e.g. "hi", or a permit name on its own) — the caller then keeps the current language. */
+function chat_guess_language(string $normalized): ?string
+{
+    $tl = $en = 0;
+    foreach (explode(' ', $normalized) as $w) {
+        $tl += in_array($w, CHAT_TL_MARKERS, true) ? 1 : 0;
+        $en += in_array($w, CHAT_EN_MARKERS, true) ? 1 : 0;
+    }
+    if ($tl >= 2 && $tl > $en) {
+        return 'tl';
+    }
+    if ($en >= 2 && $en > $tl) {
         return 'en';
     }
     return null;
