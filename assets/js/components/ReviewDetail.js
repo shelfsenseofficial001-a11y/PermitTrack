@@ -1,7 +1,8 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=64';
-import StaffShell from './StaffShell.js?v=64';
-import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
-import Loader from './Loader.js?v=64';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=65';
+import StaffShell from './StaffShell.js?v=65';
+import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=65';
+import Loader from './Loader.js?v=65';
+import { authState } from '../store/auth.js?v=65';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
@@ -15,11 +16,33 @@ export default {
       loading: true,
       statusOptions: STATUS_OPTIONS,
       decision: { status: '', notes: '' },
+      pipelineNotes: '',
       saving: false,
       docActionId: null,
       error: '',
       saved: false,
     };
+  },
+  computed: {
+    // Pipeline-mode applications (filed through the new 27-type flow) carry pipeline rows;
+    // legacy applications (the original 5-type flow) have none. See BREAKING_CHANGES.md #3.
+    isPipelineApp() {
+      return !!(this.app && this.app.pipeline && this.app.pipeline.length);
+    },
+    currentStep() {
+      return this.isPipelineApp ? this.app.pipeline.find((s) => s.status === 'current') : null;
+    },
+    // Only the office currently holding the application may act on it — enforced again
+    // server-side in pipeline_decision, this is just so the buttons aren't shown misleadingly.
+    canActOnCurrentStep() {
+      const u = authState.user;
+      return !!(u && this.currentStep && Number(u.department_id) === Number(this.currentStep.department_id));
+    },
+    permitTypeLabel() {
+      // Pipeline apps carry no legacy permit_type (nullable since migration 010) — permit_type_name
+      // comes from the permit_types join instead. See BREAKING_CHANGES.md #5.
+      return (this.app && (this.app.permit_type || this.app.permit_type_name)) || 'Permit';
+    },
   },
   async mounted() {
     await this.refresh();
@@ -64,6 +87,26 @@ export default {
         this.saving = false;
       }
     },
+    async savePipelineDecision(decision) {
+      this.error = '';
+      this.saved = false;
+      this.saving = true;
+      try {
+        const res = await apiPost('reviewer.php?action=pipeline_decision', {
+          application_id: this.app.id,
+          decision,
+          notes: this.pipelineNotes,
+        });
+        this.pipelineNotes = '';
+        this.saved = true;
+        this.lastResultStatus = res.status;
+        await this.refresh();
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.saving = false;
+      }
+    },
   },
   template: `
   <StaffShell>
@@ -76,7 +119,7 @@ export default {
 
       <div class="pt-gradient-wide rounded-3xl px-6 py-7 sm:px-8 mt-3 shadow-[0_24px_60px_-28px_rgba(31,122,58,0.7)]">
         <p class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1.5">Permit #{{ permitNumber(app) }}</p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ app.applicant.full_name }} &mdash; {{ app.permit_type }} Permit</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ app.applicant.full_name }} &mdash; {{ permitTypeLabel }} Permit</h1>
         <div class="text-sm text-white/85 mt-1">Submitted {{ formatDate(app.created_at) }}</div>
       </div>
 
@@ -127,7 +170,48 @@ export default {
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl border border-brand-100 p-6 h-fit">
+        <!-- Pipeline apps (27-type flow): one office at a time, sequential. See BREAKING_CHANGES.md #6. -->
+        <div v-if="isPipelineApp" class="bg-white rounded-2xl border border-brand-100 p-6 h-fit">
+          <h2 class="font-bold text-ink-700 mb-4">Pipeline</h2>
+          <ol class="space-y-3 mb-5">
+            <li v-for="step in app.pipeline" :key="step.id" class="flex items-center gap-3 text-sm">
+              <span class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                :class="step.status === 'approved' ? 'bg-brand-100 text-brand-700' : step.status === 'rejected' ? 'bg-red-100 text-red-700' : step.status === 'current' ? 'bg-sun-400 text-ink-700' : 'bg-slate-100 text-slate-400'">
+                <svg v-if="step.status === 'approved'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+                <svg v-else-if="step.status === 'rejected'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <template v-else>&middot;</template>
+              </span>
+              <div class="min-w-0">
+                <div class="font-semibold text-slate-700 truncate">{{ step.department_name }}</div>
+                <div class="text-xs text-slate-400">{{ step.step_label }}</div>
+              </div>
+            </li>
+          </ol>
+
+          <template v-if="currentStep">
+            <div v-if="!canActOnCurrentStep" class="rounded-xl bg-sun-50 border border-sun-200 px-4 py-3 text-sm text-sun-700">
+              This application is currently waiting on <strong>{{ currentStep.department_name }}</strong> — not your office.
+            </div>
+            <template v-else>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">Notes <span class="text-slate-400 font-normal">(visible to applicant)</span></label>
+              <textarea v-model="pipelineNotes" rows="4" placeholder="Looks good — proceeding to the next office…" class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"></textarea>
+
+              <p v-if="error" class="text-sm text-red-600 mt-3">{{ error }}</p>
+              <p v-if="saved" class="text-sm text-brand-700 mt-3">Saved and applicant notified.</p>
+
+              <div class="grid grid-cols-2 gap-3 mt-4">
+                <button @click="savePipelineDecision('rejected')" :disabled="saving" class="py-3 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-60 transition">Reject</button>
+                <button @click="savePipelineDecision('approved')" :disabled="saving" class="py-3 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-60 transition shadow-[0_12px_24px_-8px_rgba(31,122,58,0.55)]">
+                  {{ saving ? 'Saving…' : 'Approve' }}
+                </button>
+              </div>
+            </template>
+          </template>
+          <p v-else class="text-sm text-slate-400">This pipeline has finished — {{ app.status }}.</p>
+        </div>
+
+        <!-- Legacy apps (original 5-type flow): single-stage status picker, untouched. -->
+        <div v-else class="bg-white rounded-2xl border border-brand-100 p-6 h-fit">
           <h2 class="font-bold text-ink-700 mb-4">Update Status</h2>
           <div class="space-y-2">
             <button

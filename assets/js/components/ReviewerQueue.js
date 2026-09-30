@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=64';
-import StaffShell from './StaffShell.js?v=64';
-import { formatDate, permitIconClass } from '../util.js?v=64';
-import { authState } from '../store/auth.js?v=64';
-import Loader from './Loader.js?v=64';
+import { apiGet } from '../api/client.js?v=65';
+import StaffShell from './StaffShell.js?v=65';
+import { formatDate, permitIconClass } from '../util.js?v=65';
+import { authState } from '../store/auth.js?v=65';
+import Loader from './Loader.js?v=65';
 
 const TABS = [
   { key: 'new', label: 'New' },
@@ -29,7 +29,14 @@ export default {
     };
   },
   computed: {
+    // Barangay secretariats + the 9 offices from migration 008 run the new per-office pipeline
+    // instead of the original CSV-department model (OBO/BPLO/CHO). See BREAKING_CHANGES.md #1/#6.
+    isPipelineStaff() {
+      const u = authState.user;
+      return !!(u && u.department_permit_types === '__unassigned__');
+    },
     totalCount() {
+      if (this.isPipelineStaff) return this.counts.current || 0;
       return this.counts.new + this.counts.in_progress + this.counts.awaiting_applicant;
     },
     activeTabLabel() {
@@ -64,12 +71,21 @@ export default {
     },
     async refresh() {
       this.loading = true;
-      const [queueRes, countsRes] = await Promise.all([
-        apiGet(`reviewer.php?action=queue&tab=${this.activeTab}`),
-        apiGet('reviewer.php?action=counts'),
-      ]);
-      this.apps = queueRes.applications;
-      this.counts = countsRes;
+      if (this.isPipelineStaff) {
+        const [queueRes, countsRes] = await Promise.all([
+          apiGet('reviewer.php?action=pipeline_queue'),
+          apiGet('reviewer.php?action=pipeline_counts'),
+        ]);
+        this.apps = queueRes.applications;
+        this.counts = countsRes;
+      } else {
+        const [queueRes, countsRes] = await Promise.all([
+          apiGet(`reviewer.php?action=queue&tab=${this.activeTab}`),
+          apiGet('reviewer.php?action=counts'),
+        ]);
+        this.apps = queueRes.applications;
+        this.counts = countsRes;
+      }
       this.loading = false;
     },
   },
@@ -87,8 +103,9 @@ export default {
       </span>
     </div>
 
-    <!-- Stat cards double as the queue tabs -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" role="tablist" aria-label="Queue">
+    <!-- Stat cards double as the queue tabs (legacy staff only — a pipeline office only ever
+         has one meaningful queue: applications currently waiting on it) -->
+    <div v-if="!isPipelineStaff" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" role="tablist" aria-label="Queue">
       <button
         v-for="tab in tabs" :key="tab.key"
         type="button" role="tab" :aria-selected="activeTab === tab.key"
@@ -108,7 +125,7 @@ export default {
       </button>
     </div>
 
-    <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{{ activeTabLabel }} applications</h2>
+    <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{{ isPipelineStaff ? 'Waiting on your office' : activeTabLabel + ' applications' }}</h2>
 
     <Loader v-if="loading" kind="queue" />
 
@@ -119,12 +136,15 @@ export default {
     <div v-else class="space-y-3">
       <div v-for="app in apps" :key="app.id" class="bg-white rounded-2xl border border-brand-100 hover:border-brand-300 hover:shadow-sm transition p-4 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
         <div class="flex items-center gap-3 min-w-0">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" :class="permitIconClass(app.permit_type)">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" :class="permitIconClass(app.permit_type || app.permit_type_name)">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </div>
           <div class="min-w-0">
-            <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ app.permit_type }} Permit</div>
-            <div class="text-sm text-slate-500 mt-0.5">Submitted {{ formatDate(app.created_at) }} &middot; {{ app.days_in_queue }} day(s) in queue</div>
+            <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ app.permit_type || app.permit_type_name }} Permit</div>
+            <div class="text-sm text-slate-500 mt-0.5">
+              Submitted {{ formatDate(app.created_at) }} &middot; {{ app.days_in_queue }} day(s) in queue
+              <template v-if="isPipelineStaff"> &middot; {{ app.step_label }}</template>
+            </div>
           </div>
         </div>
         <div class="flex items-center gap-3 shrink-0">

@@ -55,7 +55,11 @@ if ($action === 'permit_types' && $method === 'GET') {
 
 if ($action === 'list' && $method === 'GET') {
     $user = require_role('applicant');
-    $stmt = db()->prepare('SELECT * FROM applications WHERE applicant_id = ? ORDER BY created_at DESC');
+    $stmt = db()->prepare(
+        'SELECT a.*, pt.name AS permit_type_name FROM applications a
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
+         WHERE a.applicant_id = ? ORDER BY a.created_at DESC'
+    );
     $stmt->execute([$user['id']]);
     $apps = array_map('application_summary', $stmt->fetchAll());
 
@@ -100,7 +104,10 @@ if ($action === 'detail' && $method === 'GET') {
     $user = require_auth();
     $id = (int)($_GET['id'] ?? 0);
 
-    $stmt = db()->prepare('SELECT * FROM applications WHERE id = ?');
+    $stmt = db()->prepare(
+        'SELECT a.*, pt.name AS permit_type_name FROM applications a
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id WHERE a.id = ?'
+    );
     $stmt->execute([$id]);
     $app = $stmt->fetch();
     if (!$app) {

@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=64';
-import AppShell from './AppShell.js?v=64';
-import PermitList from './PermitList.js?v=64';
-import { authState, loadCurrentUser } from '../store/auth.js?v=64';
-import Loader from './Loader.js?v=64';
+import { apiGet } from '../api/client.js?v=65';
+import AppShell from './AppShell.js?v=65';
+import PermitList from './PermitList.js?v=65';
+import { authState, loadCurrentUser } from '../store/auth.js?v=65';
+import Loader from './Loader.js?v=65';
 
 // How many permits the dashboard previews before sending you to My Permits
 const PREVIEW_COUNT = 3;

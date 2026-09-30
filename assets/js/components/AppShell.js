@@ -1,10 +1,10 @@
-import { authState, logout, listAccounts, switchAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=64';
-import { apiGet, apiPost } from '../api/client.js?v=64';
-import ChatWidget from './ChatWidget.js?v=64';
-import AddAccountModal from './AddAccountModal.js?v=64';
-import { timeAgo } from '../util.js?v=64';
-import { uiState, openChangePassword } from '../store/ui.js?v=64';
-import Loader from './Loader.js?v=64';
+import { authState, logout, listAccounts, switchAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=65';
+import { apiGet, apiPost } from '../api/client.js?v=65';
+import ChatWidget from './ChatWidget.js?v=65';
+import AddAccountModal from './AddAccountModal.js?v=65';
+import { timeAgo } from '../util.js?v=65';
+import { uiState, openChangePassword } from '../store/ui.js?v=65';
+import Loader from './Loader.js?v=65';
 
 export default {
   name: 'AppShell',
@@ -146,7 +146,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/dashboard" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=64" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=65" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>

@@ -1,8 +1,8 @@
-import { apiGet, apiPost } from '../api/client.js?v=64';
-import AppShell from './AppShell.js?v=64';
-import { notificationsChanged } from '../store/ui.js?v=64';
-import { timeAgo, formatDate } from '../util.js?v=64';
-import Loader from './Loader.js?v=64';
+import { apiGet, apiPost } from '../api/client.js?v=65';
+import AppShell from './AppShell.js?v=65';
+import { notificationsChanged } from '../store/ui.js?v=65';
+import { timeAgo, formatDate } from '../util.js?v=65';
+import Loader from './Loader.js?v=65';
 
 // Every update on the applicant's permits in one place — the full version of the bell's
 // dropdown, with filters by read state, kind, permit and free text, grouped by day.
