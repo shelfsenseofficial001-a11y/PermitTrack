@@ -1,9 +1,9 @@
-import { apiPost } from '../api/client.js?v=66';
-import AppShell from './AppShell.js?v=66';
-import { inputClass } from './AuthLayout.js?v=66';
-import { authState, loadCurrentUser } from '../store/auth.js?v=66';
-import { formatDate, timeAgo } from '../util.js?v=66';
-import { openChangePassword } from '../store/ui.js?v=66';
+import { apiPost } from '../api/client.js?v=67';
+import AppShell from './AppShell.js?v=67';
+import { inputClass } from './AuthLayout.js?v=67';
+import { authState, loadCurrentUser } from '../store/auth.js?v=67';
+import { formatDate, timeAgo } from '../util.js?v=67';
+import { openChangePassword } from '../store/ui.js?v=67';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'city', 'postal_code'];
 

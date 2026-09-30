@@ -137,6 +137,65 @@ why the barangay on file matters). Verified via a rolled-back DB smoke test cove
 code path, then live through the actual chat widget in-browser (fencing permit question, zero
 console errors, correct JSON response).
 
+## 9. Chat bot: landing-page access, language choice, off-topic refusal, injection guard
+
+- `ChatWidget` is now also mounted on `Landing.js` (public, signed-out page) — previously only
+  inside `AppShell` for signed-in applicants. The backend already handled a null `$user`
+  gracefully, so no API changes were needed for this part.
+- **Language gate**: `api/chat.php`'s `start` action now returns a language-choice prompt
+  (English/Tagalog) instead of the greeting when `$_SESSION['chat_lang']` isn't set yet; `ask`
+  reads the reply as a language pick before treating anything as a real question. Every
+  subsequent reply in that session is in the chosen language.
+  `faq_entries` gained `question_tl`/`answer_tl` (migration 015, all 20 entries translated) —
+  null falls back to English. Dynamic (non-FAQ) strings — greeting, my-status, permit
+  requirements, fallback, refusals — live in `CHAT_LANG_STRINGS`/`chat_t()` in
+  `api/lib/chatbot.php`. `api/admin.php`'s `faq_save` and `Admin.js`'s FAQ form now accept the
+  Tagalog fields too, so city staff can maintain both languages without touching a migration.
+- **Off-topic refusal**: a message that matches no FAQ AND contains none of
+  `CHAT_ON_TOPIC_HINTS` gets a firm "I only answer PermitTrack questions" refusal (`intent:
+  'off_topic'`) instead of the softer "I don't have an answer for that yet" (`intent: 'fallback'`,
+  reserved for genuine system questions the FAQ table just doesn't cover yet).
+- **Prompt-injection guard**: `chat_is_injection_attempt()` checks the raw message against
+  `CHAT_INJECTION_PATTERN` (ignore-instructions, reveal-system-prompt, jailbreak/DAN/developer-mode,
+  role-play-as phrasing) *before* any other matching runs, so an injection attempt can't be
+  disguised as a legitimate FAQ query. There is no LLM system prompt here to actually leak — this
+  bot is deterministic keyword matching — but the guard still stops it being made to role-play or
+  claim it has "instructions" to reveal.
+- **Found and fixed while testing**: "What documents do I need to register a business?" and the
+  new "What are barangay clearances?" both listed `barangay clearance` as a keyword and scored an
+  *exact tie* on any message containing that phrase — the stable sort kept whichever was seeded
+  first (the wrong, less specific answer). Migration 016 removed the ambiguous keyword and added
+  Tagalog keyword phrases to the 4 entries added in migration 014 (their keywords were
+  English-only, so a purely Tagalog phrasing of the same question wouldn't score as well as the
+  English one). This kind of collision is a standing risk any time two FAQ entries share a
+  generic keyword — worth checking after adding new entries.
+
+Verified via a CLI smoke test (language detection, Tagalog answers for new and old FAQs,
+off-topic refusal, 3 injection phrasings, an on-topic-but-unmatched question) and live through
+the actual chat widget in-browser.
+
+## 10. `mysql.exe` CLI silently corrupted non-ASCII bytes on file-redirect INSERTs
+
+Found while verifying the chat bot's Tagalog answers in-browser: the em-dash in "Why does my
+barangay matter?" rendered as `ÔÇö` instead of `—`. Traced to the Windows `mysql.exe` client:
+running a migration file with `mysql.exe -u root permittrack < file.sql` occasionally mangles a
+multi-byte UTF-8 character partway through a large statement — reproduced with the exact
+`barangays` INSERT from migration 008 in isolation. `--default-character-set=utf8mb4` did **not**
+fix it. The app's own PDO connection (`api/config.php`, `charset=utf8mb4`) is unaffected — this is
+purely a CLI-client bug, and every migration in this project was applied via that CLI.
+
+**Scope, found by scanning the whole DB for the CP437 box-drawing bytes this specific corruption
+produces**: exactly 12 rows, all containing "Santo Niño" or "Dasmariñas" (the only non-ASCII
+characters in any migration so far) — `barangays` (2), `departments.name`/`description` (6),
+`faq_entries.answer`/`answer_tl` (2), `users.full_name` (2). All 12 fixed directly via a PDO
+script (not another CLI migration — that would risk re-corrupting them), verified with a
+second full-DB scan (zero matches) and confirmed live through the chat widget.
+
+**Going forward**: any future migration containing non-ASCII characters (ñ, em-dash, accented
+names, etc.) must be verified after applying — run a query back over the specific value and
+visually diff it, or scan for `REGEXP '[\\x{2500}-\\x{25FF}]'` — rather than trusted just because
+`mysql.exe` exited 0. Pure-ASCII migrations are unaffected and don't need this check.
+
 ## Status
 
 | Layer | Status |

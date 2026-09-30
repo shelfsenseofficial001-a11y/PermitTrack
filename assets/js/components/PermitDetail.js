@@ -1,8 +1,8 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=66';
-import AppShell from './AppShell.js?v=66';
-import StatusStepper from './StatusStepper.js?v=66';
-import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=66';
-import Loader from './Loader.js?v=66';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=67';
+import AppShell from './AppShell.js?v=67';
+import StatusStepper from './StatusStepper.js?v=67';
+import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=67';
+import Loader from './Loader.js?v=67';
 
 export default {
   name: 'PermitDetail',

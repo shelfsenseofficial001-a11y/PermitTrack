@@ -285,6 +285,8 @@ if ($action === 'faq_save' && $method === 'POST') {
     $id = (int)($in['id'] ?? 0);
     $question = trim((string)($in['question'] ?? ''));
     $answer = trim((string)($in['answer'] ?? ''));
+    $questionTl = trim((string)($in['question_tl'] ?? ''));
+    $answerTl = trim((string)($in['answer_tl'] ?? ''));
     $keywords = implode(',', array_filter(array_map('trim', explode(',', mb_strtolower((string)($in['keywords'] ?? ''))))));
     $category = trim((string)($in['category'] ?? '')) ?: 'General';
     $linkPath = trim((string)($in['link_path'] ?? ''));
@@ -308,14 +310,15 @@ if ($action === 'faq_save' && $method === 'POST') {
         fail('Another answer already uses that question.');
     }
 
-    $values = [mb_substr($category, 0, 40), mb_substr($question, 0, 255), $answer, mb_substr($keywords, 0, 600),
+    $values = [mb_substr($category, 0, 40), mb_substr($question, 0, 255), $questionTl !== '' ? mb_substr($questionTl, 0, 255) : null,
+               $answer, $answerTl !== '' ? $answerTl : null, mb_substr($keywords, 0, 600),
                $linkPath ?: null, $linkPath ? (mb_substr($linkLabel, 0, 60) ?: 'Open') : null, $sortOrder, $active ? 1 : 0];
     if ($id) {
-        db()->prepare('UPDATE faq_entries SET category = ?, question = ?, answer = ?, keywords = ?, link_path = ?, link_label = ?, sort_order = ?, is_active = ? WHERE id = ?')
+        db()->prepare('UPDATE faq_entries SET category = ?, question = ?, question_tl = ?, answer = ?, answer_tl = ?, keywords = ?, link_path = ?, link_label = ?, sort_order = ?, is_active = ? WHERE id = ?')
             ->execute([...$values, $id]);
         audit((int)$admin['id'], 'admin.faq_updated', 'faq', $id, $question);
     } else {
-        db()->prepare('INSERT INTO faq_entries (category, question, answer, keywords, link_path, link_label, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        db()->prepare('INSERT INTO faq_entries (category, question, question_tl, answer, answer_tl, keywords, link_path, link_label, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute($values);
         $id = (int)db()->lastInsertId();
         audit((int)$admin['id'], 'admin.faq_created', 'faq', $id, $question);
