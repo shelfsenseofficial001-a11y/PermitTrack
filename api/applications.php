@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/config.php';
 require __DIR__ . '/lib/business.php';
+require __DIR__ . '/lib/pipeline.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -42,6 +43,14 @@ if ($action === 'eligibility' && $method === 'GET') {
         ];
     }
     respond(['permit_types' => $types, 'businesses' => $businesses, 'is_resident' => $isResident]);
+}
+
+// New pipeline-driven permit type list (27 types, with branch questions). Additive —
+// the old 'eligibility' action above is untouched and still what today's NewApplication.js uses.
+if ($action === 'permit_types' && $method === 'GET') {
+    $user = require_role('applicant');
+    $businesses = approved_businesses((int)$user['id']);
+    respond(['permit_types' => eligible_permit_types($user, $businesses), 'businesses' => $businesses]);
 }
 
 if ($action === 'list' && $method === 'GET') {
@@ -126,7 +135,102 @@ if ($action === 'detail' && $method === 'GET') {
     $docsStmt->execute([$id]);
     $app['documents'] = $docsStmt->fetchAll();
 
+    // Empty array = this application predates the pipeline (filed via the old 'create' action).
+    $app['pipeline'] = pipeline_progress_for($id);
+
     respond(['application' => application_summary($app)]);
+}
+
+// New pipeline-driven submission path: a permit_type_id (from the 27-type catalog) instead of
+// the old 5-value permit_type string, plus forced branch-question answers. Kept as a separate
+// action rather than folded into 'create' below so the existing 5-type flow (and its required-
+// documents/priority logic, still keyed by the old enum) is untouched. See BREAKING_CHANGES.md.
+if ($action === 'create_v2' && $method === 'POST') {
+    $user = require_role('applicant');
+    if (!can_apply($user)) {
+        fail('Only verified Residents or Business Owners can apply for permits. Verify your account first.', 403);
+    }
+
+    $permitTypeId = (int)($_POST['permit_type_id'] ?? 0);
+    $propertyAddress = trim((string)($_POST['property_address'] ?? ''));
+    $description = trim((string)($_POST['project_description'] ?? ''));
+    $businessId = (int)($_POST['business_id'] ?? 0);
+    $conditionsRaw = json_decode((string)($_POST['conditions'] ?? '{}'), true);
+    $conditions = is_array($conditionsRaw) ? array_map('boolval', $conditionsRaw) : [];
+
+    $typeStmt = db()->prepare('SELECT * FROM permit_types WHERE id = ? AND is_active = 1');
+    $typeStmt->execute([$permitTypeId]);
+    $permitType = $typeStmt->fetch();
+    if (!$permitType) {
+        fail('Please choose a valid permit type.');
+    }
+
+    $isResident = in_array('Resident', $user['levels'], true);
+    $isStandalone = $permitType['track'] === 'barangay_standalone' || $permitType['track'] === 'personal';
+    $business = null;
+    $businessName = '';
+    $barangayId = null;
+
+    if ($businessId) {
+        if ($isStandalone) {
+            fail('This is a resident-only clearance and cannot be filed under a business.', 403);
+        }
+        foreach (approved_businesses((int)$user['id']) as $b) {
+            if ((int)$b['id'] === $businessId) {
+                $business = $b;
+            }
+        }
+        if (!$business) {
+            fail('Please choose one of your verified businesses.');
+        }
+        if (!$permitType['business_eligible']) {
+            fail("A {$permitType['name']} permit can't be filed for a business.");
+        }
+        $businessName = $business['business_name'];
+        $barangayId = $business['barangay_id'] !== null ? (int)$business['barangay_id'] : null;
+        if ($propertyAddress === '') {
+            $propertyAddress = "{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}";
+        }
+    } else {
+        if (!$permitType['resident_eligible'] || ($isStandalone && !$isResident)) {
+            fail("A {$permitType['name']} permit must be filed for one of your verified businesses.", 403);
+        }
+        if (!$isResident) {
+            fail("Only verified Residents can file a {$permitType['name']} permit as an individual. Choose one of your businesses, or verify your residency.", 403);
+        }
+        $barangayId = $user['barangay_id'] !== null ? (int)$user['barangay_id'] : null;
+        if ($propertyAddress === '' && !$isStandalone) {
+            fail('Property address is required.');
+        }
+    }
+    if ($barangayId === null) {
+        fail('No barangay is on file for ' . ($business ? 'this business' : 'your account') . ' yet — this is required to route the application.', 422);
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO applications (applicant_id, business_id, permit_type_id, property_address, business_name, project_description, priority)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$user['id'], $businessId ?: null, $permitTypeId, $propertyAddress ?: 'N/A', $businessName ?: null, $description ?: null, 'Standard']);
+        $appId = (int)$pdo->lastInsertId();
+
+        instantiate_pipeline($appId, $permitTypeId, $conditions, $barangayId);
+
+        $activityStmt = $pdo->prepare(
+            "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+        );
+        $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
+
+        $pdo->commit();
+    } catch (RuntimeException $e) {
+        $pdo->rollBack();
+        fail($e->getMessage());
+    }
+
+    respond(['application_id' => $appId], 201);
 }
 
 if ($action === 'create' && $method === 'POST') {

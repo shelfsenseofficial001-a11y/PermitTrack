@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/support.php';
+require_once __DIR__ . '/lib/pipeline.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -116,6 +117,112 @@ if ($action === 'decision' && $method === 'POST') {
     );
 
     respond(['ok' => true]);
+}
+
+// Pipeline-driven queue/decision, parallel to 'queue'/'decision' above. Which one a staff
+// account uses depends on their department: the original 3 (OBO/BPLO/CHO) still run the old
+// permit_type-CSV model untouched; the 75 barangay secretariats + 9 new offices from migration
+// 008 only make sense under the pipeline model (their permit_types is the '__unassigned__'
+// placeholder, so the old 'queue' action would correctly show them nothing). See
+// BREAKING_CHANGES.md #1 and #5 — there is no UI yet to tell a staff member which mode they're
+// in; that's frontend follow-up work.
+if ($action === 'pipeline_queue' && $method === 'GET') {
+    $user = require_role('staff');
+    if (empty($user['department_id'])) {
+        respond(['applications' => []]);
+    }
+
+    $stmt = db()->prepare(
+        "SELECT a.*, u.full_name AS applicant_name, pt.name AS permit_type_name,
+                p.id AS pipeline_step_id, p.step_label, p.office_code,
+                DATEDIFF(NOW(), a.created_at) AS days_in_queue
+         FROM application_pipeline_progress p
+         JOIN applications a ON a.id = p.application_id
+         JOIN users u ON u.id = a.applicant_id
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
+         WHERE p.department_id = ? AND p.status = 'current'
+         ORDER BY a.created_at ASC"
+    );
+    $stmt->execute([(int)$user['department_id']]);
+    respond(['applications' => $stmt->fetchAll()]);
+}
+
+if ($action === 'pipeline_counts' && $method === 'GET') {
+    $user = require_role('staff');
+    if (empty($user['department_id'])) {
+        respond(['current' => 0]);
+    }
+    $stmt = db()->prepare(
+        "SELECT COUNT(*) c FROM application_pipeline_progress WHERE department_id = ? AND status = 'current'"
+    );
+    $stmt->execute([(int)$user['department_id']]);
+    respond(['current' => (int)$stmt->fetch()['c']]);
+}
+
+if ($action === 'pipeline_decision' && $method === 'POST') {
+    $user = require_role('staff');
+    $in = json_input();
+    $appId = (int)($in['application_id'] ?? 0);
+    $decision = (string)($in['decision'] ?? '');
+    $notes = trim((string)($in['notes'] ?? ''));
+
+    if (!in_array($decision, ['approved', 'rejected'], true)) {
+        fail('decision must be "approved" or "rejected".');
+    }
+    if (empty($user['department_id'])) {
+        fail('Your account is not assigned to an office.', 403);
+    }
+
+    $appStmt = db()->prepare('SELECT * FROM applications WHERE id = ?');
+    $appStmt->execute([$appId]);
+    $app = $appStmt->fetch();
+    if (!$app) {
+        fail('Application not found.', 404);
+    }
+
+    $currentStmt = db()->prepare(
+        "SELECT * FROM application_pipeline_progress WHERE application_id = ? AND status = 'current' LIMIT 1"
+    );
+    $currentStmt->execute([$appId]);
+    $current = $currentStmt->fetch();
+    if (!$current || (int)$current['department_id'] !== (int)$user['department_id']) {
+        fail('This application is not currently waiting on your office.', 403);
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $resultStatus = advance_pipeline($appId, (int)$user['id'], $decision, $notes ?: null);
+
+        $update = $pdo->prepare('UPDATE applications SET status = ?, assigned_reviewer_id = COALESCE(assigned_reviewer_id, ?) WHERE id = ?');
+        $update->execute([$resultStatus, $user['id'], $appId]);
+
+        $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)");
+        $activity->execute([$appId, $user['id'], $current['step_label'] . ' — ' . ucfirst($decision) . ' by ' . $user['full_name'] . '.']);
+        if ($notes !== '') {
+            $note = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
+            $note->execute([$appId, $user['id'], $notes]);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        fail('Could not record this decision: ' . $e->getMessage(), 500);
+    }
+
+    $tail = match ($resultStatus) {
+        'Approved' => 'has been approved. You can view it in PermitTrack.',
+        'Rejected' => 'was not approved at the ' . $current['step_label'] . ' stage. Open it in PermitTrack to see why.',
+        default => 'has moved to the next stage: ' . 'pending review.',
+    };
+    notify_user(
+        (int)$app['applicant_id'],
+        'Your permit application: ' . $resultStatus,
+        'Your application at ' . $app['property_address'] . ' ' . $tail
+            . ($notes !== '' ? "\n\nReviewer note: " . $notes : '')
+    );
+
+    respond(['ok' => true, 'status' => $resultStatus]);
 }
 
 fail('Unknown action.', 404);

@@ -98,7 +98,7 @@ function business_record(int $id): ?array
 function approved_businesses(int $userId): array
 {
     $stmt = db()->prepare(
-        "SELECT id, business_name, trade_name, address_line, barangay, city, postal_code FROM businesses
+        "SELECT id, business_name, trade_name, address_line, barangay, barangay_id, city, postal_code FROM businesses
          WHERE user_id = ? AND status = 'approved' ORDER BY business_name"
     );
     $stmt->execute([$userId]);
