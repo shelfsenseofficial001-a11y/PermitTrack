@@ -226,6 +226,34 @@ if ($action === 'create_v2' && $method === 'POST') {
 
         instantiate_pipeline($appId, $permitTypeId, $conditions, $barangayId);
 
+        $requiredDocs = required_documents_for_type($permitTypeId);
+        if ($requiredDocs) {
+            $uploadDir = __DIR__ . '/../uploads/' . $appId;
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+            $docStmt = $pdo->prepare(
+                'INSERT INTO application_documents (application_id, doc_name, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            foreach ($requiredDocs as $docName) {
+                $fileKey = 'doc_' . preg_replace('/[^a-zA-Z0-9]+/', '_', $docName);
+                $filePath = null;
+                $originalName = null;
+                $status = 'Missing';
+                $uploadedAt = null;
+                if (isset($_FILES[$fileKey]) && $_FILES[$fileKey]['error'] === UPLOAD_ERR_OK) {
+                    $originalName = basename($_FILES[$fileKey]['name']);
+                    $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+                    $dest = $uploadDir . '/' . $safeName;
+                    move_uploaded_file($_FILES[$fileKey]['tmp_name'], $dest);
+                    $filePath = 'uploads/' . $appId . '/' . $safeName;
+                    $status = 'Pending Review';
+                    $uploadedAt = date('Y-m-d H:i:s');
+                }
+                $docStmt->execute([$appId, $docName, $filePath, $originalName, $status, $uploadedAt]);
+            }
+        }
+
         $activityStmt = $pdo->prepare(
             "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
         );

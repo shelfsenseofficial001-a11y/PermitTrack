@@ -5,15 +5,20 @@ declare(strict_types=1);
 // from migration 008) drive application_pipeline_progress (per-application state,
 // from migration 009). See BREAKING_CHANGES.md before changing anything here.
 
-/** Every active permit type, with its base pipeline steps and branch questions. */
+/** Every active permit type, with its base pipeline steps, branch questions, and required documents. */
 function permit_types_catalog(): array
 {
     $types = db()->query('SELECT * FROM permit_types WHERE is_active = 1 ORDER BY track, name')->fetchAll();
     $steps = db()->query('SELECT * FROM permit_pipeline_steps ORDER BY permit_type_id, step_order')->fetchAll();
+    $docs = db()->query('SELECT * FROM permit_type_documents ORDER BY permit_type_id, sort_order')->fetchAll();
 
     $stepsByType = [];
     foreach ($steps as $step) {
         $stepsByType[(int)$step['permit_type_id']][] = $step;
+    }
+    $docsByType = [];
+    foreach ($docs as $doc) {
+        $docsByType[(int)$doc['permit_type_id']][] = $doc['doc_name'];
     }
 
     foreach ($types as &$type) {
@@ -22,6 +27,7 @@ function permit_types_catalog(): array
             fn($s) => ['condition_key' => $s['condition_key'], 'label' => $s['condition_label']],
             array_filter($typeSteps, fn($s) => $s['condition_key'] !== null)
         ));
+        $type['required_documents'] = $docsByType[(int)$type['id']] ?? [];
     }
     unset($type);
 
@@ -51,6 +57,14 @@ function eligible_permit_types(array $user, array $businesses): array
         $out[] = $type;
     }
     return $out;
+}
+
+/** Required document names for one permit type, in display order (permit_type_documents, migration 011). */
+function required_documents_for_type(int $permitTypeId): array
+{
+    $stmt = db()->prepare('SELECT doc_name FROM permit_type_documents WHERE permit_type_id = ? ORDER BY sort_order');
+    $stmt->execute([$permitTypeId]);
+    return array_column($stmt->fetchAll(), 'doc_name');
 }
 
 /**

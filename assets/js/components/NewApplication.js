@@ -1,6 +1,6 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=65';
-import AppShell from './AppShell.js?v=65';
-import { authState } from '../store/auth.js?v=65';
+import { apiGet, apiPostForm } from '../api/client.js?v=66';
+import AppShell from './AppShell.js?v=66';
+import { authState } from '../store/auth.js?v=66';
 
 const TRACK_LABELS = {
   construction: 'Construction & Property',
@@ -21,7 +21,6 @@ export default {
         project_description: '',
         conditions: {}, // condition_key -> 'yes' | 'no', forced before submit
       },
-      requiredDocs: [],
       files: {},
       error: '',
       submitting: false,
@@ -83,7 +82,6 @@ export default {
       this.form.business_id = this.filingOptions.length ? this.filingOptions[0].value : '';
       this.form.conditions = {};
       this.files = {};
-      this.requiredDocs = [];
     },
   },
   methods: {
@@ -177,6 +175,25 @@ export default {
           <label class="block text-sm font-semibold text-slate-700 mb-1">Project Description</label>
           <textarea v-model="form.project_description" rows="3" placeholder="Adding a second seating area and updating the kitchen layout…"
             class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"></textarea>
+        </div>
+
+        <div v-if="selectedType.required_documents.length">
+          <label class="block text-sm font-semibold text-slate-700 mb-2">Required Documents</label>
+          <div class="space-y-2">
+            <label
+              v-for="doc in selectedType.required_documents" :key="doc"
+              class="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-5 cursor-pointer transition"
+              :class="files[fieldKey(doc)] ? 'border-emerald-300 bg-emerald-50' : 'border-slate-300 hover:border-brand-300 hover:bg-slate-50'"
+            >
+              <svg v-if="files[fieldKey(doc)]" class="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              <svg v-else class="w-5 h-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+              <span class="text-sm font-semibold" :class="files[fieldKey(doc)] ? 'text-emerald-700' : 'text-slate-600'">
+                {{ files[fieldKey(doc)] ? doc + ' — ' + files[fieldKey(doc)].name : 'Upload ' + doc }}
+              </span>
+              <input type="file" class="hidden" @change="onFile(doc, $event)" />
+            </label>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">You can upload any missing documents later from the permit's detail page.</p>
         </div>
 
         <!-- Forced branch questions: every one must be answered before submitting. An unanswered

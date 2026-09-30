@@ -1,7 +1,7 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=65';
-import StatusStepper from './StatusStepper.js?v=65';
-import { permitNumber, permitIconClass, formatDate } from '../util.js?v=65';
-import Loader from './Loader.js?v=65';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=66';
+import StatusStepper from './StatusStepper.js?v=66';
+import { permitNumber, permitIconClass, formatDate } from '../util.js?v=66';
+import Loader from './Loader.js?v=66';
 
 // Collapsible list of permits, shared by the dashboard preview and the My Permits page.
 // Collapsed rows show a mini timeline; opening one loads and shows the whole permit —
