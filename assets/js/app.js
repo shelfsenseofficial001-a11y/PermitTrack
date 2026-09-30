@@ -1,18 +1,20 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=60';
-import { authState } from './store/auth.js?v=60';
-import { uiState } from './store/ui.js?v=60';
-import ChangePasswordModal from './components/ChangePasswordModal.js?v=60';
+import { router } from './router/router.js?v=64';
+import { authState } from './store/auth.js?v=64';
+import { uiState } from './store/ui.js?v=64';
+import ChangePasswordModal from './components/ChangePasswordModal.js?v=64';
+import CookieBanner from './components/CookieBanner.js?v=64';
 
-// Page transitions run on explicit timings: the moving part is each page's .page-body, not
-// the route root, so Vue can't read the duration from CSS. Near-instant for reduced motion.
-const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const PAGE_DURATION = reducedMotion ? { enter: 10, leave: 10 } : { enter: 240, leave: 120 };
+// Explicit durations make the page swap finish on a timer instead of waiting for
+// transitionend. A hidden tab never paints, so transitionend would never fire there and the
+// next page would never be shown (mode="out-in" waits for the leave to finish).
+const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PAGE_MS = reduced ? { enter: 1, leave: 1 } : { enter: 240, leave: 120 };
 
 const App = {
-  components: { ChangePasswordModal },
+  components: { ChangePasswordModal, CookieBanner },
   data() {
-    return { authState, uiState, pageDuration: PAGE_DURATION };
+    return { authState, uiState, pageMs: PAGE_MS };
   },
   computed: {
     // A temporary password from an Admin must be replaced before anything else. Hosting
@@ -37,7 +39,7 @@ const App = {
   // Keyed by path, not full URL, so ?open=… on My Permits doesn't replay the page transition
   template: `
     <router-view v-slot="{ Component, route }">
-      <transition name="page" mode="out-in" :duration="pageDuration">
+      <transition name="page" mode="out-in" :duration="pageMs">
         <component :is="Component" :key="route.path" />
       </transition>
     </router-view>
@@ -45,6 +47,7 @@ const App = {
       <ChangePasswordModal v-if="showPasswordDialog"
         :forced="forcedPasswordChange" @close="uiState.changePasswordOpen = false" />
     </transition>
+    <CookieBanner />
   `,
 };
 

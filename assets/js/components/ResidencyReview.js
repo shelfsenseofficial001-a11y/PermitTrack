@@ -1,11 +1,12 @@
-import { apiGet, apiPost } from '../api/client.js?v=60';
-import StaffShell from './StaffShell.js?v=60';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=60';
+import { apiGet, apiPost } from '../api/client.js?v=64';
+import StaffShell from './StaffShell.js?v=64';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 export default {
   name: 'ResidencyReview',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { StaffShell },
+  components: { StaffShell, Loader },
   data() {
     return {
       loading: true,
@@ -71,7 +72,7 @@ export default {
       Back to Resident Verifications
     </router-link>
 
-    <div v-if="loading" class="text-slate-400 text-sm mt-4">Loading…</div>
+    <Loader v-if="loading" kind="review" />
 
     <template v-else-if="request">
       <div class="pt-gradient-wide rounded-3xl px-6 py-7 sm:px-8 mt-3 shadow-[0_24px_60px_-28px_rgba(31,122,58,0.7)]">

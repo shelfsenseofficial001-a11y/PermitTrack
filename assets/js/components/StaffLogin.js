@@ -1,5 +1,5 @@
-import { login, homePathFor } from '../store/auth.js?v=60';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=60';
+import { login, homePathFor } from '../store/auth.js?v=64';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=64';
 
 export default {
   name: 'StaffLogin',
@@ -28,7 +28,7 @@ export default {
     },
   },
   template: `
-  <AuthLayout portal="Staff Portal" eyebrow="For city staff" headline="Review, inspect, and issue permits — all from one queue.">
+  <AuthLayout :loading="loading" loading-kind="staff" portal="Staff Portal" eyebrow="For city staff" headline="Review, inspect, and issue permits — all from one queue.">
     <span class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider leading-none text-ink-700 bg-sun-100 rounded-full px-3 py-1.5 mb-4">
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       City Staff &amp; Admin

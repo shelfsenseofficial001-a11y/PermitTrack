@@ -1,5 +1,5 @@
-import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=60';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=60';
+import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=64';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=64';
 
 export default {
   name: 'Verify',
@@ -87,7 +87,7 @@ export default {
     },
   },
   template: `
-  <AuthLayout eyebrow="Almost there" headline="Confirm it's really you — then start tracking your permits.">
+  <AuthLayout :loading="loading" loading-kind="verify" eyebrow="Almost there" headline="Confirm it's really you — then start tracking your permits.">
     <template v-if="v">
       <div class="w-12 h-12 rounded-2xl bg-[#f3f9e3] text-[#1f7a3a] flex items-center justify-center mb-4">
         <svg v-if="isEmail" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>

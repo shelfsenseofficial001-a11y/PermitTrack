@@ -1,13 +1,14 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=60';
-import StaffShell from './StaffShell.js?v=60';
-import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=60';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=64';
+import StaffShell from './StaffShell.js?v=64';
+import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
 export default {
   name: 'ReviewDetail',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { StaffShell },
+  components: { StaffShell, Loader },
   data() {
     return {
       app: null,
@@ -66,7 +67,7 @@ export default {
   },
   template: `
   <StaffShell>
-    <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
+    <Loader v-if="loading" kind="review" />
     <template v-else-if="app">
       <router-link to="/reviewer" :class="backButtonClass">
         <span :class="backIconClass"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span>

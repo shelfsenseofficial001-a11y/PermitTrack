@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Page not found · PermitTrack</title>
+<link rel="icon" href="/PermitTrack-main/favicon.ico" sizes="any" />
+<!-- Deliberately self-contained: no CDN, no JS. This page has to render even when the
+     thing that broke is the network, a bad deploy, or a mistyped asset path. -->
+<style>
+  :root { --forest: #10301d; --brand: #1f7a3a; --brand-dark: #186332; --sun: #f7cf1b; --meadow: #f5f9e8; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: var(--meadow); color: var(--forest);
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  .card { width: 100%; max-width: 520px; text-align: center; }
+  .tracker {
+    background: #fff; border-radius: 24px; padding: 26px; margin: 0 auto 32px;
+    box-shadow: 0 30px 70px -30px rgba(16,48,29,.45); max-width: 380px;
+  }
+  .stops { display: flex; align-items: flex-start; }
+  .stop { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .dot {
+    width: 36px; height: 36px; border-radius: 999px; display: flex; align-items: center;
+    justify-content: center; font-weight: 700; font-size: 14px; color: #fff; background: var(--brand);
+  }
+  .dot.unknown { background: var(--sun); color: var(--forest); box-shadow: 0 0 0 4px #fff3b8; }
+  .stop span { font-size: 11px; font-weight: 600; color: #64748b; }
+  .stop.last span { color: var(--forest); }
+  .meta { margin-top: 20px; padding-top: 20px; border-top: 1px solid #dcefd3; text-align: left; }
+  .meta .k { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }
+  .meta .v { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 13px; margin-top: 3px; word-break: break-all; }
+  .meta .err { font-size: 12px; font-weight: 600; color: #dc2626; margin-top: 8px; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--brand); margin: 0; }
+  h1 { font-size: clamp(30px, 7vw, 46px); line-height: 1.05; letter-spacing: -.03em; margin: 12px 0 0; }
+  p.lead { color: #475569; line-height: 1.6; margin: 16px 0 0; }
+  .actions { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  a.btn {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-size: 14px;
+    font-weight: 600; padding: 13px 20px; border-radius: 16px; transition: background .2s, border-color .2s;
+  }
+  a.primary { background: var(--brand); color: #fff; box-shadow: 0 14px 28px -12px rgba(31,122,58,.7); }
+  a.primary:hover { background: var(--brand-dark); }
+  a.ghost { background: #fff; color: var(--forest); border: 1px solid #e2e8f0; }
+  a.ghost:hover { border-color: #8fcb7b; }
+  @media (prefers-reduced-motion: no-preference) { a.btn { transition: background .2s, border-color .2s, transform .2s; } a.btn:hover { transform: translateY(-1px); } }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="tracker">
+      <div class="stops">
+        <div class="stop"><span class="dot">&#10003;</span><span>Submitted</span></div>
+        <div class="stop"><span class="dot">&#10003;</span><span>In transit</span></div>
+        <div class="stop last"><span class="dot unknown">?</span><span>Not found</span></div>
+      </div>
+      <div class="meta">
+        <div class="k">Tracking number</div>
+        <div class="v" id="path">/</div>
+        <div class="err">No page at this address.</div>
+      </div>
+    </div>
+
+    <p class="eyebrow">Error 404</p>
+    <h1>This one got lost<br>in the mail.</h1>
+    <p class="lead">We track permits, not missing pages — and this address isn&rsquo;t one we deliver to. It may have moved, or the link may have a typo.</p>
+
+    <div class="actions">
+      <a class="btn primary" href="/PermitTrack-main/">&#8592;&nbsp; Back to PermitTrack</a>
+      <a class="btn ghost" href="/PermitTrack-main/#/login">Log in</a>
+    </div>
+  </main>
+  <script>
+    // Show the address that was actually asked for. textContent, never innerHTML — the URL
+    // comes from the visitor and must never be able to inject markup into this page.
+    document.getElementById('path').textContent = location.pathname + location.search;
+  </script>
+</body>
+</html>

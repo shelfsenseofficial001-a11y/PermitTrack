@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../api/client.js?v=60';
+import { apiGet, apiPost } from '../api/client.js?v=64';
 
 // Floating FAQ assistant for resident / business users (prototype — answers come from api/chat.php)
 export default {

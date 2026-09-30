@@ -1,11 +1,15 @@
-import { authState } from '../store/auth.js?v=60';
-import { backButtonClass, backIconClass } from '../util.js?v=60';
+import { authState } from '../store/auth.js?v=64';
+import { backButtonClass, backIconClass } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 // Shared card for the sign-in pages: gradient panel on the left, form on the right.
 export default {
   name: 'AuthLayout',
+  components: { Loader },
   setup: () => ({ backButtonClass, backIconClass }),
   props: {
+    loading: { type: Boolean, default: false },   // shows the branded overlay over the form
+    loadingKind: { type: String, default: 'login' },
     eyebrow: { type: String, default: 'You can easily' },
     headline: { type: String, default: 'Track your permit like a package — see exactly where it stands.' },
     portal: { type: String, default: '' }, // small label under the logo, e.g. "Staff Portal"
@@ -29,7 +33,7 @@ export default {
 
       <div class="pt-gradient hidden lg:flex relative overflow-hidden rounded-[22px] flex-col justify-between p-10 text-white">
         <router-link to="/" class="flex items-center gap-3 text-[#0b3d20] self-start rounded-xl hover:opacity-90 transition" aria-label="PermitTrack home">
-          <img src="assets/images/PermitTrackIcon.png?v=60" alt="" class="w-14 h-14 object-contain shrink-0 drop-shadow" />
+          <img src="assets/images/PermitTrackIcon.png?v=64" alt="" class="w-14 h-14 object-contain shrink-0 drop-shadow" />
           <div class="leading-tight">
             <div class="text-lg font-semibold tracking-tight">PermitTrack</div>
             <div v-if="portal" class="text-xs font-bold uppercase tracking-widest">{{ portal }}</div>
@@ -41,7 +45,8 @@ export default {
         </div>
       </div>
 
-      <div class="flex justify-center items-start lg:items-center px-4 py-8 sm:px-10 lg:py-8 lg:overflow-y-auto no-scrollbar">
+      <div class="relative flex justify-center items-start lg:items-center px-4 py-8 sm:px-10 lg:py-8 lg:overflow-y-auto no-scrollbar">
+        <Loader variant="overlay" :show="loading" :kind="loadingKind" />
         <div class="w-full max-w-sm">
           <!-- The button is inline-flex, so it needs a block wrapper of its own; otherwise a page
                starting with an inline chip (Log in, Staff login) renders it on the same line. -->
@@ -52,7 +57,7 @@ export default {
             </button>
           </div>
           <router-link to="/" class="flex lg:hidden items-center gap-2 mb-5 self-start" aria-label="PermitTrack home">
-            <img src="assets/images/PermitTrackIcon.png?v=60" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=64" alt="" class="w-9 h-9 object-contain shrink-0" />
             <span class="text-lg font-bold text-slate-900">PermitTrack</span>
           </router-link>
           <slot></slot>

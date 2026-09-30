@@ -1,13 +1,14 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=60';
-import StatusStepper from './StatusStepper.js?v=60';
-import { permitNumber, permitIconClass, formatDate } from '../util.js?v=60';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=64';
+import StatusStepper from './StatusStepper.js?v=64';
+import { permitNumber, permitIconClass, formatDate } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 // Collapsible list of permits, shared by the dashboard preview and the My Permits page.
 // Collapsed rows show a mini timeline; opening one loads and shows the whole permit —
 // documents, activity and replies — so there is nothing else to click through to.
 export default {
   name: 'PermitList',
-  components: { StatusStepper },
+  components: { StatusStepper, Loader },
   props: {
     apps: { type: Array, required: true },
     // Which permit starts open. Defaults to the first one needing action.
@@ -188,7 +189,7 @@ export default {
         </div>
 
         <template v-if="showDetail">
-        <p v-if="detailLoading[app.id]" class="text-sm text-slate-400 mt-6">Loading documents and activity…</p>
+        <Loader v-if="detailLoading[app.id]" variant="inline" kind="documents" class="mt-6 text-slate-500" />
         <p v-else-if="detailError[app.id]" class="text-sm text-red-600 mt-6">
           {{ detailError[app.id] }}
           <button type="button" @click="loadDetail(app.id, true)" class="font-semibold underline ml-1">Try again</button>

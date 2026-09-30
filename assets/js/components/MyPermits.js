@@ -1,12 +1,13 @@
-import { apiGet } from '../api/client.js?v=60';
-import AppShell from './AppShell.js?v=60';
-import PermitList from './PermitList.js?v=60';
-import { authState } from '../store/auth.js?v=60';
+import { apiGet } from '../api/client.js?v=64';
+import AppShell from './AppShell.js?v=64';
+import PermitList from './PermitList.js?v=64';
+import { authState } from '../store/auth.js?v=64';
+import Loader from './Loader.js?v=64';
 
 // Every permit the signed-in applicant has ever filed, with a status filter and search.
 export default {
   name: 'MyPermits',
-  components: { AppShell, PermitList },
+  components: { AppShell, PermitList, Loader },
   data() {
     return { apps: [], loading: true, filter: 'all', search: '' };
   },
@@ -88,7 +89,7 @@ export default {
       </router-link>
     </div>
 
-    <div v-if="loading" class="bg-white rounded-2xl border border-brand-100 p-12 text-center text-slate-400">Loading your permits…</div>
+    <Loader v-if="loading" kind="permits" />
 
     <div v-else-if="!apps.length" class="bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center">
       <p class="text-slate-500 mb-4">You don't have any permit applications yet.</p>

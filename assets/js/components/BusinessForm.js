@@ -1,7 +1,8 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=60';
-import AppShell from './AppShell.js?v=60';
-import { loadCurrentUser } from '../store/auth.js?v=60';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=60';
+import { apiGet, apiPostForm } from '../api/client.js?v=64';
+import AppShell from './AppShell.js?v=64';
+import { loadCurrentUser } from '../store/auth.js?v=64';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
@@ -17,7 +18,7 @@ function emptyForm() {
 export default {
   name: 'BusinessForm',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell },
+  components: { AppShell, Loader },
   data() {
     return {
       loading: true,
@@ -142,7 +143,7 @@ export default {
       <p class="text-sm text-white/85 mt-1 max-w-xl">City Staff checks your registration documents. Once verified, you can apply for business permits for this business.</p>
     </div>
 
-    <div v-if="loading" class="text-slate-400 text-sm">Loading…</div>
+    <Loader v-if="loading" kind="business" />
 
     <template v-else>
       <!-- Status banners -->

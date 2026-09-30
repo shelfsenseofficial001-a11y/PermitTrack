@@ -1,7 +1,8 @@
-import { apiGet, apiPost } from '../api/client.js?v=60';
-import AppShell from './AppShell.js?v=60';
-import { notificationsChanged } from '../store/ui.js?v=60';
-import { timeAgo, formatDate } from '../util.js?v=60';
+import { apiGet, apiPost } from '../api/client.js?v=64';
+import AppShell from './AppShell.js?v=64';
+import { notificationsChanged } from '../store/ui.js?v=64';
+import { timeAgo, formatDate } from '../util.js?v=64';
+import Loader from './Loader.js?v=64';
 
 // Every update on the applicant's permits in one place — the full version of the bell's
 // dropdown, with filters by read state, kind, permit and free text, grouped by day.
@@ -9,7 +10,7 @@ const LIMIT = 200;
 
 export default {
   name: 'Notifications',
-  components: { AppShell },
+  components: { AppShell, Loader },
   data() {
     return {
       items: [],
@@ -193,7 +194,7 @@ export default {
     </div>
 
     <!-- States -->
-    <div v-if="loading" class="bg-white rounded-2xl border border-brand-100 p-12 text-center text-slate-400">Loading your notifications…</div>
+    <Loader v-if="loading" kind="notifications" />
 
     <div v-else-if="error" class="bg-white rounded-2xl border border-red-200 p-10 text-center">
       <p class="text-red-600 mb-3">{{ error }}</p>
