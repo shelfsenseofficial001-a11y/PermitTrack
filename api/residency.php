@@ -208,6 +208,11 @@ if ($action === 'decide' && $method === 'POST') {
         ->execute([$decision === 'approve' ? 'approved' : 'rejected', $staff['id'], $decision === 'reject' ? mb_substr($reason, 0, 500) : null, $request['id']]);
     $pdo->prepare('UPDATE users SET resident_status = ? WHERE id = ?')
         ->execute([$decision === 'approve' ? 'verified' : 'rejected', $request['user_id']]);
+    if ($decision === 'approve') {
+        // account_type is informational only (see api/config.php::with_levels()) — this just
+        // keeps it from staying 'unregistered' forever. Same pattern as business.php's approval.
+        $pdo->prepare("UPDATE users SET account_type = 'resident' WHERE id = ?")->execute([$request['user_id']]);
+    }
     audit((int)$staff['id'], 'residency.' . ($decision === 'approve' ? 'approved' : 'rejected'), 'resident_verification', (int)$request['id'], $decision === 'reject' ? $reason : null);
     $pdo->commit();
 
