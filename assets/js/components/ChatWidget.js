@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../api/client.js?v=67';
+import { apiGet, apiPost } from '../api/client.js?v=68';
 
 // Floating FAQ assistant for resident / business users (prototype — answers come from api/chat.php)
 export default {
@@ -35,7 +35,7 @@ export default {
           const res = await apiGet('chat.php?action=start');
           this.messages.push({ from: 'bot', text: res.text, suggestions: res.suggestions });
         } catch (e) {
-          this.messages.push({ from: 'bot', text: "Sorry, the assistant isn't available right now." });
+          this.messages.push({ from: 'bot', text: "Sorry, Gibs P. isn't available right now." });
         }
       }
       if (this.open) this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
@@ -75,19 +75,20 @@ export default {
   <div class="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-5 z-40 flex flex-col items-end gap-3">
     <transition name="chat">
     <section v-if="open" class="origin-bottom-right w-[min(24rem,calc(100vw-2.5rem))] h-[min(34rem,calc(100dvh-13rem))] md:h-[min(34rem,calc(100vh-7rem))] bg-white rounded-2xl shadow-[0_24px_60px_-20px_rgba(16,48,29,0.45)] border border-brand-100 flex flex-col overflow-hidden"
-      role="dialog" aria-label="PermitTrack assistant">
+      role="dialog" aria-label="Gibs P., the PermitTrack assistant">
       <header class="bg-ink-700 text-white px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <div class="w-8 h-8 rounded-lg bg-sun-400 text-ink-700 flex items-center justify-center font-bold">?</div>
           <div class="leading-tight">
-            <div class="text-sm font-bold">PermitTrack Assistant</div>
-            <div class="text-[11px] text-ink-300">Answers common questions · prototype</div>
+            <div class="text-sm font-bold">Gibs P.</div>
+            <div class="text-[11px] text-ink-300">Answers common questions</div>
           </div>
         </div>
         <button type="button" @click="open = false" class="text-ink-300 hover:text-white text-xl leading-none px-1" aria-label="Close assistant">×</button>
       </header>
 
-      <div ref="log" class="flex-1 overflow-y-auto scroll-soft px-4 py-4 space-y-3 bg-meadow/60" aria-live="polite">
+      <div ref="log" class="flex-1 overflow-y-auto scroll-soft px-4 py-4 bg-meadow/60" aria-live="polite">
+        <transition-group name="list" tag="div" class="space-y-3">
         <div v-for="(m, i) in messages" :key="i" :class="m.from === 'user' ? 'flex justify-end' : ''">
           <div v-if="m.from === 'user'" class="max-w-[85%] rounded-2xl rounded-br-md bg-brand-600 text-white px-3.5 py-2 text-sm">{{ m.text }}</div>
           <div v-else class="max-w-[92%]">
@@ -104,7 +105,8 @@ export default {
             </div>
           </div>
         </div>
-        <div v-if="sending" class="text-xs text-slate-400">Assistant is typing…</div>
+        </transition-group>
+        <div v-if="sending" class="text-xs text-slate-400 mt-3">Gibs P. is typing…</div>
       </div>
 
       <form @submit.prevent="send()" class="border-t border-slate-100 p-3 flex gap-2">
@@ -115,7 +117,7 @@ export default {
     </section>
     </transition>
 
-    <button type="button" @click="toggle" :aria-expanded="open" aria-label="Open PermitTrack assistant"
+    <button type="button" @click="toggle" :aria-expanded="open" aria-label="Open Gibs P., the PermitTrack assistant"
       class="flex items-center gap-2 rounded-full bg-ink-700 text-white pl-3 pr-4 py-3 shadow-lg hover:bg-ink-600 transition">
       <span class="w-7 h-7 rounded-full bg-sun-400 text-ink-700 flex items-center justify-center font-bold text-sm">{{ open ? '×' : '?' }}</span>
       <span class="text-sm font-semibold">{{ open ? 'Close' : 'Ask' }}</span>
