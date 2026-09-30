@@ -199,9 +199,16 @@ function chat_is_on_topic(array $tokens): bool
     return (bool)array_intersect($tokens, CHAT_ON_TOPIC_HINTS);
 }
 
-/** Scores one FAQ entry: keyword phrases found in the message count most, shared words add a little. */
+/** Scores one FAQ entry: keyword phrases found in the message count most, shared words add a little.
+ * Tapping a suggestion chip sends the question verbatim (in either language), so an exact match on
+ * question or question_tl always wins outright. */
 function chat_score(string $normalized, array $messageTokens, array $faq): float
 {
+    foreach ([$faq['question'], $faq['question_tl'] ?? null] as $q) {
+        if ($q !== null && $q !== '' && chat_normalize($q) === $normalized) {
+            return 100.0;
+        }
+    }
     $score = 0.0;
     $padded = " $normalized ";
     foreach (explode(',', $faq['keywords']) as $kw) {
@@ -210,7 +217,7 @@ function chat_score(string $normalized, array $messageTokens, array $faq): float
             $score += 1.5 + substr_count($kw, ' ') * 1.5; // multi-word phrases are stronger evidence
         }
     }
-    $shared = array_intersect($messageTokens, chat_tokens($faq['question'] . ' ' . str_replace(',', ' ', $faq['keywords'])));
+    $shared = array_intersect($messageTokens, chat_tokens($faq['question'] . ' ' . ($faq['question_tl'] ?? '') . ' ' . str_replace(',', ' ', $faq['keywords'])));
     return $score + count($shared) * 0.5;
 }
 
@@ -389,7 +396,7 @@ function chatbot_reply(string $message, ?array $user, string $lang = CHAT_DEFAUL
         return array_merge($base, [
             'text' => chat_t('fallback', $lang),
             'intent' => 'fallback',
-            'suggestions' => array_slice(array_merge(array_map(fn($s) => chat_faq_question($s['faq'], $lang), array_slice($scored, 0, 2)), chat_starter_suggestions($user, $lang)), 0, 4),
+            'suggestions' => array_slice(array_values(array_unique(array_merge(array_map(fn($s) => chat_faq_question($s['faq'], $lang), array_slice($scored, 0, 2)), chat_starter_suggestions($user, $lang)))), 0, 4),
             'score' => $scored[0]['score'] ?? 0.0,
         ]);
     }
