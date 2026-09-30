@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { apiGet, apiPost } from '../api/client.js?v=79';
+import { apiGet, apiPost } from '../api/client.js?v=80';
 
 export const authState = reactive({
   user: null,

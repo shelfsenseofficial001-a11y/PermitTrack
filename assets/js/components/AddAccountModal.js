@@ -1,6 +1,6 @@
-import { login, reloadAs } from '../store/auth.js?v=79';
-import { inputClass } from './AuthLayout.js?v=79';
-import BaseModal from './BaseModal.js?v=79';
+import { login, reloadAs } from '../store/auth.js?v=80';
+import { inputClass } from './AuthLayout.js?v=80';
+import BaseModal from './BaseModal.js?v=80';
 
 // "Add account": sign in to another account on top of the current page. The current account
 // stays signed in on this browser (see auth.php "accounts"), so the user can switch back.
