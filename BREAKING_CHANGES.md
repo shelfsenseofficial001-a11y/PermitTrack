@@ -193,8 +193,27 @@ second full-DB scan (zero matches) and confirmed live through the chat widget.
 
 **Going forward**: any future migration containing non-ASCII characters (ñ, em-dash, accented
 names, etc.) must be verified after applying — run a query back over the specific value and
-visually diff it, or scan for `REGEXP '[\\x{2500}-\\x{25FF}]'` — rather than trusted just because
-`mysql.exe` exited 0. Pure-ASCII migrations are unaffected and don't need this check.
+visually diff it — rather than trusted just because `mysql.exe` exited 0. Better still, write
+non-ASCII characters with `UNHEX()` so the `.sql` file is pure ASCII (see 017/018), and confirm
+with `LC_ALL=C grep -n '[^ -~<TAB>]' file.sql` returning nothing.
+
+**Update — the first scan badly under-counted.** The `REGEXP '[\\x{2500}-\\x{25FF}]'` scan above
+only catches ONE of this bug's manifestations (ñ → CP437 box-drawing bytes). A second
+manifestation turns an em dash / en dash / right arrow into a 3-character Latin-1-Supplement
+sequence (`ÔÇö`, `ÔÇô`, `ÔåÆ`) that the first scan never matched. Found when the chat bot rendered
+`ÔÇö` in a Tagalog answer *after* 017 was already committed. A broader rescan (any Latin-1
+Supplement letter other than ñ/Ñ, OR the CP437 range) found **99 more corrupted rows**: 73 of the
+75 "Barangay Secretary — <name>" users, 2 departments (ENGINEER, FDA), and ~20 FAQ
+`answer`/`answer_tl` rows — every em dash, en dash, or arrow ever written by a CLI migration
+(008, 014, 015). Fixed live via PDO, and migration `018_encoding_fix2.sql` reproduces the fix
+for fresh installs (pure-ASCII, `UNHEX()`-built `REPLACE()`), verified by restoring the corrupted
+pre-fix backup into a scratch DB and confirming 018 alone takes it from 99 suspect rows to 0.
+
+Use the broader scan from now on — a clean result from the narrow one proves nothing:
+```sql
+WHERE col REGEXP '[\\x{2500}-\\x{25FF}]'
+   OR (col REGEXP '[\\x{00C0}-\\x{00FF}]' AND col NOT REGEXP '[\\x{00F1}\\x{00D1}]')
+```
 
 ## 11. Chat bot: bubble animation, renamed to "Gibs P.", warmer off-topic replies, and a real suggestions bug fixed
 
@@ -214,6 +233,25 @@ visually diff it, or scan for `REGEXP '[\\x{2500}-\\x{25FF}]'` — rather than t
   of this work started, so greeting/fallback suggestions have likely never worked. Fixed by
   switching to `array_merge($base, [...])`, where the later argument wins. Verified live: an
   off-topic message and a "hello" greeting both now return their intended suggestion chips.
+
+## 12. 3D "Gibs P." mascot in the chat widget (new external dependency)
+
+`GibsMascot.js` renders `assets/images/skin-ett4.png` (a standard 64x64 Minecraft skin) as a 3D
+model via **skinview3d 3.4.2**, loaded at runtime from
+`https://unpkg.com/skinview3d@3.4.2/bundles/skinview3d.bundle.js` — the app's first runtime JS
+dependency on unpkg (Tailwind was already loaded from its own CDN). The bundle is self-contained
+(Three.js included) and exposes `window.skinview3d`; it's only fetched the first time the chat
+widget opens, once per page load. If it fails to load (offline, CDN down) the header falls back to
+the old yellow "?" badge — the chat itself keeps working.
+
+`ChatWidget.js` drives a `mascotState` prop: `greeting` on first open (WaveAnimation),
+`thinking` while a reply is pending (custom head-nod), `answering` for ~1s when it lands (custom
+hop), `error` on a failed request (custom head-shake), else `idle` (IdleAnimation + head follows
+the cursor on hover). Drag-to-rotate is skinview3d's built-in OrbitControls; zoom and pan are
+disabled so the model can't be dragged out of the 56px header canvas.
+
+To swap the skin, replace `skin-ett4.png` or pass a different `skinUrl` prop. Pinning the exact
+version (`@3.4.2`) is deliberate — an unpinned unpkg URL would silently pick up breaking releases.
 
 ## Status
 
