@@ -1,10 +1,11 @@
-import { apiGet, apiPost } from '../api/client.js?v=70';
-import GibsMascot from './GibsMascot.js?v=70';
+import { apiGet, apiPost } from '../api/client.js?v=71';
+import GibsMascot from './GibsMascot.js?v=71';
+import GibsPeek from './GibsPeek.js?v=71';
 
 // Floating FAQ assistant for resident / business users (prototype — answers come from api/chat.php)
 export default {
   name: 'ChatWidget',
-  components: { GibsMascot },
+  components: { GibsMascot, GibsPeek },
   props: {
     // True while another bottom-right floating control (e.g. Landing's "Back to top") is also
     // showing, so this widget lifts above it instead of the two overlapping.
@@ -107,7 +108,7 @@ export default {
       role="dialog" aria-label="Gibs P., the PermitTrack assistant">
       <header class="bg-ink-700 text-white px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <GibsMascot :state="mascotState" :size="56" />
+          <GibsMascot :state="mascotState" :width="56" :height="56" />
           <div class="leading-tight">
             <div class="text-sm font-bold">Gibs P.</div>
             <div class="text-[11px] text-ink-300">Answers common questions</div>
@@ -145,6 +146,8 @@ export default {
       </form>
     </section>
     </transition>
+
+    <GibsPeek :suppressed="open" :lift-for-fab="liftForFab" @open="toggle" />
 
     <button type="button" @click="toggle" :aria-expanded="open" aria-label="Open Gibs P., the PermitTrack assistant"
       class="flex items-center gap-2 rounded-full bg-ink-700 text-white pl-3 pr-4 py-3 shadow-lg hover:bg-ink-600 transition">

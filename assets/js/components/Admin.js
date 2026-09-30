@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=70';
-import StaffShell from './StaffShell.js?v=70';
-import { formatDate } from '../util.js?v=70';
-import Loader from './Loader.js?v=70';
+import { apiGet, apiPost } from '../api/client.js?v=71';
+import StaffShell from './StaffShell.js?v=71';
+import { formatDate } from '../util.js?v=71';
+import Loader from './Loader.js?v=71';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },

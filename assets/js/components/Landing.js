@@ -1,5 +1,5 @@
-import { permitIconClass } from '../util.js?v=70';
-import ChatWidget from './ChatWidget.js?v=70';
+import { permitIconClass } from '../util.js?v=71';
+import ChatWidget from './ChatWidget.js?v=71';
 
 // The public front door. Everything on it describes what PermitTrack really does — the five
 // stages, the five permit types and their actual requirements — so nothing here over-promises.
@@ -254,7 +254,7 @@ export default {
       :class="scrolled || menuOpen ? 'bg-white/90 backdrop-blur-md shadow-[0_8px_30px_-18px_rgba(16,48,29,0.35)]' : 'bg-transparent'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <button type="button" @click="go('top')" class="flex items-center gap-2.5 shrink-0" aria-label="PermitTrack, back to top">
-          <img src="assets/images/PermitTrackIcon.png?v=70" alt="" class="w-9 h-9 object-contain" />
+          <img src="assets/images/PermitTrackIcon.png?v=71" alt="" class="w-9 h-9 object-contain" />
           <span class="leading-tight text-left">
             <span class="block text-[15px] font-bold text-ink-700">PermitTrack</span>
             <span class="block text-[11px] text-slate-500">City of Dasmariñas</span>
@@ -641,7 +641,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr] gap-10">
         <div>
           <div class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=70" alt="" class="w-9 h-9 object-contain" />
+            <img src="assets/images/PermitTrackIcon.png?v=71" alt="" class="w-9 h-9 object-contain" />
             <span class="leading-tight">
               <span class="block text-[15px] font-bold text-white">PermitTrack</span>
               <span class="block text-[11px] text-ink-300">City of Dasmariñas</span>
