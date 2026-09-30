@@ -269,6 +269,22 @@ Two things to know when working on it:
   `renderPaused` from *inside* an animation callback is silently undone. The peek canvas pauses
   itself (to save GPU while hidden) via `queueMicrotask`, after the frame finishes.
 
+**Update — full-body stage, "New chat", witty replies.** The chat is now a centred two-pane dialog
+(stage on the left, chat on the right; stacked on phones). The header's 56px portrait mode was
+removed — `GibsMascot` now has only `mode="stage"` (full body, `fill` sizes it to its container via
+`ResizeObserver`, drag-to-rotate, contact shadow) and `mode="peek"`. The stage background is plain
+white for now (a themed environment can go there later). New reactions: `listening` (he turns to
+the chat and nods while you type), thinking = hand to chin + foot tap + "?", answering = "ta-da"
+arms + "!", error = facepalm + "?!", and random idle quirks (stretch, shifty eyes, checking his
+wrist, a small wave). Stage zoom is 0.55 so hops and raised arms never clip.
+
+"New chat" clears the conversation after a `BaseModal` confirmation ("Reset now" / "Continue
+current chat") and calls the new `POST api/chat.php?action=reset`, which clears only the running
+off-topic/opener rotation — **the language choice is kept**. Because `BaseModal` releases the body
+scroll lock when it closes, `ChatWidget.relockScroll()` re-applies it while the chat is still open.
+Bot strings were rewritten to be playful, and answers now start with a random `CHAT_OPENERS` line
+(never the same one twice in a row, tracked in `$_SESSION['chat_last_opener']`).
+
 ## Status
 
 | Layer | Status |

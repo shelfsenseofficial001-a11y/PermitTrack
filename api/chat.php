@@ -25,6 +25,13 @@ if ($action === 'start' && $method === 'GET') {
     ]);
 }
 
+// "New chat": forget this conversation's running jokes. The language choice is kept — it's a
+// preference, not part of the conversation.
+if ($action === 'reset' && $method === 'POST') {
+    unset($_SESSION['chat_off_topic_n'], $_SESSION['chat_last_opener']);
+    respond(['ok' => true]);
+}
+
 if ($action === 'ask' && $method === 'POST') {
     $user = current_user();
     $message = trim((string)(json_input()['message'] ?? ''));
