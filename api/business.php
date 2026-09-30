@@ -303,6 +303,10 @@ if ($action === 'decide' && $method === 'POST') {
     $pdo->commit();
 
     if ($decision === 'approve') {
+        // account_type is informational (nothing gates access on it — that's resident_status +
+        // approved-business-count, via with_levels()), but it defaulted to 'resident' for every
+        // signup and was never updated, so a business-only account stayed mislabeled forever.
+        $pdo->prepare("UPDATE users SET account_type = 'business' WHERE id = ?")->execute([$b['user_id']]);
         notify_user((int)$b['user_id'], 'Your business is verified', 'Good news! "' . $b['business_name'] . '" has been verified. You can now apply for business permits for it in PermitTrack.');
     } else {
         notify_user((int)$b['user_id'], 'Your business registration needs attention', '"' . $b['business_name'] . '" was not approved: ' . $reason . ' Please log in to PermitTrack to fix it and resubmit.');
