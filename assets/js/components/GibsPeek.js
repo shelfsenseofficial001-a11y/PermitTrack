@@ -1,4 +1,4 @@
-import GibsMascot from './GibsMascot.js?v=112';
+import GibsMascot from './GibsMascot.js?v=113';
 
 // Gibs P. sneaking a look from behind the right edge of the window every so often, offering help.
 // The canvas's right edge is flush with the window edge, so the window itself is the "wall" he

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/psgc.php';
+require_once __DIR__ . '/lib/support.php';   // find_barangay()
 require __DIR__ . '/lib/verification.php';
 
 $action = $_GET['action'] ?? '';
@@ -122,7 +124,8 @@ if ($action === 'register' && $method === 'POST') {
     $phoneRaw = $str('phone');
     $addressLine = $str('address_line');
     $barangay = $str('barangay');
-    $city = $str('city');
+    $provinceCode = $str('province_code');
+    $cityCode = $str('city_code');
     $postal = $str('postal_code');
     $password = (string)($in['password'] ?? '');
     $consent = (bool)($in['privacy_consent'] ?? false);
@@ -155,8 +158,38 @@ if ($action === 'register' && $method === 'POST') {
         $email = null;
     }
 
-    if ($addressLine === '' || $barangay === '' || $city === '') {
-        fail('House/street, barangay and city are required.');
+    if ($addressLine === '') {
+        fail('House / street is required.');
+    }
+    // Province and city are picked from the PSGC list, and the pair is re-checked here — a form can
+    // be tampered with, and whether an account is in this city decides what it may file.
+    if ($provinceCode === '' || $cityCode === '') {
+        fail('Please choose your province and city or municipality.');
+    }
+    if (!psgc_is_valid_pair($provinceCode, $cityCode)) {
+        fail('That city or municipality is not in the province you chose.');
+    }
+    $province = psgc_name(psgc_provinces(), $provinceCode);
+    $city = psgc_name(psgc_cities($provinceCode), $cityCode);
+    if ($province === null || $city === null) {
+        fail('Please choose your province and city or municipality.');
+    }
+
+    // Barangay is only collected inside the city this system serves. Elsewhere there is no barangay
+    // office to route to, so it is left out rather than stored as unverifiable free text.
+    $barangayId = null;
+    if (psgc_is_home_city($cityCode)) {
+        if ($barangay === '') {
+            fail('Please choose your barangay.');
+        }
+        $matched = find_barangay($barangay);
+        if (!$matched) {
+            fail('Please choose your barangay from the list.');
+        }
+        $barangay = $matched['name'];
+        $barangayId = (int)$matched['id'];
+    } else {
+        $barangay = '';
     }
     if (!preg_match('/^\d{4}$/', $postal)) {
         fail('Postal / ZIP code must be 4 digits.');
@@ -178,7 +211,10 @@ if ($action === 'register' && $method === 'POST') {
     $data = [
         'email' => $email, 'phone' => $phone, 'password_hash' => password_hash($password, PASSWORD_BCRYPT),
         'full_name' => $fullName, 'first_name' => $first, 'middle_name' => $middle ?: null, 'last_name' => $last,
-        'birthdate' => $birthdate, 'address_line' => $addressLine, 'barangay' => $barangay, 'city' => $city, 'postal_code' => $postal,
+        'birthdate' => $birthdate, 'address_line' => $addressLine,
+        'barangay' => $barangay ?: null, 'barangay_id' => $barangayId,
+        'city' => $city, 'city_code' => $cityCode, 'province' => $province, 'province_code' => $provinceCode,
+        'postal_code' => $postal,
     ];
     $verifChannel = $contactMethod === 'phone' ? 'sms' : 'email';
     $destination = $contactMethod === 'phone' ? $phone : $email;
@@ -254,11 +290,13 @@ if ($action === 'verify' && $method === 'POST') {
         try {
             db()->prepare(
                 "INSERT INTO users (role, account_type, email, phone, password_hash, full_name, first_name, middle_name, last_name, birthdate,
-                                    address_line, barangay, city, postal_code, privacy_consent_at, onboarding_completed, $verifiedColumn)
-                 VALUES ('applicant', 'unregistered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1, NOW())"
+                                    address_line, barangay, barangay_id, city, city_code, province, province_code, postal_code,
+                                    privacy_consent_at, onboarding_completed, $verifiedColumn)
+                 VALUES ('applicant', 'unregistered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1, NOW())"
             )->execute([
                 $d['email'], $d['phone'], $d['password_hash'], $d['full_name'], $d['first_name'], $d['middle_name'], $d['last_name'], $d['birthdate'],
-                $d['address_line'], $d['barangay'], $d['city'], $d['postal_code'],
+                $d['address_line'], $d['barangay'] ?? null, $d['barangay_id'] ?? null,
+                $d['city'], $d['city_code'] ?? null, $d['province'] ?? null, $d['province_code'] ?? null, $d['postal_code'],
             ]);
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') {

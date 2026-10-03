@@ -6,15 +6,14 @@ require_once __DIR__ . '/lib/psgc.php';
 /**
  * The address pickers: provinces, and the cities/municipalities under one of them.
  *
- * Reference data, the same for everyone, so it only needs a signed-in account rather than any
- * particular role. Barangays are not served here — inside Dasmariñas they come from the
+ * Public reference data, identical for everyone and needed on the registration form before an
+ * account exists, so it is not gated. Barangays are not served here — inside Dasmariñas they come from the
  * `barangays` table (residency.php / applications.php), and outside it they are not collected.
  */
 
 $action = $_GET['action'] ?? '';
 
 if ($action === 'provinces' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-    require_auth();
     respond([
         'provinces' => psgc_provinces(),
         // So the form can offer "I live in Dasmariñas" without hunting for it in the list.
@@ -25,8 +24,14 @@ if ($action === 'provinces' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     ]);
 }
 
+// The 75 barangays of Dasmariñas, for when the chosen city is this one. Needed on the
+// registration form too, which runs before there is an account to authenticate.
+if ($action === 'barangays' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    require_once __DIR__ . '/lib/support.php';
+    respond(['barangays' => barangay_options()]);
+}
+
 if ($action === 'cities' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-    require_auth();
     $provinceCode = trim((string)($_GET['province_code'] ?? ''));
     if ($provinceCode === '') {
         fail('province_code is required.');
