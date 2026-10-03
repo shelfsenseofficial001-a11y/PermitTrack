@@ -1,8 +1,8 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=80';
-import StaffShell from './StaffShell.js?v=80';
-import { permitNumber, formatDate, backButtonClass, backIconClass } from '../util.js?v=80';
-import Loader from './Loader.js?v=80';
-import { authState } from '../store/auth.js?v=80';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=108';
+import StaffShell from './StaffShell.js?v=108';
+import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass } from '../util.js?v=108';
+import Loader from './Loader.js?v=108';
+import { authState } from '../store/auth.js?v=108';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
@@ -50,6 +50,7 @@ export default {
   methods: {
     permitNumber,
     formatDate,
+    formatDateTime,
     downloadUrl,
     async refresh() {
       this.loading = true;
@@ -120,7 +121,7 @@ export default {
       <div class="pt-gradient-wide rounded-3xl px-6 py-7 sm:px-8 mt-3 shadow-[0_24px_60px_-28px_rgba(31,122,58,0.7)]">
         <p class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1.5">Permit #{{ permitNumber(app) }}</p>
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ app.applicant.full_name }} &mdash; {{ permitTypeLabel }} Permit</h1>
-        <div class="text-sm text-white/85 mt-1">Submitted {{ formatDate(app.created_at) }}</div>
+        <div class="text-sm text-white/85 mt-1">Submitted {{ formatDateTime(app.created_at) }}</div>
       </div>
 
       <div class="grid lg:grid-cols-3 gap-6 mt-6">
@@ -152,6 +153,7 @@ export default {
                   <div class="text-sm font-semibold text-slate-800 truncate">{{ doc.doc_name }}</div>
                   <a v-if="doc.file_path" :href="downloadUrl(doc.id)" class="text-xs font-semibold text-brand-600 hover:underline">View file</a>
                   <span v-else class="text-xs text-slate-400">Not uploaded</span>
+                  <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
                 </div>
                 <div v-if="doc.file_path" class="flex items-center gap-2 shrink-0">
                   <button

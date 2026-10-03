@@ -4,6 +4,22 @@ require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/support.php';
 require_once __DIR__ . '/lib/pipeline.php';
 
+/**
+ * The office code a department answers to. Every barangay secretariat shares the code BARANGAY,
+ * which is how permit_pipeline_steps and permit_type_documents say "whichever barangay this
+ * applicant belongs to".
+ */
+function office_code_for_department(int $departmentId): string
+{
+    $s = db()->prepare('SELECT code, barangay_id FROM departments WHERE id = ?');
+    $s->execute([$departmentId]);
+    $row = $s->fetch();
+    if (!$row) {
+        return '';
+    }
+    return $row['barangay_id'] !== null ? 'BARANGAY' : (string)$row['code'];
+}
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -24,7 +40,7 @@ if ($action === 'queue' && $method === 'GET') {
     $user = require_role('staff');
     $tab = (string)($_GET['tab'] ?? 'new');
 
-    $where = department_filter($user) . " AND a.status NOT IN ('Approved','Rejected')";
+    $where = department_filter($user) . " AND a.status NOT IN ('Approved','Rejected','Withdrawn')";
     if ($tab === 'new') {
         $where .= " AND a.status = 'Submitted'";
     } elseif ($tab === 'awaiting_applicant') {
@@ -49,7 +65,7 @@ if ($action === 'counts' && $method === 'GET') {
 
     $new = $pdo->query("SELECT COUNT(*) c FROM applications a WHERE $dept AND a.status = 'Submitted'")->fetch()['c'];
     $awaiting = $pdo->query(
-        "SELECT COUNT(*) c FROM applications a WHERE $dept AND a.status NOT IN ('Approved','Rejected')
+        "SELECT COUNT(*) c FROM applications a WHERE $dept AND a.status NOT IN ('Approved','Rejected','Withdrawn')
          AND EXISTS (SELECT 1 FROM application_documents d WHERE d.application_id = a.id AND d.status = 'Needs Re-upload')"
     )->fetch()['c'];
     $inProgress = $pdo->query(
@@ -187,6 +203,24 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     $current = $currentStmt->fetch();
     if (!$current || (int)$current['department_id'] !== (int)$user['department_id']) {
         fail('This application is not currently waiting on your office.', 403);
+    }
+
+    // No skipping: an office signs its node off only once it has actually decided the documents it
+    // is responsible for. Otherwise a permit could move past paperwork nobody ever looked at.
+    // Rejecting stays available at any point — that is how a bad application gets stopped early.
+    if ($decision === 'approved') {
+        $officeCode = office_code_for_department((int)$user['department_id']);
+        $pendingStmt = db()->prepare(
+            "SELECT COUNT(*) FROM application_documents
+              WHERE application_id = ?
+                AND COALESCE(office_code, 'BARANGAY') = ?
+                AND status <> 'Verified'"
+        );
+        $pendingStmt->execute([$appId, $officeCode]);
+        $pending = (int)$pendingStmt->fetchColumn();
+        if ($pending > 0) {
+            fail('Review the ' . $pending . ' document(s) your office is responsible for before approving this step.', 409);
+        }
     }
 
     $pdo = db();

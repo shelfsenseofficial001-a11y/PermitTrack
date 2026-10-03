@@ -1,6 +1,6 @@
-import { authState, changePassword, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=80';
-import { inputClass } from './AuthLayout.js?v=80';
-import BaseModal from './BaseModal.js?v=80';
+import { authState, changePassword, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=108';
+import { inputClass } from './AuthLayout.js?v=108';
+import BaseModal from './BaseModal.js?v=108';
 
 // Change password as a dialog over the current page. With `forced` (a temporary password
 // set by an Admin), it cannot be dismissed — the only ways out are a new password or signing out.
@@ -28,13 +28,15 @@ export default {
       const p = this.form.next;
       return [
         { label: '8+ characters', ok: p.length >= 8 },
-        { label: 'A letter', ok: /[A-Za-z]/.test(p) },
+        { label: 'An uppercase letter', ok: /[A-Z]/.test(p) },
+        { label: 'A lowercase letter', ok: /[a-z]/.test(p) },
         { label: 'A number', ok: /\d/.test(p) },
+        { label: 'A special character', ok: /[^A-Za-z0-9]/.test(p) },
         { label: 'Passwords match', ok: p !== '' && p === this.form.confirm },
       ];
     },
     strength() {
-      return this.rules.slice(0, 3).filter((r) => r.ok).length;
+      return this.rules.slice(0, 5).filter((r) => r.ok).length;
     },
     valid() {
       return this.form.current !== '' && this.rules.every((r) => r.ok);
@@ -111,8 +113,8 @@ export default {
         <input id="cp-new" v-model="form.next" :type="show ? 'text' : 'password'" required autocomplete="new-password" :class="inputClass" />
         <!-- Strength meter: one segment per rule met -->
         <div class="flex gap-1 mt-2" aria-hidden="true">
-          <span v-for="i in 3" :key="i" class="h-1 flex-1 rounded-full transition-colors duration-300"
-            :class="i <= strength ? (strength === 3 ? 'bg-brand-600' : strength === 2 ? 'bg-sun-400' : 'bg-red-400') : 'bg-slate-200'"></span>
+          <span v-for="i in 5" :key="i" class="h-1 flex-1 rounded-full transition-colors duration-300"
+            :class="i <= strength ? (strength >= 5 ? 'bg-brand-600' : strength >= 3 ? 'bg-sun-400' : 'bg-red-400') : 'bg-slate-200'"></span>
         </div>
       </div>
       <div>

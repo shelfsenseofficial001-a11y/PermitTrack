@@ -16,10 +16,44 @@ function stage_index(string $status): int
     return $i === false ? 0 : $i;
 }
 
+/** The ceiling on anything attached to an application. Mirrored in assets/js (MAX_UPLOAD_MB). */
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+/**
+ * An application can still be corrected by the applicant only while it is sitting in the queue
+ * untouched. Once a reviewer has it, changes go through them instead.
+ */
+function application_is_editable(array $app): bool
+{
+    return $app['status'] === 'Submitted' && empty($app['assigned_reviewer_id']);
+}
+
 function application_summary(array $app): array
 {
     $app['stage_index'] = stage_index($app['status']);
     $app['stages'] = STAGES;
+    // permit_type is the pre-v2 free-text column and is NULL on anything filed since; the name now
+    // lives on permit_types. Fall back so every caller gets a usable label.
+    if (empty($app['permit_type']) && !empty($app['permit_type_name'])) {
+        $app['permit_type'] = $app['permit_type_name'];
+    }
+    $app['editable'] = application_is_editable($app);
+    return $app;
+}
+
+/** One of this applicant's own applications, or a 404. Never leaks someone else's by id. */
+function own_application(int $id, array $user): array
+{
+    $stmt = db()->prepare(
+        'SELECT a.*, pt.name AS permit_type_name, pt.track AS track FROM applications a
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
+         WHERE a.id = ? AND a.applicant_id = ?'
+    );
+    $stmt->execute([$id, $user['id']]);
+    $app = $stmt->fetch();
+    if (!$app) {
+        fail('Application not found.', 404);
+    }
     return $app;
 }
 
@@ -56,18 +90,35 @@ if ($action === 'permit_types' && $method === 'GET') {
 if ($action === 'list' && $method === 'GET') {
     $user = require_role('applicant');
     $stmt = db()->prepare(
-        'SELECT a.*, pt.name AS permit_type_name FROM applications a
+        'SELECT a.*, pt.name AS permit_type_name, pt.track AS track FROM applications a
          LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
          WHERE a.applicant_id = ? ORDER BY a.created_at DESC'
     );
     $stmt->execute([$user['id']]);
     $apps = array_map('application_summary', $stmt->fetchAll());
 
+    // The real route each application takes, so a card can show its own offices instead of a fixed
+    // set of stages. One query for the whole list rather than one per application.
+    $routes = [];
+    if ($apps) {
+        $ids = implode(',', array_map(fn($a) => (int)$a['id'], $apps));
+        $routeStmt = db()->query(
+            "SELECT p.application_id, p.step_order, p.step_label, p.status, p.decided_at,
+                    d.name AS department_name, d.code AS department_code
+               FROM application_pipeline_progress p JOIN departments d ON d.id = p.department_id
+              WHERE p.application_id IN ($ids) ORDER BY p.application_id, p.step_order"
+        );
+        foreach ($routeStmt as $row) {
+            $routes[(int)$row['application_id']][] = $row;
+        }
+    }
+
     // Any document flagged "Needs Re-upload" blocks progress and surfaces an alert.
     foreach ($apps as &$app) {
         $docStmt = db()->prepare("SELECT COUNT(*) c FROM application_documents WHERE application_id = ? AND status = 'Needs Re-upload'");
         $docStmt->execute([$app['id']]);
         $app['blocked'] = (int)$docStmt->fetch()['c'] > 0;
+        $app['pipeline'] = $routes[(int)$app['id']] ?? [];
     }
     unset($app);
 
@@ -152,6 +203,71 @@ if ($action === 'detail' && $method === 'GET') {
 // the old 5-value permit_type string, plus forced branch-question answers. Kept as a separate
 // action rather than folded into 'create' below so the existing 5-type flow (and its required-
 // documents/priority logic, still keyed by the old enum) is untouched. See BREAKING_CHANGES.md.
+// Correcting a submission that nobody has picked up yet. The applicant can fix the address and the
+// description; documents are replaced one at a time through documents.php?action=reupload.
+if ($action === 'update' && $method === 'POST') {
+    $user = require_role('applicant');
+    $in = json_input();
+    $app = own_application((int)($in['id'] ?? 0), $user);
+
+    if (!application_is_editable($app)) {
+        fail($app['status'] === 'Withdrawn'
+            ? 'This application was withdrawn, so it can no longer be edited.'
+            : 'This application is already being reviewed, so it can no longer be edited. Message your reviewer instead.', 409);
+    }
+
+    $address = trim((string)($in['property_address'] ?? ''));
+    $description = trim((string)($in['project_description'] ?? ''));
+
+    // Only the tracks that collect an address require one; the rest store 'N/A'
+    $needsAddress = in_array($app['track'] ?? '', ['construction', 'business'], true)
+        || (!empty($app['property_address']) && $app['property_address'] !== 'N/A');
+    if ($needsAddress && $address === '') {
+        fail('Property address is required.');
+    }
+
+    db()->prepare('UPDATE applications SET property_address = ?, project_description = ? WHERE id = ?')
+        ->execute([$address !== '' ? $address : 'N/A', $description !== '' ? $description : null, $app['id']]);
+
+    db()->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+    )->execute([$app['id'], $user['id'], 'Applicant updated the application details.']);
+
+    respond(['ok' => true]);
+}
+
+// Taking an application back out of the queue. The record and its history stay; only the review
+// stops. Allowed on the same terms as editing — nobody has started on it yet.
+if ($action === 'withdraw' && $method === 'POST') {
+    $user = require_role('applicant');
+    $in = json_input();
+    $app = own_application((int)($in['id'] ?? 0), $user);
+
+    if ($app['status'] === 'Withdrawn') {
+        respond(['ok' => true]);
+    }
+    if (!application_is_editable($app)) {
+        fail('This application is already being reviewed and can no longer be withdrawn. Message your reviewer instead.', 409);
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("UPDATE applications SET status = 'Withdrawn', withdrawn_at = NOW() WHERE id = ?")->execute([$app['id']]);
+        // Nothing is left waiting on an office once the applicant has pulled it.
+        $pdo->prepare("UPDATE application_pipeline_progress SET status = 'skipped' WHERE application_id = ? AND status IN ('current','pending')")
+            ->execute([$app['id']]);
+        $pdo->prepare(
+            "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+        )->execute([$app['id'], $user['id'], 'Applicant withdrew this application.']);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+
+    respond(['ok' => true]);
+}
 if ($action === 'create_v2' && $method === 'POST') {
     $user = require_role('applicant');
     if (!can_apply($user)) {
@@ -196,7 +312,8 @@ if ($action === 'create_v2' && $method === 'POST') {
         $businessName = $business['business_name'];
         $barangayId = $business['barangay_id'] !== null ? (int)$business['barangay_id'] : null;
         if ($propertyAddress === '') {
-            $propertyAddress = "{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}";
+            // Postal code is optional, so trim rather than leave a dangling separator.
+            $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
         }
     } else {
         if (!$permitType['resident_eligible'] || ($isStandalone && !$isResident)) {
@@ -232,8 +349,17 @@ if ($action === 'create_v2' && $method === 'POST') {
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0777, true);
             }
+            // office_code travels with the document: which office reviews it is decided by the
+            // catalogue at submission and then frozen, the same way the route is (migration 021).
+            $handlers = [];
+            $handlerStmt = db()->prepare('SELECT doc_name, office_code FROM permit_type_documents WHERE permit_type_id = ?');
+            $handlerStmt->execute([$permitTypeId]);
+            foreach ($handlerStmt as $h) {
+                $handlers[$h['doc_name']] = $h['office_code'];
+            }
+
             $docStmt = $pdo->prepare(
-                'INSERT INTO application_documents (application_id, doc_name, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)'
+                'INSERT INTO application_documents (application_id, doc_name, office_code, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
             foreach ($requiredDocs as $docName) {
                 $fileKey = 'doc_' . preg_replace('/[^a-zA-Z0-9]+/', '_', $docName);
@@ -241,7 +367,19 @@ if ($action === 'create_v2' && $method === 'POST') {
                 $originalName = null;
                 $status = 'Missing';
                 $uploadedAt = null;
+                if (isset($_FILES[$fileKey]) && $_FILES[$fileKey]['error'] === UPLOAD_ERR_INI_SIZE) {
+                    $pdo->rollBack();
+                    fail('"' . $docName . '" is too large to upload.');
+                }
                 if (isset($_FILES[$fileKey]) && $_FILES[$fileKey]['error'] === UPLOAD_ERR_OK) {
+                    if ((int)$_FILES[$fileKey]['size'] > MAX_UPLOAD_BYTES) {
+                        $pdo->rollBack();
+                        fail('"' . $docName . '" is larger than the 5 MB limit. Please attach a smaller file.');
+                    }
+                    if ($typeError = upload_type_error($_FILES[$fileKey])) {
+                        $pdo->rollBack();
+                        fail('"' . $docName . '": ' . $typeError);
+                    }
                     $originalName = basename($_FILES[$fileKey]['name']);
                     $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
                     $dest = $uploadDir . '/' . $safeName;
@@ -250,7 +388,7 @@ if ($action === 'create_v2' && $method === 'POST') {
                     $status = 'Pending Review';
                     $uploadedAt = date('Y-m-d H:i:s');
                 }
-                $docStmt->execute([$appId, $docName, $filePath, $originalName, $status, $uploadedAt]);
+                $docStmt->execute([$appId, $docName, $handlers[$docName] ?? null, $filePath, $originalName, $status, $uploadedAt]);
             }
         }
 
@@ -301,7 +439,8 @@ if ($action === 'create' && $method === 'POST') {
         }
         $businessName = $business['business_name'];
         if ($propertyAddress === '') {
-            $propertyAddress = "{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}";
+            // Postal code is optional, so trim rather than leave a dangling separator.
+            $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
         }
     } else {
         if (!$rule['resident']) {

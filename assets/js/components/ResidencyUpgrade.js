@@ -1,8 +1,8 @@
-import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=80';
-import AppShell from './AppShell.js?v=80';
-import { authState, loadCurrentUser } from '../store/auth.js?v=80';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=80';
-import Loader from './Loader.js?v=80';
+import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=108';
+import AppShell from './AppShell.js?v=108';
+import { authState, loadCurrentUser } from '../store/auth.js?v=108';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=108';
+import Loader from './Loader.js?v=108';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
@@ -20,11 +20,12 @@ export default {
       authState,
       loading: true,
       docTypes: [],
+      barangays: [],
       maxFileMb: 5,
       request: null,
       // Adding the missing email/mobile
       contact: { value: '', sending: false, sentTo: '', code: '', verifying: false, error: '', devCode: '' },
-      address: { address_line: '', barangay: '', city: '', postal_code: '' },
+      address: { address_line: '', barangay: '' },
       proofs: [
         { doc_type: '', issued_on: '', file: null },
         { doc_type: '', issued_on: '', file: null },
@@ -77,10 +78,11 @@ export default {
       this.loading = true;
       const res = await apiGet('residency.php?action=status');
       this.docTypes = res.doc_types;
+      this.barangays = res.barangays || [];
       this.maxFileMb = res.max_file_mb;
       this.request = res.request;
       const u = this.user || {};
-      this.address = { address_line: u.address_line || '', barangay: u.barangay || '', city: u.city || '', postal_code: u.postal_code || '' };
+      this.address = { address_line: u.address_line || '', barangay: u.barangay || '' };
       this.loading = false;
     },
     async sendContactCode(resend = false) {
@@ -126,8 +128,10 @@ export default {
     formError() {
       if (this.missingChannel) return 'Please verify both your email and your mobile number first.';
       const a = this.address;
-      if (!a.address_line.trim() || !a.barangay.trim() || !a.city.trim()) return 'Please complete your address.';
-      if (!/^\d{4}$/.test(a.postal_code.trim())) return 'Postal / ZIP code must be 4 digits.';
+      if (!a.address_line.trim()) return 'Please complete your address.';
+      if (!a.barangay.trim() || !this.barangays.some((b) => b.name.toLowerCase() === a.barangay.trim().toLowerCase())) {
+        return 'Please choose your barangay from the list.';
+      }
       for (let i = 0; i < 2; i++) {
         const p = this.proofs[i];
         const t = this.typeInfo(p.doc_type);
@@ -275,23 +279,18 @@ export default {
             <!-- 2. Address -->
             <section class="bg-white rounded-2xl border border-brand-100 p-6">
               <h2 class="font-bold text-ink-700">2. Your address</h2>
-              <p class="text-sm text-slate-500 mt-1 mb-4">This must match the address on your proofs. Update it here if you've moved.</p>
-              <div class="grid sm:grid-cols-2 gap-4">
-                <div class="sm:col-span-2">
+              <p class="text-sm text-slate-500 mt-1 mb-4">This must match the address on your proofs. Update it here if you've moved. Residency verification only covers addresses within Dasmariñas.</p>
+              <div class="grid gap-4">
+                <div>
                   <label :class="labelClass" for="ru-street">House no. / Street</label>
                   <input id="ru-street" v-model="address.address_line" type="text" autocomplete="address-line1" :class="inputClass" />
                 </div>
-                <div class="sm:col-span-2">
+                <div>
                   <label :class="labelClass" for="ru-brgy">Barangay</label>
-                  <input id="ru-brgy" v-model="address.barangay" type="text" :class="inputClass" />
-                </div>
-                <div>
-                  <label :class="labelClass" for="ru-city">City / Municipality</label>
-                  <input id="ru-city" v-model="address.city" type="text" autocomplete="address-level2" :class="inputClass" />
-                </div>
-                <div>
-                  <label :class="labelClass" for="ru-zip">Postal code</label>
-                  <input id="ru-zip" v-model="address.postal_code" type="text" inputmode="numeric" maxlength="4" autocomplete="postal-code" :class="inputClass" />
+                  <input id="ru-brgy" v-model="address.barangay" list="ru-barangay-list" type="text" placeholder="Start typing to search…" autocomplete="off" :class="inputClass" />
+                  <datalist id="ru-barangay-list">
+                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
+                  </datalist>
                 </div>
               </div>
             </section>

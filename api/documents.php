@@ -2,6 +2,26 @@
 declare(strict_types=1);
 require __DIR__ . '/config.php';
 
+/**
+ * Which department holds this office for this application, read from the route the application was
+ * given at submission. That snapshot is the only place the applicant's barangay is recorded, and it
+ * is what the reviewer queue matches on, so the document check reads the same source.
+ * Returns null when the application predates the pipeline.
+ */
+function document_owner_department(int $applicationId, string $officeCode): ?array
+{
+    $s = db()->prepare(
+        "SELECT d.id, d.name FROM application_pipeline_progress p
+           JOIN departments d ON d.id = p.department_id
+          WHERE p.application_id = ?
+            AND (CASE WHEN d.barangay_id IS NOT NULL THEN 'BARANGAY' ELSE d.code END) = ?
+          LIMIT 1"
+    );
+    $s->execute([$applicationId, $officeCode]);
+    $row = $s->fetch();
+    return $row ?: null;
+}
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -15,8 +35,18 @@ if ($action === 'reupload' && $method === 'POST') {
     if (!$doc || (int)$doc['applicant_id'] !== (int)$user['id']) {
         fail('Document not found.', 404);
     }
+    if (!empty($_FILES['file']) && $_FILES['file']['error'] === UPLOAD_ERR_INI_SIZE) {
+        fail('That file is too large to upload.');
+    }
     if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
         fail('Please choose a file to upload.');
+    }
+    // Same ceiling as filing a new application — see MAX_UPLOAD_BYTES in applications.php
+    if ((int)$_FILES['file']['size'] > 5 * 1024 * 1024) {
+        fail('That file is larger than the 5 MB limit. Please choose a smaller file.');
+    }
+    if ($typeError = upload_type_error($_FILES['file'])) {
+        fail($typeError);
     }
 
     $uploadDir = __DIR__ . '/../uploads/' . $doc['app_id'];
@@ -53,6 +83,20 @@ if ($action === 'review' && $method === 'POST') {
     $doc = $stmt->fetch();
     if (!$doc) {
         fail('Document not found.', 404);
+    }
+
+    // Only the office that owns this document may pass judgement on it. Before this check any
+    // staff account could decide any document, and because the barangay holds the first node of
+    // nearly every permit, the Barangay Secretary was in practice ruling on structural drawings
+    // and health cards. The barangay confirms the applicant and the details, then forwards; the
+    // owning office decides its own paperwork. Admins stay exempt so a stuck permit can be freed.
+    if ($user['role'] !== 'admin') {
+        $owner = $doc['office_code'] ?: 'BARANGAY';
+        $ownerDept = document_owner_department((int)$doc['application_id'], $owner);
+        // No route rows means a pre-pipeline application; those keep the old open behaviour.
+        if ($ownerDept !== null && (int)$ownerDept['id'] !== (int)($user['department_id'] ?? 0)) {
+            fail('This document is reviewed by ' . $ownerDept['name'] . ', not your office.', 403);
+        }
     }
 
     $update = db()->prepare('UPDATE application_documents SET status = ? WHERE id = ?');

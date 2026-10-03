@@ -20,6 +20,18 @@ function permit_types_catalog(): array
     foreach ($docs as $doc) {
         $docsByType[(int)$doc['permit_type_id']][] = $doc['doc_name'];
     }
+    // Keep the handler alongside, so the catalogue can say who reviews what.
+    $docDetailByType = [];
+    foreach ($docs as $doc) {
+        $docDetailByType[(int)$doc['permit_type_id']][] = ['name' => $doc['doc_name'], 'office_code' => $doc['office_code']];
+    }
+
+    // Display names for the offices, so a route can be read without knowing the codes. BARANGAY is
+    // resolved per applicant at submission, so here it is simply "your barangay".
+    $officeNames = ['BARANGAY' => 'Your barangay'];
+    foreach (db()->query('SELECT code, name FROM departments WHERE barangay_id IS NULL') as $d) {
+        $officeNames[$d['code']] = $d['name'];
+    }
 
     foreach ($types as &$type) {
         $typeSteps = $stepsByType[(int)$type['id']] ?? [];
@@ -28,6 +40,21 @@ function permit_types_catalog(): array
             array_filter($typeSteps, fn($s) => $s['condition_key'] !== null)
         ));
         $type['required_documents'] = $docsByType[(int)$type['id']] ?? [];
+        $type['documents'] = array_map(
+            fn($d) => ['name' => $d['name'], 'office' => $officeNames[$d['office_code']] ?? $d['office_code']],
+            $docDetailByType[(int)$type['id']] ?? []
+        );
+
+        // The route, so the catalogue can show what the process actually is rather than just how
+        // many steps it has. Conditional steps are marked: they only appear if the branch question
+        // is answered yes, so the real length varies.
+        $type['route'] = array_values(array_map(fn($s) => [
+            'office_code' => $s['office_code'],
+            'office'      => $officeNames[$s['office_code']] ?? $s['office_code'],
+            'step_label'  => $s['step_label'],
+            'conditional' => $s['condition_key'] !== null,
+        ], $typeSteps));
+        $type['base_steps'] = count(array_filter($typeSteps, fn($s) => $s['condition_key'] === null));
     }
     unset($type);
 
@@ -159,8 +186,20 @@ function instantiate_pipeline(int $applicationId, int $permitTypeId, array $cond
 /** The pipeline progress rows for an application, in order. Empty array = pre-pipeline legacy application. */
 function pipeline_progress_for(int $applicationId): array
 {
+    // Which account signs off on each step, for walking a permit through by hand. Left out
+    // entirely when reviewer_hints is off, because these are staff addresses — see
+    // app_config() in config.php. Names the account only; never anything to sign in with.
+    $reviewer = !empty(app_config()['testing']['reviewer_hints'])
+        ? ", (SELECT u.email FROM users u
+              WHERE u.department_id = p.department_id AND u.role IN ('staff','admin') AND u.is_active = 1
+              ORDER BY u.id LIMIT 1) AS reviewer_login,
+           (SELECT u.full_name FROM users u
+              WHERE u.department_id = p.department_id AND u.role IN ('staff','admin') AND u.is_active = 1
+              ORDER BY u.id LIMIT 1) AS reviewer_name"
+        : '';
+
     $stmt = db()->prepare(
-        'SELECT p.*, d.name AS department_name, d.code AS department_code
+        'SELECT p.*, d.name AS department_name, d.code AS department_code' . $reviewer . '
          FROM application_pipeline_progress p JOIN departments d ON d.id = p.department_id
          WHERE p.application_id = ? ORDER BY p.step_order'
     );

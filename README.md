@@ -17,6 +17,12 @@ A permit application & review system for residents/businesses and city staff, bu
    mysql -u root permittrack < database/migrations/007_notification_reads.sql
    ```
    or import the same files in phpMyAdmin. Migrations are safe to run more than once.
+
+   > **Importing SQL that contains accented characters (ñ, é, …)?** Add
+   > `--default-character-set=utf8mb4` to the `mysql` command. On Windows the client otherwise
+   > sends the console codepage, and characters like **ñ** get stored wrong (it has already
+   > turned `Dasmariñas` into `Dasmari±as` once). The app's own PHP/PDO path is utf8mb4
+   > end-to-end and is not affected — only command-line imports are.
 3. (Optional) Copy `api/config.local.example.php` to `api/config.local.php` to set up real email (SMTP) and SMS
    (Semaphore or Twilio). Until then, verification codes are written to `storage/outbox.log` and shown on the
    verify screen in a "Test mode" box.

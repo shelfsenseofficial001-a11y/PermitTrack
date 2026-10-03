@@ -47,8 +47,12 @@ if ($action === 'update_profile' && $method === 'POST') {
     if (!$dob || $dob->format('Y-m-d') !== $birthdate) {
         fail('Please enter a valid date of birth.');
     }
-    if ($dob->diff(new DateTime('today'))->y < 18) {
+    $age = $dob->diff(new DateTime('today'))->y;
+    if ($age < 18) {
         fail('You must be at least 18 years old to use this service.');
+    }
+    if ($age > 80) {
+        fail('Please enter a valid date of birth (age must be 80 or below).');
     }
     if ($addressLine === '' || $barangay === '' || $city === '') {
         fail('House/street, barangay and city are required.');

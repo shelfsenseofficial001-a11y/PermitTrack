@@ -1,8 +1,9 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=80';
-import AppShell from './AppShell.js?v=80';
-import StatusStepper from './StatusStepper.js?v=80';
-import { permitNumber, permitIconClass, formatDate, backButtonClass, backIconClass } from '../util.js?v=80';
-import Loader from './Loader.js?v=80';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=108';
+import AppShell from './AppShell.js?v=108';
+import StatusStepper from './StatusStepper.js?v=108';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass } from '../util.js?v=108';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=108';
+import Loader from './Loader.js?v=108';
 
 export default {
   name: 'PermitDetail',
@@ -10,6 +11,7 @@ export default {
   components: { AppShell, StatusStepper, Loader },
   data() {
     return {
+      uiState,
       app: null,
       activity: [],
       loading: true,
@@ -21,10 +23,23 @@ export default {
   async mounted() {
     await this.refresh();
   },
+  computed: {
+    // The step the permit is sitting on right now — the one a reviewer has to act on next.
+    currentStep() {
+      return (this.app && this.app.pipeline || []).find((s) => s.status === 'current') || null;
+    },
+    // The API only sends reviewer accounts on installs that allow it, so the switch appears
+    // only where there is something to show.
+    canShowHints() {
+      return (this.app && this.app.pipeline || []).some((s) => s.reviewer_login);
+    },
+  },
   methods: {
+    toggleReviewerHints,
     permitNumber,
     permitIconClass,
     formatDate,
+    formatDateTime,
     downloadUrl,
     async refresh() {
       this.loading = true;
@@ -104,9 +119,33 @@ export default {
       <!-- Pipeline apps (27-type flow): show each office in order. Legacy apps (5-type flow,
            empty app.pipeline) keep the original single-stage stepper. -->
       <div v-if="app.pipeline && app.pipeline.length" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
-        <h2 class="font-bold text-ink-700 mb-4">Where your application is</h2>
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <h2 class="font-bold text-ink-700">Where your application is</h2>
+          <!-- Testing aid: name the account each office reviews with, so a permit can be walked
+               through its pipeline by hand. Hidden entirely on installs that switch it off. -->
+          <button v-if="canShowHints" type="button" role="switch" :aria-checked="uiState.reviewerHints"
+            @click="toggleReviewerHints()"
+            class="shrink-0 inline-flex items-center gap-2 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition"
+            :class="uiState.reviewerHints ? 'bg-sun-100 text-ink-700 ring-1 ring-sun-300' : 'text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'">
+            <span class="w-7 h-4 rounded-full relative transition-colors" :class="uiState.reviewerHints ? 'bg-sun-400' : 'bg-slate-300'">
+              <span class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all" :class="uiState.reviewerHints ? 'left-3.5' : 'left-0.5'"></span>
+            </span>
+            Reviewer accounts
+          </button>
+        </div>
+
+        <div v-if="uiState.reviewerHints && currentStep && currentStep.reviewer_login"
+          class="mb-4 rounded-xl bg-sun-50 ring-1 ring-sun-300 px-4 py-3">
+          <p class="text-xs font-bold uppercase tracking-[0.12em] text-sun-700">Next approval</p>
+          <p class="text-sm text-ink-700 mt-1 leading-relaxed">
+            Sign in as <span class="font-mono font-semibold break-all">{{ currentStep.reviewer_login }}</span>
+            to approve <span class="font-semibold">{{ currentStep.step_label }}</span>
+            at {{ currentStep.department_name }}.
+          </p>
+        </div>
+
         <ol class="space-y-3">
-          <li v-for="step in app.pipeline" :key="step.id" class="flex items-center gap-3 text-sm">
+          <li v-for="step in app.pipeline" :key="step.id" class="flex items-start gap-3 text-sm">
             <span class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold" :class="stepClass(step.status)">
               <svg v-if="step.status === 'approved'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
               <svg v-else-if="step.status === 'rejected'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -115,6 +154,11 @@ export default {
             <div class="min-w-0">
               <div class="font-semibold text-slate-700">{{ step.department_name }}</div>
               <div class="text-xs text-slate-400">{{ step.step_label }}</div>
+              <div v-if="uiState.reviewerHints && step.reviewer_login"
+                class="text-[11px] font-mono text-slate-500 mt-0.5 break-all"
+                :class="step.status === 'current' ? 'text-sun-700 font-semibold' : ''">
+                {{ step.reviewer_login }}
+              </div>
             </div>
           </li>
         </ol>
@@ -137,6 +181,7 @@ export default {
                   <div class="text-xs" :class="doc.status === 'Verified' ? 'text-emerald-600' : doc.status === 'Needs Re-upload' ? 'text-red-500' : 'text-slate-400'">
                     {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs Update — see reviewer note' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
                   </div>
+                  <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
                 </div>
               </div>
               <div class="flex items-center gap-2 shrink-0">
@@ -155,7 +200,7 @@ export default {
           <div class="flex-1 space-y-3 max-h-80 overflow-y-auto scroll-soft pr-1">
             <div v-for="item in activity" :key="item.id" class="text-sm">
               <template v-if="item.type === 'status_change'">
-                <div class="text-xs text-slate-400">{{ formatDate(item.created_at) }} — {{ item.body }}</div>
+                <div class="text-xs text-slate-400">{{ formatDateTime(item.created_at) }} — {{ item.body }}</div>
               </template>
               <template v-else>
                 <div class="bg-slate-50 rounded-lg px-3 py-2">

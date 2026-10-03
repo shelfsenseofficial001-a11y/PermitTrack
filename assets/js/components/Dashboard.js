@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=80';
-import AppShell from './AppShell.js?v=80';
-import PermitList from './PermitList.js?v=80';
-import { authState, loadCurrentUser } from '../store/auth.js?v=80';
-import Loader from './Loader.js?v=80';
+import { apiGet } from '../api/client.js?v=108';
+import AppShell from './AppShell.js?v=108';
+import PermitList from './PermitList.js?v=108';
+import { authState, loadCurrentUser } from '../store/auth.js?v=108';
+import Loader from './Loader.js?v=108';
 
 // How many permits the dashboard previews before sending you to My Permits
 const PREVIEW_COUNT = 3;
@@ -125,9 +125,9 @@ export default {
             <div class="w-10 h-10 rounded-xl bg-sun-300 text-ink-700 flex items-center justify-center shrink-0">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1"/></svg>
             </div>
-            <div class="font-bold text-ink-700">{{ businesses.length ? 'Your businesses' : 'Register a Business' }}</div>
+            <div class="font-bold text-ink-700">{{ businesses.length ? 'Your businesses' : 'Add your business' }}</div>
           </div>
-          <p v-if="!businesses.length" class="text-sm text-slate-500 mb-4">Add your business and its DTI/SEC/CDA documents. Once verified you can apply for business permits.</p>
+          <p v-if="!businesses.length" class="text-sm text-slate-500 mb-4">Already trading in Dasmariñas? Record the business here with its DTI/SEC/CDA certificate. Once City Staff verify it, you can file and renew its permits.</p>
           <ul v-else class="space-y-2 mb-4">
             <li v-for="b in businesses" :key="b.id">
               <router-link :to="'/businesses/' + b.id" class="flex items-center justify-between gap-2 rounded-xl bg-white border border-brand-100 px-3 py-2 hover:border-brand-300">
@@ -137,7 +137,7 @@ export default {
             </li>
           </ul>
           <router-link to="/businesses/new" class="inline-flex bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-brand-700 transition">
-            {{ businesses.length ? 'Register another business' : 'Register a business' }}
+            {{ businesses.length ? 'Add another business' : 'Add your business' }}
           </router-link>
         </div>
       </div>

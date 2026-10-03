@@ -1,8 +1,8 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=80';
-import AppShell from './AppShell.js?v=80';
-import { loadCurrentUser } from '../store/auth.js?v=80';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=80';
-import Loader from './Loader.js?v=80';
+import { apiGet, apiPostForm } from '../api/client.js?v=108';
+import AppShell from './AppShell.js?v=108';
+import { loadCurrentUser } from '../store/auth.js?v=108';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=108';
+import Loader from './Loader.js?v=108';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
@@ -10,7 +10,7 @@ const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
 function emptyForm() {
   return {
     business_name: '', trade_name: '', ownership_type: '', line_of_business: '', registration_number: '', tin: '',
-    address_line: '', barangay: '', city: '', postal_code: '', business_email: '', business_phone: '',
+    address_line: '', barangay: '', business_email: '', business_phone: '',
     floor_area_sqm: '', employee_count: '', is_registered_owner: true, representative_role: '', representative_id_type: '',
   };
 }
@@ -22,7 +22,7 @@ export default {
   data() {
     return {
       loading: true,
-      options: { ownership_types: [], lines_of_business: [], id_types: [], max_file_mb: 5 },
+      options: { ownership_types: [], lines_of_business: [], id_types: [], barangays: [], max_file_mb: 5 },
       business: null, // existing record when editing / viewing
       form: emptyForm(),
       files: {}, // doc_key -> File
@@ -139,8 +139,12 @@ export default {
 
     <div class="pt-gradient-wide rounded-3xl px-6 py-7 sm:px-8 mb-6 shadow-[0_24px_60px_-28px_rgba(31,122,58,0.7)]">
       <p class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1.5">Business Owner</p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ isNew ? 'Register a business' : (business ? business.business_name : 'Business') }}</h1>
-      <p class="text-sm text-white/85 mt-1 max-w-xl">City Staff checks your registration documents. Once verified, you can apply for business permits for this business.</p>
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ isNew ? 'Add your business' : (business ? business.business_name : 'Business') }}</h1>
+      <p class="text-sm text-white/85 mt-1 max-w-xl">
+        This records a business that already exists and already trades in Dasmariñas — PermitTrack
+        does not form businesses, so bring the DTI, SEC or CDA certificate you already hold. City
+        Staff check the details against it, and once they match you can file and renew permits here.
+      </p>
     </div>
 
     <Loader v-if="loading" kind="business" />
@@ -218,17 +222,19 @@ export default {
                 <label :class="labelClass" for="b-street">House / unit no. and street</label>
                 <input id="b-street" v-model="form.address_line" type="text" :class="inputClass" />
               </div>
+              <!-- Typed against the barangays table, not free text: this is what decides which
+                   barangay secretariat reviews every permit the business later files. -->
               <div class="sm:col-span-2">
                 <label :class="labelClass" for="b-brgy">Barangay</label>
-                <input id="b-brgy" v-model="form.barangay" type="text" :class="inputClass" />
-              </div>
-              <div>
-                <label :class="labelClass" for="b-city">City / Municipality</label>
-                <input id="b-city" v-model="form.city" type="text" :class="inputClass" />
-              </div>
-              <div>
-                <label :class="labelClass" for="b-zip">Postal code</label>
-                <input id="b-zip" v-model="form.postal_code" type="text" inputmode="numeric" maxlength="4" :class="inputClass" />
+                <input id="b-brgy" v-model="form.barangay" list="b-barangay-list" type="text"
+                  placeholder="Start typing to search…" autocomplete="off" :class="inputClass" />
+                <datalist id="b-barangay-list">
+                  <option v-for="b in options.barangays" :key="b.id" :value="b.name" />
+                </datalist>
+                <p class="text-xs text-slate-400 mt-1">
+                  All {{ options.barangays.length }} barangays of Dasmariñas. The city is assumed —
+                  PermitTrack does not cover anywhere else.
+                </p>
               </div>
               <div>
                 <label :class="labelClass" for="b-email">Business email <span class="text-slate-400 font-normal">(optional)</span></label>

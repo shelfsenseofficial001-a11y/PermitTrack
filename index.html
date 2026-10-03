@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>PermitTrack</title>
-<link rel="icon" href="favicon.ico?v=80" sizes="any" />
-<link rel="icon" type="image/png" href="assets/images/PermitTrackIcon.png?v=80" />
-<link rel="apple-touch-icon" href="assets/images/PermitTrackIcon.png?v=80" />
+<link rel="icon" href="favicon.ico?v=108" sizes="any" />
+<link rel="icon" type="image/png" href="assets/images/PermitTrackIcon.png?v=108" />
+<link rel="apple-touch-icon" href="assets/images/PermitTrackIcon.png?v=108" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
@@ -141,17 +141,51 @@
   .list-enter-from { opacity: 0; transform: translateY(8px); }
   .list-leave-to { opacity: 0; }
 
+  /* Gibs's panel: the whole screen on phones, a corner panel over the Ask button from md up.
+     .is-lifted is for pages with their own bottom-right control (Landing's "Back to top"),
+     where the Ask button rides higher and the panel has to follow it. */
+  .gibs-shell { position: fixed; inset: 0; }
+  @media (min-width: 768px) {
+    /* width:max-content matters: with inset:auto the left offset resolves to the static
+       position, so without an intrinsic width the box would stretch from there to right:1.25rem. */
+    .gibs-shell { inset: auto; right: 1.25rem; bottom: 5.5rem; width: max-content; max-width: calc(100vw - 2.5rem); }
+    .gibs-shell.is-lifted { bottom: 9.25rem; }
+  }
+
+  /* The panel's own size, here for the same reason as .gibs-shell: w-full and md:w-[44rem]
+     carry equal specificity, and the CDN emits w-full last. .is-narrow is the Gibs-hidden
+     layout, where only the chat column is left. */
+  .gibs-panel { width: 100%; height: 100dvh; }
+  @media (min-width: 768px) {
+    .gibs-panel { width: 44rem; max-width: calc(100vw - 2.5rem); height: min(34rem, calc(100vh - 10rem)); }
+    .gibs-panel.is-narrow { width: 27rem; }
+  }
+
+  /* toast — a new notification sliding in from the right edge, under the bell */
+  .toast-move, .toast-enter-active { transition: opacity .28s var(--ease-out), transform .32s var(--ease-out); }
+  .toast-leave-active { transition: opacity .18s var(--ease-in), transform .22s var(--ease-in); position: absolute; }
+  .toast-enter-from { opacity: 0; transform: translateX(20px) scale(.96); }
+  .toast-leave-to { opacity: 0; transform: translateX(16px) scale(.97); }
+
+  /* The sliver along the bottom of a toast, draining for as long as the toast has left.
+     Its duration is set inline so it always matches the dismiss timer. */
+  .toast-timer { width: 100%; transform-origin: left center; animation: toast-drain linear forwards; }
+  .toast-timer-paused { animation-play-state: paused; }
+  @keyframes toast-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
   @media (prefers-reduced-motion: reduce) {
     .page-enter-active, .page-leave-active, .page-enter-active .page-body, .page-leave-active .page-body,
     .modal-leave-active, .modal-leave-active [role="dialog"],
     .pop-enter-active, .pop-leave-active, .chat-enter-active, .chat-leave-active,
     .expand-enter-active, .expand-leave-active, .fade-enter-active, .fade-leave-active,
-    .swap-enter-active, .swap-leave-active, .list-move, .list-enter-active, .list-leave-active {
+    .swap-enter-active, .swap-leave-active, .list-move, .list-enter-active, .list-leave-active,
+    .toast-move, .toast-enter-active, .toast-leave-active {
       transition-duration: .01s !important;
     }
     .page-enter-from .page-body, .page-leave-to .page-body, .modal-leave-to [role="dialog"],
     .pop-enter-from, .pop-leave-to, .chat-enter-from, .chat-leave-to,
-    .expand-enter-from, .list-enter-from { transform: none !important; }
+    .expand-enter-from, .list-enter-from, .toast-enter-from, .toast-leave-to { transform: none !important; }
+    .toast-timer { animation: none; }
   }
 
   /* Gibs P. reaction marks ("!", "?", "?!"): pop in with a wobble, drift up, fade out */
@@ -234,6 +268,6 @@
 </head>
 <body class="bg-meadow text-slate-900">
   <div id="app" v-cloak></div>
-  <script type="module" src="assets/js/app.js?v=80"></script>
+  <script type="module" src="assets/js/app.js?v=108"></script>
 </body>
 </html>

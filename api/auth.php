@@ -37,7 +37,78 @@ function start_verification(array $user, bool $isResend = false): array
         : issue_verification_code((int)$user['id'], 'sms', $user['phone'], $isResend);
 }
 
-// Normal User sign-up. The account is created unverified; the user is signed in after entering the code.
+/** The sign-up waiting for its code. Nothing is written to `users` until it's confirmed. */
+function pending_registration(): array
+{
+    if (empty($_SESSION['pending_registration'])) {
+        fail('Your registration session expired. Please sign up again.', 401);
+    }
+    return $_SESSION['pending_registration'];
+}
+
+/**
+ * Generates a code, holds the not-yet-created account in the session, and sends it.
+ * If sending fails, nothing is kept — no row is written, so the user can just try again.
+ */
+function start_registration_verification(array $data, string $channel, string $destination, bool $isResend = false): array
+{
+    $existing = $_SESSION['pending_registration'] ?? null;
+    if ($isResend) {
+        if (!$existing) {
+            fail('Your registration session expired. Please sign up again.', 401);
+        }
+        $age = time() - $existing['sent_at'];
+        if ($age < CODE_RESEND_SECONDS) {
+            fail('Please wait ' . (CODE_RESEND_SECONDS - $age) . ' seconds before requesting another code.', 429);
+        }
+    }
+
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $_SESSION['pending_registration'] = [
+        'data' => $data,
+        'channel' => $channel,
+        'destination' => $destination,
+        'code_hash' => password_hash($code, PASSWORD_DEFAULT),
+        'expires_at' => time() + CODE_TTL_MINUTES * 60,
+        'attempts' => 0,
+        'sent_at' => time(),
+    ];
+    unset($_SESSION['user_id'], $_SESSION['pending_user_id']);
+
+    $municipality = app_config()['municipality'];
+    try {
+        if ($channel === 'email') {
+            send_email(
+                $destination,
+                'Your PermitTrack verification code',
+                "Your PermitTrack verification code is $code.\n\nIt expires in " . CODE_TTL_MINUTES . " minutes. If you didn't request this, you can ignore this email.\n\n— $municipality"
+            );
+        } else {
+            send_sms($destination, "PermitTrack code: $code. Expires in " . CODE_TTL_MINUTES . " min. Do not share this code.");
+        }
+    } catch (Throwable $e) {
+        unset($_SESSION['pending_registration']);
+        error_log('Registration verification send failed: ' . $e->getMessage());
+        fail($channel === 'email'
+            ? "We couldn't send the email right now. Please try again in a moment."
+            : "We couldn't send the text message right now. Please try again in a moment.", 502);
+    }
+
+    $result = [
+        'channel' => $channel,
+        'sent_to' => mask_destination($channel, $destination),
+        'expires_in_minutes' => CODE_TTL_MINUTES,
+        'resend_after_seconds' => CODE_RESEND_SECONDS,
+    ];
+    $driver = app_config()[$channel === 'email' ? 'mail' : 'sms']['driver'] ?? 'log';
+    if ($driver === 'log') {
+        $result['dev_code'] = $code;
+    }
+    return $result;
+}
+
+// Normal User sign-up. Nothing is written to the database until the code is confirmed
+// (see the 'verify' action below) — a failed or abandoned sign-up leaves no trace.
 if ($action === 'register' && $method === 'POST') {
     $in = json_input();
     $str = fn(string $key) => trim((string)($in[$key] ?? ''));
@@ -63,8 +134,12 @@ if ($action === 'register' && $method === 'POST') {
     if (!$dob || $dob->format('Y-m-d') !== $birthdate) {
         fail('Please enter a valid date of birth.');
     }
-    if ($dob->diff(new DateTime('today'))->y < 18) {
+    $age = $dob->diff(new DateTime('today'))->y;
+    if ($age < 18) {
         fail('You must be at least 18 years old to create an account.');
+    }
+    if ($age > 80) {
+        fail('Please enter a valid date of birth (age must be 80 or below).');
     }
 
     $phone = null;
@@ -86,8 +161,8 @@ if ($action === 'register' && $method === 'POST') {
     if (!preg_match('/^\d{4}$/', $postal)) {
         fail('Postal / ZIP code must be 4 digits.');
     }
-    if (strlen($password) < 8 || !preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
-        fail('Password must be at least 8 characters and include a letter and a number.');
+    if (!is_strong_password($password)) {
+        fail('Password must be at least 8 characters and include an uppercase letter, a number, and a special character.');
     }
     if (!$consent) {
         fail('Please agree to the Data Privacy notice to continue.');
@@ -100,18 +175,14 @@ if ($action === 'register' && $method === 'POST') {
     }
 
     $fullName = trim(preg_replace('/\s+/', ' ', "$first $middle $last"));
-    db()->prepare(
-        'INSERT INTO users (role, account_type, email, phone, password_hash, full_name, first_name, middle_name, last_name, birthdate,
-                            address_line, barangay, city, postal_code, privacy_consent_at, onboarding_completed)
-         VALUES (\'applicant\', \'unregistered\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)'
-    )->execute([
-        $email, $phone, password_hash($password, PASSWORD_BCRYPT), $fullName, $first, $middle ?: null, $last, $birthdate,
-        $addressLine, $barangay, $city, $postal,
-    ]);
-
-    $stmt = db()->prepare('SELECT * FROM users WHERE id = ?');
-    $stmt->execute([(int)db()->lastInsertId()]);
-    respond(['verification' => start_verification($stmt->fetch())], 201);
+    $data = [
+        'email' => $email, 'phone' => $phone, 'password_hash' => password_hash($password, PASSWORD_BCRYPT),
+        'full_name' => $fullName, 'first_name' => $first, 'middle_name' => $middle ?: null, 'last_name' => $last,
+        'birthdate' => $birthdate, 'address_line' => $addressLine, 'barangay' => $barangay, 'city' => $city, 'postal_code' => $postal,
+    ];
+    $verifChannel = $contactMethod === 'phone' ? 'sms' : 'email';
+    $destination = $contactMethod === 'phone' ? $phone : $email;
+    respond(['verification' => start_registration_verification($data, $verifChannel, $destination)]);
 }
 
 // Log in with an email address or mobile number
@@ -156,12 +227,59 @@ if ($action === 'login' && $method === 'POST') {
 
 // Enter the code sent after sign-up / login
 if ($action === 'verify' && $method === 'POST') {
-    $user = pending_user();
-    $channel = !empty($user['email']) ? 'email' : 'sms';
     $code = preg_replace('/\D+/', '', (string)(json_input()['code'] ?? ''));
     if (strlen($code) !== 6) {
         fail('Please enter the 6-digit code.');
     }
+
+    // Sign-up: the account doesn't exist yet — this is where it finally gets created.
+    if (!empty($_SESSION['pending_registration'])) {
+        $pending = $_SESSION['pending_registration'];
+        if (time() > $pending['expires_at']) {
+            unset($_SESSION['pending_registration']);
+            fail('This code has expired. Please request a new one.', 422);
+        }
+        if ($pending['attempts'] >= CODE_MAX_ATTEMPTS) {
+            unset($_SESSION['pending_registration']);
+            fail('Too many wrong attempts. Please request a new code.', 422);
+        }
+        if (!password_verify($code, $pending['code_hash'])) {
+            $_SESSION['pending_registration']['attempts']++;
+            $left = CODE_MAX_ATTEMPTS - $_SESSION['pending_registration']['attempts'];
+            fail($left > 0 ? "That code isn't right. $left attempt(s) left." : 'Too many wrong attempts. Please request a new code.', 422);
+        }
+
+        $d = $pending['data'];
+        $verifiedColumn = $pending['channel'] === 'email' ? 'email_verified_at' : 'phone_verified_at';
+        try {
+            db()->prepare(
+                "INSERT INTO users (role, account_type, email, phone, password_hash, full_name, first_name, middle_name, last_name, birthdate,
+                                    address_line, barangay, city, postal_code, privacy_consent_at, onboarding_completed, $verifiedColumn)
+                 VALUES ('applicant', 'unregistered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1, NOW())"
+            )->execute([
+                $d['email'], $d['phone'], $d['password_hash'], $d['full_name'], $d['first_name'], $d['middle_name'], $d['last_name'], $d['birthdate'],
+                $d['address_line'], $d['barangay'], $d['city'], $d['postal_code'],
+            ]);
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                unset($_SESSION['pending_registration']);
+                fail('That email or mobile number was just used by another account. Please sign up again.', 409);
+            }
+            throw $e;
+        }
+        $userId = (int)db()->lastInsertId();
+
+        unset($_SESSION['pending_registration']);
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = $userId;
+        db()->prepare('UPDATE users SET last_login_at = NOW() WHERE id = ?')->execute([$userId]);
+        remember_account($userId);
+        respond(['user' => current_user()], 201);
+    }
+
+    // Login: re-verifying an account that already exists.
+    $user = pending_user();
+    $channel = !empty($user['email']) ? 'email' : 'sms';
     $error = check_verification_code((int)$user['id'], $channel, $code);
     if ($error) {
         fail($error, 422);
@@ -175,6 +293,10 @@ if ($action === 'verify' && $method === 'POST') {
 }
 
 if ($action === 'resend' && $method === 'POST') {
+    if (!empty($_SESSION['pending_registration'])) {
+        $pending = $_SESSION['pending_registration'];
+        respond(['verification' => start_registration_verification($pending['data'], $pending['channel'], $pending['destination'], true)]);
+    }
     respond(['verification' => start_verification(pending_user(), true)]);
 }
 
@@ -190,8 +312,8 @@ if ($action === 'change_password' && $method === 'POST') {
     if (!password_verify($current, (string)$stmt->fetchColumn())) {
         fail('Your current password is incorrect.', 422);
     }
-    if (strlen($new) < 8 || !preg_match('/[A-Za-z]/', $new) || !preg_match('/\d/', $new)) {
-        fail('New password must be at least 8 characters and include a letter and a number.');
+    if (!is_strong_password($new)) {
+        fail('New password must be at least 8 characters and include an uppercase letter, a number, and a special character.');
     }
     if ($new === $current) {
         fail('Please choose a password different from your current one.');
@@ -242,6 +364,17 @@ if ($action === 'switch' && $method === 'POST') {
     respond(['user' => current_user()]);
 }
 
+// Drops another account from this browser's list. Signing the CURRENT account out is what
+// 'logout' does, so this refuses it rather than leaving the session pointing at a forgotten id.
+if ($action === 'forget' && $method === 'POST') {
+    require_auth();
+    $id = (int)(json_input()['id'] ?? 0);
+    if ($id === (int)($_SESSION['user_id'] ?? 0)) {
+        fail("That's the account you're using. Sign out instead.", 409);
+    }
+    unset($_SESSION['accounts'][$id]);
+    respond(['ok' => true]);
+}
 // Signs out the current account; if other accounts are signed in on this browser, switches to one of them
 if ($action === 'logout' && $method === 'POST') {
     $currentId = (int)($_SESSION['user_id'] ?? 0);

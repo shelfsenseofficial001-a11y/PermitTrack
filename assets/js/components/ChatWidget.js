@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=80';
-import BaseModal from './BaseModal.js?v=80';
-import GibsMascot from './GibsMascot.js?v=80';
-import GibsPeek from './GibsPeek.js?v=80';
+import { apiGet, apiPost } from '../api/client.js?v=108';
+import BaseModal from './BaseModal.js?v=108';
+import GibsMascot from './GibsMascot.js?v=108';
+import GibsPeek from './GibsPeek.js?v=108';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
@@ -46,7 +46,10 @@ export default {
   },
   watch: {
     open(isOpen) {
-      document.body.style.overflow = isOpen ? 'hidden' : '';
+      // The panel only covers the page on phones. From md up it's a corner panel anchored over
+      // the Ask button, so the page behind it stays scrollable.
+      const coversPage = !window.matchMedia('(min-width: 768px)').matches;
+      document.body.style.overflow = isOpen && coversPage ? 'hidden' : '';
     },
   },
   mounted() {
@@ -172,19 +175,25 @@ export default {
     :class="liftForFab ? 'md:bottom-[5.25rem]' : 'md:bottom-5'">
     <GibsPeek v-if="!gibsHidden" :suppressed="open" :lift-for-fab="liftForFab" @open="openChat" />
 
-    <button v-show="!open" ref="askButton" type="button" @click="openChat" :aria-expanded="open" aria-label="Open Gibs P., the PermitTrack assistant"
-      class="flex items-center gap-2 rounded-full bg-ink-700 text-white pl-3 pr-4 py-3 shadow-lg hover:bg-ink-600 transition">
+    <button ref="askButton" type="button" @click="open ? close() : openChat()" :aria-expanded="open"
+      :aria-label="open ? 'Close Gibs P.' : 'Open Gibs P., the PermitTrack assistant'"
+      :class="open ? 'hidden md:flex' : 'flex'"
+      class="items-center gap-2 rounded-full bg-ink-700 text-white pl-3 pr-4 py-3 shadow-lg hover:bg-ink-600 transition">
       <img src="assets/images/gibsIcon.png" alt="" width="28" height="28" class="w-7 h-7 rounded-md ring-1 ring-white/25 [image-rendering:pixelated]" />
       <span class="text-sm font-semibold">Ask</span>
     </button>
   </div>
 
-  <transition enter-from-class="opacity-0" enter-active-class="transition-opacity duration-200 ease-out motion-reduce:transition-none"
-    leave-to-class="opacity-0" leave-active-class="transition-opacity duration-150 ease-in motion-reduce:transition-none">
-    <div v-if="open" class="font-inter fixed inset-0 z-50 flex md:items-center md:justify-center md:p-6 bg-ink-900/45 backdrop-blur-[3px]" @click.self="close">
+  <!-- Phones get the whole screen; from md up the panel rises out of the Ask button in the corner,
+       so the page behind it stays readable and the chip it belongs to is still in view. -->
+  <transition enter-from-class="opacity-0 md:translate-y-3 md:scale-[0.97]" enter-active-class="transition duration-200 ease-out motion-reduce:transition-none"
+    leave-to-class="opacity-0 md:translate-y-2 md:scale-[0.98]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none">
+    <div v-if="open"
+      class="font-inter gibs-shell z-50 flex bg-ink-900/45 backdrop-blur-[3px] md:bg-transparent md:backdrop-blur-none md:origin-bottom-right"
+      :class="liftForFab ? 'is-lifted' : ''" @click.self="close">
       <section role="dialog" aria-modal="true" aria-labelledby="gibs-title"
-        class="relative w-full h-[100dvh] md:h-[min(44rem,calc(100vh-3rem))] flex flex-col md:flex-row bg-white md:rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
-        :class="gibsHidden ? 'md:max-w-[38rem]' : 'md:max-w-[64rem]'">
+        class="gibs-panel relative flex flex-col md:flex-row bg-white md:rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
+        :class="gibsHidden ? 'is-narrow' : ''">
 
         <!-- The stage: Gibs, big and in full view. It's a plain white room for now. -->
         <div v-if="!gibsHidden" class="relative shrink-0 h-[34vh] md:h-auto md:w-[42%] bg-white border-b md:border-b-0 md:border-r border-slate-100">
@@ -196,28 +205,28 @@ export default {
           <p class="hidden md:block absolute bottom-4 inset-x-0 text-center text-[11px] text-slate-400 pointer-events-none">Drag to spin me around</p>
         </div>
 
-        <!-- The chat -->
-        <div class="flex-1 min-h-0 flex flex-col bg-meadow/40">
+        <!-- The chat. min-w-0 matters as much as min-h-0: without it this flex item will not
+             shrink below its header's min-content width, and the header spills past the panel. -->
+        <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-meadow/40">
           <header class="flex items-center gap-2 px-5 py-3.5 bg-white border-b border-slate-100 shrink-0">
             <img src="assets/images/gibsIcon.png" alt="" width="36" height="36"
               class="w-9 h-9 shrink-0 rounded-lg ring-1 ring-black/10 [image-rendering:pixelated]" />
             <div class="min-w-0 flex-1 leading-tight">
-              <h2 id="gibs-title" class="text-sm font-bold text-ink-700">Gibs P. <span class="font-medium text-slate-400">· PermitTrack assistant</span></h2>
-              <p class="text-[11px] text-slate-400 mt-0.5">Please don't share passwords or ID numbers here.</p>
+              <h2 id="gibs-title" class="text-sm font-bold text-ink-700 truncate">Gibs P. <span class="font-medium text-slate-400">· PermitTrack assistant</span></h2>
+              <p class="text-[11px] text-slate-400 mt-0.5 truncate">Please don't share passwords or ID numbers here.</p>
             </div>
             <!-- Hiding lives on the stage itself; once hidden, the way back is here. -->
-            <button v-if="gibsHidden" type="button" @click="toggleGibs" aria-label="Show Visualization"
-              class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 px-2.5 sm:px-3 py-2 rounded-xl hover:bg-slate-100 hover:text-slate-700 transition">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
-              <span class="hidden sm:inline">Show Visualization</span>
+            <button v-if="gibsHidden" type="button" @click="toggleGibs" aria-label="Show Visualization" title="Show Visualization"
+              class="shrink-0 inline-flex items-center p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
             <button type="button" @click="confirmReset = true" :disabled="sending || messages.length < 2"
-              class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 px-3 py-2 rounded-xl hover:bg-brand-50 disabled:text-slate-300 disabled:hover:bg-transparent transition">
+              class="shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 px-3 py-2 rounded-xl hover:bg-brand-50 disabled:text-slate-300 disabled:hover:bg-transparent transition">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
               New chat
             </button>
             <button type="button" @click="close" aria-label="Close assistant"
-              class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
+              class="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </header>
@@ -247,7 +256,7 @@ export default {
           <form @submit.prevent="send()" class="border-t border-slate-100 bg-white p-3 flex gap-2 shrink-0">
             <input ref="input" v-model="draft" maxlength="500" placeholder="Ask Gibs about permits, verification…" aria-label="Your question"
               class="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-600/15" />
-            <button type="submit" :disabled="sending || !draft.trim()" class="px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold disabled:opacity-50">Send</button>
+            <button type="submit" :disabled="sending || !draft.trim()" class="shrink-0 px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold disabled:opacity-50">Send</button>
           </form>
         </div>
       </section>
