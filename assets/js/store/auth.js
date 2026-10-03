@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { apiGet, apiPost } from '../api/client.js?v=80';
+import { apiGet, apiPost } from '../api/client.js?v=108';
 
 export const authState = reactive({
   user: null,
@@ -60,6 +60,11 @@ export async function logout() {
 export async function listAccounts() {
   const { accounts } = await apiGet('auth.php?action=accounts');
   return accounts;
+}
+
+/** Removes another account from this browser's "signed in" list. */
+export async function forgetAccount(id) {
+  await apiPost('auth.php?action=forget', { id });
 }
 
 export async function switchAccount(id) {

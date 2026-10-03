@@ -1,8 +1,8 @@
-import { apiGet, apiPost } from '../api/client.js?v=80';
-import AppShell from './AppShell.js?v=80';
-import { notificationsChanged } from '../store/ui.js?v=80';
-import { timeAgo, formatDate } from '../util.js?v=80';
-import Loader from './Loader.js?v=80';
+import { apiGet, apiPost } from '../api/client.js?v=108';
+import AppShell from './AppShell.js?v=108';
+import { notificationsChanged } from '../store/ui.js?v=108';
+import { timeAgo, formatDate, formatDateTime } from '../util.js?v=108';
+import Loader from './Loader.js?v=108';
 
 // Every update on the applicant's permits in one place — the full version of the bell's
 // dropdown, with filters by read state, kind, permit and free text, grouped by day.
@@ -77,6 +77,7 @@ export default {
   },
   methods: {
     timeAgo,
+    formatDateTime,
     formatDate,
     async load() {
       this.loading = true;
@@ -235,9 +236,9 @@ export default {
                   </span>
                   <span class="block text-sm text-slate-600 leading-relaxed mt-0.5">{{ n.body }}</span>
                   <span class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-xs text-slate-400">
-                    <span class="font-medium text-slate-500">{{ n.property_address }}</span>
-                    <span aria-hidden="true">·</span>
-                    <span :title="formatDate(n.created_at)">{{ timeAgo(n.created_at) }}</span>
+                    <span v-if="n.property_address && n.property_address !== 'N/A'" class="font-medium text-slate-500">{{ n.property_address }}</span>
+                    <span v-if="n.property_address && n.property_address !== 'N/A'" aria-hidden="true">·</span>
+                    <span :title="timeAgo(n.created_at)">{{ formatDateTime(n.created_at) }}</span>
                   </span>
                 </span>
                 <span class="hidden sm:flex items-center gap-1 self-center text-xs font-semibold text-brand-700 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition shrink-0">

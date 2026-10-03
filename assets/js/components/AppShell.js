@@ -1,19 +1,31 @@
-import { authState, logout, listAccounts, switchAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=80';
-import { apiGet, apiPost } from '../api/client.js?v=80';
-import ChatWidget from './ChatWidget.js?v=80';
-import AddAccountModal from './AddAccountModal.js?v=80';
-import { timeAgo } from '../util.js?v=80';
-import { uiState, openChangePassword } from '../store/ui.js?v=80';
-import Loader from './Loader.js?v=80';
+import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=108';
+import { apiGet, apiPost } from '../api/client.js?v=108';
+import ChatWidget from './ChatWidget.js?v=108';
+import AddAccountModal from './AddAccountModal.js?v=108';
+import BaseModal from './BaseModal.js?v=108';
+import { formatDateTime } from '../util.js?v=108';
+import { uiState, openChangePassword } from '../store/ui.js?v=108';
+import Loader from './Loader.js?v=108';
+import NotificationToasts from './NotificationToasts.js?v=108';
+
+// How often the bell checks for new notifications while you're on a page. A permit moves through
+// its stages over days, so this is about not missing one for long, not about being instant.
+const POLL_MS = 45000;
+// At most this many toasts on screen; the oldest drops off rather than stacking down the page.
+const MAX_TOASTS = 3;
 
 export default {
   name: 'AppShell',
-  components: { ChatWidget, AddAccountModal, Loader },
+  components: { ChatWidget, AddAccountModal, BaseModal, Loader, NotificationToasts },
   data() {
     return {
       authState, uiState, menuOpen: false, accountsOpen: false, accounts: [], accountsLoading: false,
       switching: false, switchError: '', addingAccount: false,
+      confirmSwitch: null,   // the account being switched to, pending confirmation
+      confirmForget: null,   // the account being removed from this browser, pending confirmation
+      forgetting: false,
       notifOpen: false, notifications: [], unread: 0, notifLoading: false,
+      toasts: [],
     };
   },
   async mounted() {
@@ -27,12 +39,18 @@ export default {
     };
     document.addEventListener('click', this.onDocClick);
     document.addEventListener('keydown', this.onKey);
-    // Load the badge count up front; the list itself is fetched when the bell opens
-    if (this.isApplicant) await this.loadNotifications();
+    // Load the badge count up front; the list itself is fetched when the bell opens.
+    // What's already there on arrival isn't news, so the first load doesn't toast (seedKnown).
+    this.knownIds = null;
+    this.onVisible = () => { if (document.visibilityState === 'visible') this.loadNotifications(); };
+    document.addEventListener('visibilitychange', this.onVisible);
+    if (this.isApplicant) await this.watchNotifications();
   },
   beforeUnmount() {
     document.removeEventListener('click', this.onDocClick);
     document.removeEventListener('keydown', this.onKey);
+    document.removeEventListener('visibilitychange', this.onVisible);
+    clearInterval(this.poll);
   },
   computed: {
     initials() {
@@ -64,10 +82,25 @@ export default {
     'uiState.notificationsVersion'() {
       if (this.isApplicant) this.loadNotifications();
     },
+    // The account can land after this mounts (or change underneath it, when switching accounts),
+    // so polling follows the account rather than whatever was true at mount.
+    isApplicant(is) {
+      if (is) this.watchNotifications();
+      else { clearInterval(this.poll); this.toasts = []; this.knownIds = null; }
+    },
   },
   methods: {
     initialsOf(name) {
       return (name || '').trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+    },
+    // First load seeds what's already there, then we poll for what arrives after it.
+    async watchNotifications() {
+      clearInterval(this.poll);
+      await this.loadNotifications();
+      this.poll = setInterval(() => {
+        // Nothing to announce to a tab nobody is looking at; it catches up when they come back
+        if (document.visibilityState === 'visible') this.loadNotifications();
+      }, POLL_MS);
     },
     async loadNotifications() {
       this.notifLoading = true;
@@ -77,11 +110,34 @@ export default {
         // The badge counts what's arrived since the bell was last opened; unread dots on the
         // items themselves stay until each is opened or "Mark all as read" is used
         this.unread = res.unseen ?? res.unread;
+        this.announceNew(res.notifications);
       } catch (e) {
         this.notifications = [];
       } finally {
         this.notifLoading = false;
       }
+    },
+    // What gets a toast: on the first load, whatever arrived since the bell was last opened —
+    // the same thing the badge is counting, so news waiting when you arrive still announces
+    // itself. After that, anything that wasn't in the previous load. Read items never toast.
+    announceNew(items) {
+      const ids = new Set(items.map((n) => n.id));
+      const first = this.knownIds === null;
+      const fresh = first
+        ? items.filter((n) => n.unseen)
+        : items.filter((n) => !this.knownIds.has(n.id) && n.unread);
+      this.knownIds = ids;
+      if (!fresh.length) return;
+      // Newest at the top of the stack, and never more than MAX_TOASTS of them
+      const next = [...fresh].reverse().filter((n) => !this.toasts.some((t) => t.id === n.id));
+      this.toasts = [...next, ...this.toasts].slice(0, MAX_TOASTS);
+    },
+    dismissToast(id) {
+      this.toasts = this.toasts.filter((t) => t.id !== id);
+    },
+    openToast(n) {
+      this.dismissToast(n.id);
+      this.openNotification(n);
     },
     async toggleNotifications() {
       this.notifOpen = !this.notifOpen;
@@ -93,8 +149,10 @@ export default {
         this.unread = 0;
         apiPost('notifications.php?action=seen', {}).catch(() => {});
       }
+      // You're reading them now, so the toasts have nothing left to announce
+      this.toasts = [];
     },
-    timeAgo,
+    formatDateTime,
     openChangePassword,
     // Land on the permit itself in My Permits, already open, rather than a bare page
     openNotification(n) {
@@ -116,17 +174,42 @@ export default {
         this.accountsLoading = false;
       }
     },
-    async chooseAccount(a) {
+    // Switching reloads the app as someone else, so it asks first rather than doing it on a stray
+    // click — easy to hit by accident in a menu this small.
+    chooseAccount(a) {
       if (a.current) {
         this.menuOpen = false;
         return;
       }
+      this.switchError = '';
+      this.confirmSwitch = a;
+    },
+    askForget(a) {
+      this.switchError = '';
+      this.confirmForget = a;
+    },
+    async doForget() {
+      const a = this.confirmForget;
+      if (!a) return;
+      this.forgetting = true;
+      try {
+        await forgetAccount(a.id);
+        this.accounts = await listAccounts();
+      } catch (e) {
+        this.switchError = e.message;
+      } finally {
+        this.forgetting = false;
+        this.confirmForget = null;
+      }
+    },
+    async switchTo(a) {
       this.switching = true;
       this.switchError = '';
       try {
         reloadAs(await switchAccount(a.id));
       } catch (e) {
         this.switchError = e.message;
+        this.confirmSwitch = null;
         this.accounts = await listAccounts();
       } finally {
         this.switching = false;
@@ -146,7 +229,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/dashboard" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=80" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=108" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
@@ -210,7 +293,7 @@ export default {
                       <span v-if="n.unread" class="mt-1 w-2 h-2 rounded-full bg-sun-400 shrink-0"></span>
                     </span>
                     <span class="block text-xs text-ink-200 leading-relaxed mt-0.5 line-clamp-2">{{ n.body }}</span>
-                    <span class="block text-[11px] text-ink-400 mt-1">{{ n.property_address }} &middot; {{ timeAgo(n.created_at) }}</span>
+                    <span class="block text-[11px] text-ink-400 mt-1"><template v-if="n.property_address && n.property_address !== 'N/A'">{{ n.property_address }} &middot; </template>{{ formatDateTime(n.created_at) }}</span>
                   </span>
                 </button>
               </div>
@@ -259,18 +342,27 @@ export default {
                 <!-- Accounts signed in on this browser (opens inside the menu, on the right) -->
                 <transition name="expand">
                 <div v-if="accountsOpen" class="mt-1 rounded-xl bg-black/20 border border-white/10 p-1.5">
+                  <p class="px-3 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">On this browser</p>
                   <Loader v-if="accountsLoading" variant="inline" kind="accounts" class="px-2 text-ink-300" />
-                  <button v-for="a in accounts" :key="a.id" type="button" @click="chooseAccount(a)" :disabled="switching"
-                    class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-white/10" :aria-current="a.current ? 'true' : null">
-                    <span class="w-3.5 h-3.5 rounded-full shrink-0 flex items-center justify-center" :class="a.current ? 'ring-2 ring-emerald-400' : 'ring-1 ring-white/20'">
-                      <span v-if="a.current" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    </span>
-                    <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{{ initialsOf(a.full_name) }}</span>
-                    <span class="min-w-0">
-                      <span class="block font-semibold text-white truncate">{{ a.full_name }}</span>
-                      <span class="block text-[11px] text-ink-300 truncate">{{ a.role === 'applicant' ? a.contact : (a.role === 'admin' ? 'Admin' : 'City Staff') + ' · ' + a.contact }}</span>
-                    </span>
-                  </button>
+                  <div v-for="a in accounts" :key="a.id" class="group/acct relative flex items-center rounded-xl hover:bg-white/10">
+                    <button type="button" @click="chooseAccount(a)" :disabled="switching"
+                      class="min-w-0 flex-1 flex items-center gap-3 pl-3 pr-1 py-2 rounded-xl text-left" :aria-current="a.current ? 'true' : null">
+                      <span class="w-3.5 h-3.5 rounded-full shrink-0 flex items-center justify-center" :class="a.current ? 'ring-2 ring-emerald-400' : 'ring-1 ring-white/20'">
+                        <span v-if="a.current" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      </span>
+                      <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{{ initialsOf(a.full_name) }}</span>
+                      <span class="min-w-0">
+                        <span class="block font-semibold text-white truncate">{{ a.full_name }}</span>
+                        <span class="block text-[11px] text-ink-300 truncate">{{ a.role === 'applicant' ? a.contact : (a.role === 'admin' ? 'Admin' : 'City Staff') + ' · ' + a.contact }}</span>
+                      </span>
+                    </button>
+                    <!-- Only on the accounts you are not using: dropping the current one is "Sign out" -->
+                    <button v-if="!a.current" type="button" @click.stop="askForget(a)" :disabled="switching"
+                      :aria-label="'Remove ' + a.full_name + ' from this browser'" :title="'Remove ' + a.full_name + ' from this browser'"
+                      class="mr-1.5 p-1.5 rounded-lg text-ink-400 opacity-0 group-hover/acct:opacity-100 focus-visible:opacity-100 hover:text-white hover:bg-white/15 transition">
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                    </button>
+                  </div>
                   <p v-if="switchError" class="px-3 py-1 text-xs text-red-300">{{ switchError }}</p>
                   <div class="h-px bg-white/10 my-1"></div>
                   <button type="button" @click="menuOpen = false; addingAccount = true" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-white hover:bg-white/10">
@@ -317,9 +409,61 @@ export default {
       </div>
     </nav>
 
+    <NotificationToasts v-if="isApplicant" :items="toasts" @open="openToast" @close="dismissToast" />
+
     <ChatWidget v-if="authState.user && authState.user.role === 'applicant'" />
     <transition name="modal">
       <AddAccountModal v-if="addingAccount" @close="addingAccount = false" />
+    </transition>
+
+    <transition name="modal">
+      <BaseModal v-if="confirmSwitch" title="Switch to this account?" eyebrow="You stay signed in to both"
+        :subtitle="confirmSwitch.full_name" @close="confirmSwitch = null">
+        <template #icon>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg>
+        </template>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          PermitTrack will reload as <span class="font-semibold text-ink-700">{{ confirmSwitch.full_name }}</span>,
+          and anything you have open now will close.
+          <span class="font-semibold text-ink-700">{{ authState.user && authState.user.full_name }}</span>
+          stays signed in on this browser, so you can switch back from this menu.
+        </p>
+        <p v-if="switchError" class="text-sm text-red-600 mt-3">{{ switchError }}</p>
+        <template #footer>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" @click="confirmSwitch = null" :disabled="switching"
+              class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-100 disabled:opacity-60 transition">Cancel</button>
+            <button type="button" @click="switchTo(confirmSwitch)" :disabled="switching"
+              class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">
+              {{ switching ? 'Switching…' : 'Switch account' }}
+            </button>
+          </div>
+        </template>
+      </BaseModal>
+    </transition>
+
+    <transition name="modal">
+      <BaseModal v-if="confirmForget" title="Remove this account?" eyebrow="From this browser only" tone="sun"
+        :subtitle="confirmForget.full_name" @close="confirmForget = null">
+        <template #icon>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="m17 8 4 4m0-4-4 4"/></svg>
+        </template>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          <span class="font-semibold text-ink-700">{{ confirmForget.full_name }}</span> will drop off the
+          switcher, so getting back to it means signing in with its password again. The account itself
+          and everything filed under it are untouched.
+        </p>
+        <template #footer>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" @click="confirmForget = null" :disabled="forgetting"
+              class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-100 disabled:opacity-60 transition">Cancel</button>
+            <button type="button" @click="doForget" :disabled="forgetting"
+              class="text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">
+              {{ forgetting ? 'Removing…' : 'Remove account' }}
+            </button>
+          </div>
+        </template>
+      </BaseModal>
     </transition>
   </div>
   `,

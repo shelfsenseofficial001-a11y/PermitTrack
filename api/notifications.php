@@ -17,10 +17,12 @@ if ($action === 'list' && $method === 'GET') {
 
     $stmt = db()->prepare(
         "SELECT v.id, v.type, v.body, v.created_at,
-                a.id AS application_id, a.permit_type, a.property_address, a.status,
+                a.id AS application_id, a.property_address, a.status,
+                COALESCE(a.permit_type, pt.name) AS permit_type,
                 u.full_name AS sender_name, u.role AS sender_role
          FROM application_activity v
          JOIN applications a ON a.id = v.application_id
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
          LEFT JOIN users u ON u.id = v.sender_id
          WHERE a.applicant_id = ?
            AND (v.type = 'status_change' OR u.role IN ('staff', 'admin'))
@@ -78,6 +80,8 @@ if ($action === 'list' && $method === 'GET') {
             'kind' => $row['type'] === 'status_change' ? 'stage' : 'message',
             'created_at' => $row['created_at'],
             'unread' => $isUnread,
+            // Unread AND newer than the last time the bell was opened — i.e. not yet announced
+            'unseen' => $isUnread && ($seenAt === null || $row['created_at'] > $seenAt),
         ];
     }
 
@@ -125,7 +129,7 @@ if ($action === 'read_all' && $method === 'POST') {
 // A headline for the event, so the bell reads as news rather than as a log line.
 function notification_title(array $row): string
 {
-    $permit = $row['permit_type'] . ' permit';
+    $permit = trim((string)$row['permit_type']) !== '' ? $row['permit_type'] . ' permit' : 'application';
 
     if ($row['type'] !== 'status_change') {
         $who = $row['sender_name'] ?: 'City Staff';

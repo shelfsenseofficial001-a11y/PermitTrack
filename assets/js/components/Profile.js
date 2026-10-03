@@ -1,11 +1,19 @@
-import { apiPost } from '../api/client.js?v=80';
-import AppShell from './AppShell.js?v=80';
-import { inputClass } from './AuthLayout.js?v=80';
-import { authState, loadCurrentUser } from '../store/auth.js?v=80';
-import { formatDate, timeAgo } from '../util.js?v=80';
-import { openChangePassword } from '../store/ui.js?v=80';
+import { apiPost } from '../api/client.js?v=108';
+import AppShell from './AppShell.js?v=108';
+import { inputClass } from './AuthLayout.js?v=108';
+import { authState, loadCurrentUser } from '../store/auth.js?v=108';
+import { formatDate, timeAgo } from '../util.js?v=108';
+import { openChangePassword } from '../store/ui.js?v=108';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'city', 'postal_code'];
+
+function yearsAgo(years) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d.toISOString().slice(0, 10);
+}
+const MAX_BIRTHDATE = yearsAgo(18);
+const MIN_BIRTHDATE = yearsAgo(80);
 
 // What counts toward "profile complete" — the details a permit application draws on
 const REQUIRED = ['first_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'city', 'postal_code'];
@@ -21,6 +29,8 @@ export default {
       error: '',
       toast: '',
       inputClass,
+      minBirthdate: MIN_BIRTHDATE,
+      maxBirthdate: MAX_BIRTHDATE,
     };
   },
   computed: {
@@ -211,7 +221,7 @@ export default {
               </div>
               <div class="sm:w-1/3 sm:pr-3">
                 <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-dob">Date of birth</label>
-                <input id="p-dob" v-model="form.birthdate" type="date" required autocomplete="bday" :class="inputClass" />
+                <input id="p-dob" v-model="form.birthdate" type="date" required :min="minBirthdate" :max="maxBirthdate" autocomplete="bday" :class="inputClass" />
               </div>
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-addr">House / street</label>

@@ -27,6 +27,7 @@ if ($action === 'options' && $method === 'GET') {
             'agency' => OWNERSHIP_TYPES[$value]['agency'],
         ], array_keys(OWNERSHIP_TYPES)),
         'lines_of_business' => LINES_OF_BUSINESS,
+        'barangays' => barangay_options(),
         'id_types' => options_list(REPRESENTATIVE_ID_TYPES),
         'max_file_mb' => PRIVATE_UPLOAD_MAX_BYTES / 1024 / 1024,
     ]);
@@ -73,8 +74,10 @@ if ($action === 'save' && $method === 'POST') {
         'tin' => preg_replace('/\D+/', '', $str('tin')),
         'address_line' => $str('address_line'),
         'barangay' => $str('barangay'),
-        'city' => $str('city'),
-        'postal_code' => $str('postal_code'),
+        // City and postal code are not asked for: the whole system covers Dasmariñas only,
+        // so they are filled in below from the barangay rather than typed.
+        'city' => 'Dasmariñas',
+        'postal_code' => '',
         'business_email' => strtolower($str('business_email')),
         'business_phone' => $str('business_phone'),
         'floor_area_sqm' => $str('floor_area_sqm'),
@@ -98,12 +101,17 @@ if ($action === 'save' && $method === 'POST') {
     if (!preg_match('/^\d{9,14}$/', $f['tin'])) {
         fail('Please enter a valid TIN (9 to 14 digits, e.g. 123-456-789-000).');
     }
-    if ($f['address_line'] === '' || $f['barangay'] === '' || $f['city'] === '') {
-        fail('Please complete the business address.');
+    if ($f['address_line'] === '') {
+        fail('Please enter the building number and street of the business.');
     }
-    if (!preg_match('/^\d{4}$/', $f['postal_code'])) {
-        fail('Business postal / ZIP code must be 4 digits.');
+    // The barangay has to be one of the 75, not whatever was typed — it decides which barangay
+    // secretariat reviews every permit this business later files.
+    $barangay = find_barangay($f['barangay']);
+    if (!$barangay) {
+        fail('Please choose the business barangay from the list.');
     }
+    $f['barangay'] = $barangay['name'];   // store it spelled the way the barangays table spells it
+    $f['barangay_id'] = (int)$barangay['id'];
     if ($f['business_email'] !== '' && !filter_var($f['business_email'], FILTER_VALIDATE_EMAIL)) {
         fail('Please enter a valid business email, or leave it blank.');
     }
@@ -154,12 +162,12 @@ if ($action === 'save' && $method === 'POST') {
         $pdo->beginTransaction();
         $values = [
             $f['business_name'], $f['trade_name'] ?: null, $f['ownership_type'], $f['line_of_business'], $f['registration_number'], $f['tin'],
-            $f['address_line'], $f['barangay'], $f['city'], $f['postal_code'], $f['business_email'] ?: null, $f['business_phone'] ?: null,
+            $f['address_line'], $f['barangay'], $f['barangay_id'], $f['city'], $f['postal_code'] ?: null, $f['business_email'] ?: null, $f['business_phone'] ?: null,
             $f['floor_area_sqm'] !== '' ? (float)$f['floor_area_sqm'] : null, $f['employee_count'] !== '' ? (int)$f['employee_count'] : null,
             $f['is_registered_owner'] ? 1 : 0, $needsRole ? $f['representative_role'] : null,
         ];
         $columns = 'business_name = ?, trade_name = ?, ownership_type = ?, line_of_business = ?, registration_number = ?, tin = ?,
-                    address_line = ?, barangay = ?, city = ?, postal_code = ?, business_email = ?, business_phone = ?,
+                    address_line = ?, barangay = ?, barangay_id = ?, city = ?, postal_code = ?, business_email = ?, business_phone = ?,
                     floor_area_sqm = ?, employee_count = ?, is_registered_owner = ?, representative_role = ?,
                     status = \'pending\', declared_at = NOW(), submitted_at = NOW(), reviewed_by = NULL, reviewed_at = NULL, rejection_reason = NULL';
         if ($existing) {

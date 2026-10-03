@@ -1,24 +1,34 @@
-import { permitIconClass } from '../util.js?v=80';
-import ChatWidget from './ChatWidget.js?v=80';
+import { permitIconClass } from '../util.js?v=108';
+import ChatWidget from './ChatWidget.js?v=108';
 
-// The public front door. Everything on it describes what PermitTrack really does — the five
-// stages, the five permit types and their actual requirements — so nothing here over-promises.
+// The public front door. Everything on it describes what PermitTrack really does — the offices a
+// permit actually passes through, the real permit catalogue and its real requirements — so nothing
+// here over-promises. A permit is not a fixed set of stages: it is a chain of offices, and how many
+// links it has depends on the permit. Keep this page in step with permit_pipeline_steps.
 
-// The hero tracker walks through these, like a courier app following a parcel
+// The hero tracker walks through these, like a courier app following a parcel. This is a real
+// Building Permit route, office by office — see permit_pipeline_steps for the Building Permit.
+// Note the Building Official appears twice: offices can recur in a route, which is why these are
+// keyed by position and not by name.
 const HERO_STAGES = [
-  { name: 'Submitted', time: 'Sep 2 · 9:14 AM', note: 'Application and 4 documents received' },
-  { name: 'Under Review', time: 'Sep 4 · 2:30 PM', note: 'City Staff verified your documents' },
-  { name: 'Inspection Scheduled', time: 'Sep 9 · 10:00 AM', note: 'Site visit set for Sep 16, 10:00 AM' },
-  { name: 'Inspector Notes', time: 'Sep 16 · 3:45 PM', note: 'Passed, with minor notes attached' },
-  { name: 'Approved', time: 'Sep 18 · 11:20 AM', note: 'Your permit is ready' },
+  { name: 'Barangay Burol I', time: 'Sep 2 · 9:14 AM', note: 'Barangay Construction Clearance signed' },
+  { name: 'City Planning (CPDO)', time: 'Sep 4 · 2:30 PM', note: 'Zoning Clearance issued' },
+  { name: 'Building Official', time: 'Sep 9 · 10:00 AM', note: 'Technical plan review passed' },
+  { name: 'CENRO', time: 'Sep 12 · 1:05 PM', note: 'Environmental clearance granted' },
+  { name: 'City Assessor', time: 'Sep 16 · 3:45 PM', note: 'Real property tax clearance confirmed' },
+  { name: 'Building Official', time: 'Sep 18 · 11:20 AM', note: 'Building Permit issued' },
 ];
 
-const STAGES = [
-  { name: 'Submitted', text: 'Your application and documents land with the right city department.' },
-  { name: 'Under Review', text: 'City Staff check every document. Anything off gets flagged, with a note.' },
-  { name: 'Inspection Scheduled', text: 'Your inspection date is set, and you know exactly when.' },
-  { name: 'Inspector Notes', text: 'The inspector’s findings, in writing, right on your permit.' },
-  { name: 'Approved', text: 'Done. Approved, without a single trip to the counter.' },
+// One real route, as an example: the Building Permit. Other permits are shorter — a Certificate
+// of Residency is a single stop at your barangay — and a few are longer. The page says so rather
+// than implying every permit looks like this one.
+const JOURNEY = [
+  { office: 'Your Barangay', step: 'Barangay Construction Clearance', text: 'Every permit starts where you are. Your barangay signs off first.' },
+  { office: 'City Planning', step: 'Zoning Clearance', text: 'CPDO confirms what you are building is allowed on that lot.' },
+  { office: 'Building Official', step: 'Technical plan review', text: 'The OBO checks your plans against the building code.' },
+  { office: 'CENRO', step: 'Environmental clearance', text: 'Environmental impact is reviewed before any ground is broken.' },
+  { office: 'City Assessor', step: 'RPT clearance', text: 'Real property taxes on the lot are confirmed paid.' },
+  { office: 'Building Official', step: 'Building Permit issued', text: 'Back to the OBO, who issues the permit itself.' },
 ];
 
 // Mirrors required_documents_for() and PERMIT_RULES in the API
@@ -46,7 +56,7 @@ const FEATURES = [
 
 const FAQS = [
   { q: 'Who can apply for a permit?',
-    a: 'Anyone can create an account and browse every permit and its requirements. To apply, verify as a Resident (two proofs of residence, reviewed by City Staff) or register your business, which City Staff approves.' },
+    a: 'Anyone can create an account and browse every permit and its requirements. To apply, verify as a Resident (two proofs of residence, reviewed by City Staff) or add a business you already run, which City Staff approves against its DTI, SEC or CDA certificate.' },
   { q: 'How will I know when my permit moves?',
     a: 'Every stage change is posted to your permit and sent to you by email or SMS. It also shows up under the bell in your account.' },
   { q: 'What happens if one of my documents is rejected?',
@@ -68,6 +78,14 @@ export default {
       looping: false, // fading the tracker out before it starts over
       instant: false, // one frame with transitions off, so the reset doesn't replay in reverse
       openFaqs: [0], // any number can be open at once; the first starts open
+      // The figures in the tagline band. 'to' is where each counts up to: every permit type in
+      // permit_types, every department that can hold a permit, and email + SMS + in-app.
+      stats: [
+        { to: 28, l: 'permit types, one account' },
+        { to: 88, l: 'offices and barangay halls' },
+        { to: 3, l: 'ways to hear it moved' },
+      ],
+      statCounts: [0, 0, 0],
       scrolled: false,
       showFloatingTop: false,
       menuOpen: false,
@@ -79,7 +97,7 @@ export default {
         { id: 'faq', label: 'FAQ' },
       ],
       heroStages: HERO_STAGES,
-      stages: STAGES,
+      journey: JOURNEY,
       permits: PERMITS,
       features: FEATURES,
       faqs: FAQS,
@@ -144,8 +162,24 @@ export default {
         });
       }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
       this.$el.querySelectorAll('.reveal').forEach((el) => this.observer.observe(el));
+
+      // The figures run up from zero as the band arrives, rather than being there already
+      this.statsObserver = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          this.statsObserver.disconnect();
+          this.countStatsUp();
+        }
+      }, { threshold: 0.4 });
+      if (this.$refs.statsBand) this.statsObserver.observe(this.$refs.statsBand);
+      // Counting up is the nice version, not the only version: if the band is never observed
+      // (a tab opened in the background, an engine that does not run the observer), the figures
+      // simply appear rather than sitting at zero.
+      this.statsFallback = setTimeout(() => {
+        if (this.statCounts.every((n) => n === 0)) this.statCounts = this.stats.map((f) => f.to);
+      }, 4000);
     } else {
       this.$el.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
+      this.statCounts = this.stats.map((f) => f.to);
     }
   },
   beforeUnmount() {
@@ -155,9 +189,38 @@ export default {
     document.removeEventListener('keydown', this.onKey);
     window.removeEventListener('resize', this.onResize);
     if (this.observer) this.observer.disconnect();
+    if (this.statsObserver) this.statsObserver.disconnect();
+    if (this.statsFrame) cancelAnimationFrame(this.statsFrame);
+    clearTimeout(this.statsBackstop);
+    clearTimeout(this.statsFallback);
   },
   methods: {
     permitIconClass,
+    // Counts every figure up together over ~1.1s, easing out so they slow into their final value.
+    // Nothing moves for someone who asked for less motion — the numbers are simply there.
+    countStatsUp() {
+      const targets = this.stats.map((f) => f.to);
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        this.statCounts = targets;
+        return;
+      }
+      clearTimeout(this.statsFallback);
+      const DURATION = 1100;
+      const start = performance.now();
+      const step = (now) => {
+        const t = Math.min((now - start) / DURATION, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        this.statCounts = targets.map((to) => Math.round(to * eased));
+        if (t < 1) this.statsFrame = requestAnimationFrame(step);
+        else this.statCounts = targets;   // never leave it a rounding short of the real figure
+      };
+      this.statsFrame = requestAnimationFrame(step);
+      // If frames never come (a backgrounded tab, a browser that throttles hard), the figures still
+      // end up at their real values rather than sitting at zero.
+      clearTimeout(this.statsBackstop);
+    clearTimeout(this.statsFallback);
+      this.statsBackstop = setTimeout(() => { this.statCounts = targets; }, DURATION + 300);
+    },
     closeMenu() {
       this.menuOpen = false;
     },
@@ -254,7 +317,7 @@ export default {
       :class="scrolled || menuOpen ? 'bg-white/90 backdrop-blur-md shadow-[0_8px_30px_-18px_rgba(16,48,29,0.35)]' : 'bg-transparent'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <button type="button" @click="go('top')" class="flex items-center gap-2.5 shrink-0" aria-label="PermitTrack, back to top">
-          <img src="assets/images/PermitTrackIcon.png?v=80" alt="" class="w-9 h-9 object-contain" />
+          <img src="assets/images/PermitTrackIcon.png?v=108" alt="" class="w-9 h-9 object-contain" />
           <span class="leading-tight text-left">
             <span class="block text-[15px] font-bold text-ink-700">PermitTrack</span>
             <span class="block text-[11px] text-slate-500">City of Dasmariñas</span>
@@ -383,7 +446,7 @@ export default {
               </div>
 
               <ol class="mt-7 relative transition-opacity duration-300" :class="[looping ? 'opacity-0' : 'opacity-100', instant ? '[&_*]:!transition-none' : '']">
-                <li v-for="(s, i) in heroStages" :key="s.name" class="relative flex gap-4 pb-5 last:pb-0">
+                <li v-for="(s, i) in heroStages" :key="i" class="relative flex gap-4 pb-5 last:pb-0">
                   <!-- connector to the next stop -->
                   <span v-if="i < heroStages.length - 1" class="absolute left-[13px] top-7 bottom-0 w-0.5 rounded-full transition-colors duration-500"
                     :class="i < stage ? 'bg-brand-500' : 'bg-slate-200'" aria-hidden="true"></span>
@@ -425,45 +488,47 @@ export default {
     <!-- ============ TAGLINE BAND ============ -->
     <section class="relative bg-ink-700 text-white overflow-hidden">
       <div class="pt-gradient-wide absolute inset-0 opacity-25" aria-hidden="true"></div>
-      <div class="relative max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 grid lg:grid-cols-[1.2fr_1fr] gap-10 items-center reveal">
+      <div ref="statsBand" class="relative max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 grid lg:grid-cols-[1.2fr_1fr] gap-10 items-center reveal">
         <h2 class="text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] leading-[1.05]">
           Stop calling City Hall.<br><span class="text-sun-300">Start tracking.</span>
         </h2>
         <dl class="grid grid-cols-3 gap-4 sm:gap-6">
-          <div v-for="f in [{ n: '5', l: 'permit types, one account' }, { n: '5', l: 'clear stages, always visible' }, { n: '3', l: 'ways to hear it moved' }]" :key="f.l"
-            class="border-l border-white/15 pl-4">
-            <dt class="text-4xl sm:text-5xl font-extrabold text-sun-300 tracking-tight">{{ f.n }}</dt>
+          <div v-for="(f, i) in stats" :key="f.l" class="border-l border-white/15 pl-4">
+            <dt class="text-4xl sm:text-5xl font-extrabold text-sun-300 tracking-tight tabular-nums">{{ statCounts[i] }}</dt>
             <dd class="text-xs sm:text-sm text-ink-200 mt-1 leading-snug">{{ f.l }}</dd>
           </div>
         </dl>
       </div>
     </section>
 
-    <!-- ============ HOW IT WORKS: THE FIVE STAGES ============ -->
+    <!-- ============ HOW IT WORKS: THE ROUTE THROUGH THE OFFICES ============ -->
     <section id="how-it-works" class="scroll-mt-16 py-14 sm:py-20">
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
         <div class="max-w-2xl reveal">
           <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">How it works</span>
-          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Five stages.<br>Zero guesswork.</h2>
-          <p class="mt-4 text-lg text-slate-600 leading-relaxed">Every permit travels the same five stops. You see each one the moment it happens, just like a parcel on its way to your door.</p>
+          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Every office.<br>Named as you pass it.</h2>
+          <p class="mt-4 text-lg text-slate-600 leading-relaxed">
+            A permit is not a set of vague stages — it is a route through real offices, and you always
+            know which one is holding yours. Here is a Building Permit, all six stops of it.
+          </p>
+          <p class="mt-3 text-sm text-slate-500 leading-relaxed">
+            Routes differ by permit. A Certificate of Residency is one stop at your barangay; a Building
+            Permit is six, and more if your site needs mechanical, electronics or subdivision review.
+          </p>
         </div>
 
-        <ol class="mt-10 grid md:grid-cols-5 gap-4 md:gap-3 relative">
-          <!-- the route line behind the stops -->
-          <span class="hidden md:block absolute top-7 left-[10%] right-[10%] h-0.5 bg-[linear-gradient(90deg,#1f7a3a,#8fcb7b,#f7cf1b)] rounded-full" aria-hidden="true"></span>
-          <li v-for="(s, i) in stages" :key="s.name" class="relative reveal" :style="{ transitionDelay: (i * 90) + 'ms' }">
+        <ol class="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 relative">
+          <li v-for="(s, i) in journey" :key="i" class="relative reveal" :style="{ transitionDelay: (i * 90) + 'ms' }">
             <div class="flex md:flex-col items-start md:items-center gap-4 md:gap-0 md:text-center">
               <span class="relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_10px_24px_-10px_rgba(16,48,29,0.5)] ring-4 ring-meadow"
-                :class="i === stages.length - 1 ? 'bg-sun-400 text-ink-700' : 'bg-ink-700 text-sun-300'">
-                <svg v-if="i === 0" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                <svg v-else-if="i === 1" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="m8.5 11 1.8 1.8 3.2-3.3"/></svg>
-                <svg v-else-if="i === 2" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/></svg>
-                <svg v-else-if="i === 3" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                <svg v-else class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 15 5h4v4l3 3-3 3v4h-4l-3 3-3-3H5v-4l-3-3 3-3V5h4z"/><path d="m9 12 2 2 4-4"/></svg>
+                :class="i === journey.length - 1 ? 'bg-sun-400 text-ink-700' : 'bg-ink-700 text-sun-300'">
+                <svg v-if="i === journey.length - 1" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 15 5h4v4l3 3-3 3v4h-4l-3 3-3-3H5v-4l-3-3 3-3V5h4z"/><path d="m9 12 2 2 4-4"/></svg>
+                <span v-else class="text-lg font-extrabold">{{ i + 1 }}</span>
               </span>
               <div class="md:mt-5">
-                <div class="text-xs font-bold text-brand-600">Stage {{ i + 1 }}</div>
-                <h3 class="mt-0.5 font-bold text-ink-700">{{ s.name }}</h3>
+                <div class="text-xs font-bold text-brand-600">Stop {{ i + 1 }} of {{ journey.length }}</div>
+                <h3 class="mt-0.5 font-bold text-ink-700">{{ s.office }}</h3>
+                <p class="text-xs font-semibold text-slate-400 mt-0.5">{{ s.step }}</p>
                 <p class="mt-1.5 text-sm text-slate-500 leading-relaxed md:px-1">{{ s.text }}</p>
               </div>
             </div>
@@ -570,7 +635,7 @@ export default {
           <div v-for="(s, i) in [
               { t: 'Create your account', d: 'Sign up with your email or mobile number and confirm it with a 6-digit code.' },
               { t: 'Verify who you are', d: 'Residents upload two proofs of residence. Business owners register their business. City Staff approve it once.' },
-              { t: 'Apply and track', d: 'Pick a permit, upload the listed documents, and follow it through all five stages.' },
+              { t: 'Apply and track', d: 'Pick a permit, upload the listed documents, and follow it from one office to the next.' },
             ]" :key="s.t" class="reveal relative rounded-3xl ring-1 ring-brand-100 bg-meadow/60 p-7" :style="{ transitionDelay: (i * 90) + 'ms' }">
             <span class="text-6xl font-extrabold tracking-tighter text-brand-200 leading-none">0{{ i + 1 }}</span>
             <h3 class="mt-4 text-lg font-bold text-ink-700">{{ s.t }}</h3>
@@ -641,7 +706,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr] gap-10">
         <div>
           <div class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=80" alt="" class="w-9 h-9 object-contain" />
+            <img src="assets/images/PermitTrackIcon.png?v=108" alt="" class="w-9 h-9 object-contain" />
             <span class="leading-tight">
               <span class="block text-[15px] font-bold text-white">PermitTrack</span>
               <span class="block text-[11px] text-ink-300">City of Dasmariñas</span>

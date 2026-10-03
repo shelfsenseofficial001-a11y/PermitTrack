@@ -72,6 +72,23 @@ function send_private_file(string $relativePath, string $mime, string $originalN
     exit;
 }
 
+// Dasmariñas has 75 barangays and the system covers no other city, so every address field
+// in the app resolves against this one list rather than accepting free text.
+/** All barangays of Dasmariñas, for the searchable select. */
+function barangay_options(): array
+{
+    return db()->query('SELECT id, name FROM barangays ORDER BY name')->fetchAll();
+}
+
+/** Looks up a barangay by name (case/whitespace-insensitive); null if it isn't one of Dasmariñas' 75. */
+function find_barangay(string $name): ?array
+{
+    $stmt = db()->prepare('SELECT id, name FROM barangays WHERE LOWER(name) = LOWER(?)');
+    $stmt->execute([trim($name)]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
 function audit(?int $actorId, string $action, string $subjectType, int $subjectId, ?string $details = null): void
 {
     db()->prepare('INSERT INTO audit_log (actor_id, action, subject_type, subject_id, details) VALUES (?, ?, ?, ?, ?)')

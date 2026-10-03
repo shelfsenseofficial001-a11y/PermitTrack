@@ -1,4 +1,4 @@
-import { authState, homePathFor } from '../store/auth.js?v=80';
+import { authState, homePathFor } from '../store/auth.js?v=108';
 
 // Shown for any address the router doesn't recognise. Where "home" points depends on who is
 // signed in, so a lost resident isn't sent to the staff portal and vice versa.

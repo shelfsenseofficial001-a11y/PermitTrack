@@ -23,6 +23,7 @@ function doc_type_options(): array
     return $out;
 }
 
+
 // ---------- Applicant ----------
 
 if ($action === 'status' && $method === 'GET') {
@@ -32,6 +33,7 @@ if ($action === 'status' && $method === 'GET') {
         'resident_status' => $user['resident_status'],
         'request' => $latest ? residency_request($latest) : null,
         'doc_types' => doc_type_options(),
+        'barangays' => barangay_options(),
         'max_file_mb' => PRIVATE_UPLOAD_MAX_BYTES / 1024 / 1024,
     ]);
 }
@@ -50,13 +52,19 @@ if ($action === 'submit' && $method === 'POST') {
     }
 
     $str = fn(string $key) => trim((string)($_POST[$key] ?? ''));
-    $address = ['address_line' => $str('address_line'), 'barangay' => $str('barangay'), 'city' => $str('city'), 'postal_code' => $str('postal_code')];
-    if ($address['address_line'] === '' || $address['barangay'] === '' || $address['city'] === '') {
+    $addressLine = $str('address_line');
+    if ($addressLine === '') {
         fail('Please complete your address.');
     }
-    if (!preg_match('/^\d{4}$/', $address['postal_code'])) {
-        fail('Postal / ZIP code must be 4 digits.');
+    $barangay = find_barangay($str('barangay'));
+    if (!$barangay) {
+        fail('Please choose your barangay from the list.');
     }
+    // Residency verification only confirms an address within Dasmariñas; city/postal code
+    // were already collected at account creation and aren't re-asked here.
+    $city = 'Dasmariñas';
+    $postal = (string)($user['postal_code'] ?? '');
+    $address = ['address_line' => $addressLine, 'barangay' => $barangay['name'], 'city' => $city, 'postal_code' => $postal];
     if (($_POST['declaration'] ?? '') !== '1') {
         fail('Please confirm that you currently live at this address.');
     }
@@ -97,8 +105,8 @@ if ($action === 'submit' && $method === 'POST') {
         }
 
         $pdo->beginTransaction();
-        $pdo->prepare('UPDATE users SET address_line = ?, barangay = ?, city = ?, postal_code = ?, resident_status = \'pending\' WHERE id = ?')
-            ->execute([$address['address_line'], $address['barangay'], $address['city'], $address['postal_code'], $user['id']]);
+        $pdo->prepare('UPDATE users SET address_line = ?, barangay = ?, barangay_id = ?, city = ?, postal_code = ?, resident_status = \'pending\' WHERE id = ?')
+            ->execute([$address['address_line'], $address['barangay'], $barangay['id'], $address['city'], $address['postal_code'], $user['id']]);
         $pdo->prepare(
             'INSERT INTO resident_verifications (user_id, address_line, barangay, city, postal_code, declared_at) VALUES (?, ?, ?, ?, ?, NOW())'
         )->execute([$user['id'], $address['address_line'], $address['barangay'], $address['city'], $address['postal_code']]);

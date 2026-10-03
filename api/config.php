@@ -55,6 +55,16 @@ function fail(string $message, int $status = 400): void
     respond(['error' => $message], $status);
 }
 
+/** At least 8 characters, with an uppercase letter, a number, and a special character. */
+function is_strong_password(string $password): bool
+{
+    return strlen($password) >= 8
+        && preg_match('/[A-Z]/', $password)
+        && preg_match('/[a-z]/', $password)
+        && preg_match('/\d/', $password)
+        && preg_match('/[^A-Za-z0-9]/', $password);
+}
+
 /**
  * Settings that differ per install (SMTP, SMS provider, municipality name).
  * Copy config.local.example.php to config.local.php and fill it in.
@@ -67,6 +77,12 @@ function app_config(): array
             'municipality' => 'City of Dasmariñas',
             'mail' => ['driver' => 'log'],
             'sms' => ['driver' => 'log'],
+            // Walking a permit through its offices by hand means knowing which account signs
+            // off on each step. With this on, the pipeline names that account. It exposes staff
+            // email addresses, so any install with real accounts on it sets this false in
+            // config.local.php — that one flag takes them out of the API response. It never
+            // discloses credentials; the tester signs in with a password they already hold.
+            'testing' => ['reviewer_hints' => true],
         ];
         $local = is_file(__DIR__ . '/config.local.php') ? require __DIR__ . '/config.local.php' : [];
         $config = array_replace_recursive($defaults, is_array($local) ? $local : []);
@@ -178,6 +194,60 @@ function normalize_ph_mobile(string $raw): ?string
     $digits = preg_replace('/\D+/', '', $raw);
     if (preg_match('/^(?:63|0)?(9\d{9})$/', $digits, $m)) {
         return '+63' . $m[1];
+    }
+    return null;
+}
+
+// What an applicant may attach to a permit. A supporting document is evidence of something
+// already issued and signed — an ID, a clearance, a title — so it has to arrive as a scan,
+// a photo, or a PDF. Editable office formats (DOC, DOCX, PPT, PPTX, PPTM) are deliberately
+// excluded: a file the applicant can retype is not proof of anything.
+// Keep in step with ALLOWED_UPLOAD_EXT in assets/js/util.js.
+const ALLOWED_UPLOAD_EXTENSIONS = [
+    'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif',          // photos / scans
+    'pdf',                                                 // the standard for issued documents
+];
+
+/**
+ * Rejects anything that is not an allowed document or image. Checks the real contents, not
+ * just the name — an .exe renamed to .pdf would otherwise sail through. Office files are a
+ * special case: they are zip containers, so most systems report them as application/zip.
+ *
+ * Returns an error message, or null when the file is acceptable.
+ */
+function upload_type_error(array $file): ?string
+{
+    $ext = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ALLOWED_UPLOAD_EXTENSIONS, true)) {
+        $office = ['doc', 'docx', 'ppt', 'pptx', 'pptm', 'xls', 'xlsx', 'odt', 'odp', 'pages', 'key'];
+        if (in_array($ext, $office, true)) {
+            return 'Office files cannot be used as supporting documents, because they can be edited. '
+                 . 'Please upload a scan, a photo, or a PDF of the issued document.';
+        }
+        return 'Only a scan, photo or PDF can be uploaded (JPG, PNG, WEBP, HEIC or PDF).';
+    }
+
+    $mime = null;
+    if (function_exists('finfo_open') && is_readable($file['tmp_name'])) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = finfo_file($finfo, $file['tmp_name']) ?: null;
+        finfo_close($finfo);
+    }
+    if ($mime === null) {
+        return null; // cannot inspect contents here; the extension check above still applies
+    }
+
+    $expected = [
+        'jpg'  => ['image/jpeg'],
+        'jpeg' => ['image/jpeg'],
+        'png'  => ['image/png'],
+        'webp' => ['image/webp'],
+        'heic' => ['image/heic', 'image/heif'],
+        'heif' => ['image/heic', 'image/heif'],
+        'pdf'  => ['application/pdf'],
+    ];
+    if (isset($expected[$ext]) && !in_array($mime, $expected[$ext], true)) {
+        return 'That file does not look like a real ' . strtoupper($ext) . '. Please upload the original document or a photo of it.';
     }
     return null;
 }

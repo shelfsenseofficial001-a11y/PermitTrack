@@ -1,11 +1,11 @@
-import { register } from '../store/auth.js?v=80';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=80';
+import { register } from '../store/auth.js?v=108';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=108';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
-function eighteenYearsAgo() {
+function yearsAgo(years) {
   const d = new Date();
-  d.setFullYear(d.getFullYear() - 18);
+  d.setFullYear(d.getFullYear() - years);
   return d.toISOString().slice(0, 10);
 }
 
@@ -23,7 +23,8 @@ export default {
         password: '', confirm_password: '', privacy_consent: false,
       },
       showPassword: false,
-      maxBirthdate: eighteenYearsAgo(),
+      maxBirthdate: yearsAgo(18),
+      minBirthdate: yearsAgo(80),
       error: '',
       loading: false,
       inputClass, labelClass, primaryButtonClass,
@@ -38,7 +39,7 @@ export default {
     },
     passwordStrongEnough() {
       const p = this.form.password;
-      return p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
+      return p.length >= 8 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p) && /[^A-Za-z0-9]/.test(p);
     },
   },
   methods: {
@@ -49,6 +50,7 @@ export default {
         if (!f.first_name.trim() || !f.last_name.trim()) return 'Please enter your first and last name.';
         if (!f.birthdate) return 'Please enter your date of birth.';
         if (f.birthdate > this.maxBirthdate) return 'You must be at least 18 years old to create an account.';
+        if (f.birthdate < this.minBirthdate) return 'Please enter a valid date of birth (age must be 80 or below).';
       }
       if (this.step === 1) {
         if (f.contact_method === 'email' && !/^\S+@\S+\.\S+$/.test(f.email.trim())) return 'Please enter a valid email address.';
@@ -57,7 +59,7 @@ export default {
         if (!/^\d{4}$/.test(f.postal_code.trim())) return 'Postal / ZIP code must be 4 digits.';
       }
       if (this.step === 2) {
-        if (!this.passwordStrongEnough) return 'Password must be at least 8 characters and include a letter and a number.';
+        if (!this.passwordStrongEnough) return 'Password must be at least 8 characters and include an uppercase letter, a number, and a special character.';
         if (this.form.password !== this.form.confirm_password) return 'Passwords do not match.';
         if (!f.privacy_consent) return 'Please agree to the Data Privacy notice to continue.';
       }
@@ -122,8 +124,8 @@ export default {
         </div>
         <div>
           <label :class="labelClass" for="r-dob">Date of birth</label>
-          <input id="r-dob" v-model="form.birthdate" type="date" :max="maxBirthdate" autocomplete="bday" :class="inputClass" />
-          <p class="text-xs text-slate-400 mt-1.5">You must be at least 18 years old.</p>
+          <input id="r-dob" v-model="form.birthdate" type="date" :min="minBirthdate" :max="maxBirthdate" autocomplete="bday" :class="inputClass" />
+          <p class="text-xs text-slate-400 mt-1.5">You must be between 18 and 80 years old.</p>
         </div>
       </template>
 
@@ -176,7 +178,7 @@ export default {
               <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.6 18.6 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>
             </button>
           </div>
-          <p class="text-xs mt-1.5" :class="form.password && !passwordStrongEnough ? 'text-sun-700' : 'text-slate-400'">At least 8 characters, with a letter and a number.</p>
+          <p class="text-xs mt-1.5" :class="form.password && !passwordStrongEnough ? 'text-sun-700' : 'text-slate-400'">At least 8 characters, with an uppercase letter, a number, and a special character.</p>
         </div>
         <div>
           <label :class="labelClass" for="r-pw2">Confirm password</label>
