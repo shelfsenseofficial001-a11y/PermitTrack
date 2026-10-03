@@ -1,12 +1,12 @@
-import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=113';
-import { apiGet, apiPost } from '../api/client.js?v=113';
-import ChatWidget from './ChatWidget.js?v=113';
-import AddAccountModal from './AddAccountModal.js?v=113';
-import BaseModal from './BaseModal.js?v=113';
-import { formatDateTime } from '../util.js?v=113';
-import { uiState, openChangePassword } from '../store/ui.js?v=113';
-import Loader from './Loader.js?v=113';
-import NotificationToasts from './NotificationToasts.js?v=113';
+import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=114';
+import { apiGet, apiPost } from '../api/client.js?v=114';
+import ChatWidget from './ChatWidget.js?v=114';
+import AddAccountModal from './AddAccountModal.js?v=114';
+import BaseModal from './BaseModal.js?v=114';
+import { formatDateTime } from '../util.js?v=114';
+import { uiState, openChangePassword } from '../store/ui.js?v=114';
+import Loader from './Loader.js?v=114';
+import NotificationToasts from './NotificationToasts.js?v=114';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -228,8 +228,8 @@ export default {
     <header class="bg-ink-700 text-white sticky top-0 z-10 shadow-[0_8px_24px_-12px_rgba(16,48,29,0.6)]">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
-          <router-link to="/dashboard" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=113" alt="" class="w-9 h-9 object-contain shrink-0" />
+          <router-link to="/" class="flex items-center gap-2.5">
+            <img src="assets/images/PermitTrackIcon.png?v=114" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
