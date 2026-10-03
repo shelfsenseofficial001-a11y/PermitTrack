@@ -5,18 +5,52 @@ A permit application & review system for residents/businesses and city staff, bu
 ## Setup (XAMPP)
 
 1. Start Apache and MySQL in the XAMPP control panel.
-2. Import the schema, then the migrations in order:
+2. Import the schema, then every migration in order:
    ```
-   mysql -u root < database/schema.sql
-   mysql -u root permittrack < database/migrations/001_user_levels.sql
-   mysql -u root permittrack < database/migrations/002_resident_verification.sql
-   mysql -u root permittrack < database/migrations/003_businesses.sql
-   mysql -u root permittrack < database/migrations/004_admin_tools.sql
-   mysql -u root permittrack < database/migrations/005_chatbot.sql
-   mysql -u root permittrack < database/migrations/006_notifications.sql
-   mysql -u root permittrack < database/migrations/007_notification_reads.sql
+   mysql -u root --default-character-set=utf8mb4 < database/schema.sql
+   for f in database/migrations/*.sql; do
+     mysql -u root --default-character-set=utf8mb4 permittrack < "$f"
+   done
    ```
-   or import the same files in phpMyAdmin. Migrations are safe to run more than once.
+   or import the files in phpMyAdmin, in filename order. Migrations are safe to run more
+   than once, so re-running the whole set is the way to bring an existing database up to date.
+
+   <details><summary>The 28 migrations, in order</summary>
+
+   ```
+   001_user_levels.sql
+   002_resident_verification.sql
+   003_businesses.sql
+   004_admin_tools.sql
+   005_chatbot.sql
+   006_notifications.sql
+   007_notification_reads.sql
+   008_permit_pipeline.sql
+   008_withdraw_applications.sql
+   009_pipeline_progress.sql
+   010_permit_type_nullable.sql
+   011_permit_type_documents.sql
+   012_account_type_backfill.sql
+   013_account_type_expand.sql
+   014_chatbot_faq_pipeline_update.sql
+   015_chatbot_language.sql
+   016_chatbot_faq_keyword_fixes.sql
+   017_encoding_fix.sql
+   018_encoding_fix2.sql
+   019_office_staff_accounts.sql
+   020_business_permit_renewal.sql
+   021_document_handlers.sql
+   022_lto.sql
+   023_lto_scope_back_to_mtop.sql
+   024_permit_descriptions.sql
+   025_application_barangay.sql
+   026_address_psgc.sql
+   027_chatbot_business_scope.sql
+   ```
+   Two files share the `008` prefix; filename order (`permit_pipeline` before
+   `withdraw_applications`) is the correct order.
+   </details>
+
 
    > **Importing SQL that contains accented characters (ñ, é, …)?** Add
    > `--default-character-set=utf8mb4` to the `mysql` command. On Windows the client otherwise
