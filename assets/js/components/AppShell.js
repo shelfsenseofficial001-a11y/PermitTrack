@@ -1,12 +1,12 @@
-import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=108';
-import { apiGet, apiPost } from '../api/client.js?v=108';
-import ChatWidget from './ChatWidget.js?v=108';
-import AddAccountModal from './AddAccountModal.js?v=108';
-import BaseModal from './BaseModal.js?v=108';
-import { formatDateTime } from '../util.js?v=108';
-import { uiState, openChangePassword } from '../store/ui.js?v=108';
-import Loader from './Loader.js?v=108';
-import NotificationToasts from './NotificationToasts.js?v=108';
+import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=112';
+import { apiGet, apiPost } from '../api/client.js?v=112';
+import ChatWidget from './ChatWidget.js?v=112';
+import AddAccountModal from './AddAccountModal.js?v=112';
+import BaseModal from './BaseModal.js?v=112';
+import { formatDateTime } from '../util.js?v=112';
+import { uiState, openChangePassword } from '../store/ui.js?v=112';
+import Loader from './Loader.js?v=112';
+import NotificationToasts from './NotificationToasts.js?v=112';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -229,7 +229,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/dashboard" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=108" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=112" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>

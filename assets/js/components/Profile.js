@@ -1,11 +1,12 @@
-import { apiPost } from '../api/client.js?v=108';
-import AppShell from './AppShell.js?v=108';
-import { inputClass } from './AuthLayout.js?v=108';
-import { authState, loadCurrentUser } from '../store/auth.js?v=108';
-import { formatDate, timeAgo } from '../util.js?v=108';
-import { openChangePassword } from '../store/ui.js?v=108';
+import { apiGet, apiPost } from '../api/client.js?v=112';
+import BaseModal from './BaseModal.js?v=112';
+import AppShell from './AppShell.js?v=112';
+import { inputClass } from './AuthLayout.js?v=112';
+import { authState, loadCurrentUser } from '../store/auth.js?v=112';
+import { formatDate, timeAgo } from '../util.js?v=112';
+import { openChangePassword } from '../store/ui.js?v=112';
 
-const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'city', 'postal_code'];
+const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'province_code', 'city_code', 'postal_code'];
 
 function yearsAgo(years) {
   const d = new Date();
@@ -16,17 +17,24 @@ const MAX_BIRTHDATE = yearsAgo(18);
 const MIN_BIRTHDATE = yearsAgo(80);
 
 // What counts toward "profile complete" — the details a permit application draws on
-const REQUIRED = ['first_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'city', 'postal_code'];
+// Barangay is required only inside Dasmariñas, so it is checked separately rather than here.
+const REQUIRED = ['first_name', 'last_name', 'birthdate', 'address_line', 'province_code', 'city_code', 'postal_code'];
 
 export default {
   name: 'Profile',
-  components: { AppShell },
+  components: { AppShell, BaseModal },
   data() {
     return {
       form: {},
       editing: false,
       saving: false,
       error: '',
+      residencyWarning: null, // the 409 body when an address change would cost the residency
+      provinces: [],
+      cities: [],
+      barangays: [],      // the 75 of Dasmariñas, only used when the city is Dasmariñas
+      homeCityCode: '',   // PSGC code for Dasmariñas, from the server
+      loadingCities: false,
       toast: '',
       inputClass,
       minBirthdate: MIN_BIRTHDATE,
@@ -36,6 +44,20 @@ export default {
   computed: {
     user() {
       return authState.user || {};
+    },
+    // Barangay only means something inside the city this system serves, so the field only appears
+    // there. Everywhere else an address stops at the city.
+    inHomeCity() {
+      return !!this.homeCityCode && this.form.city_code === this.homeCityCode;
+    },
+    matchedBarangay() {
+      const typed = (this.form.barangay || '').trim().toLowerCase();
+      if (!typed) return null;
+      return this.barangays.find((b) => b.name.toLowerCase() === typed) || null;
+    },
+    addressComplete() {
+      if (!this.form.province_code || !this.form.city_code) return false;
+      return this.inHomeCity ? !!this.matchedBarangay : true;
     },
     initials() {
       const name = this.user.full_name || '';
@@ -78,11 +100,41 @@ export default {
   async mounted() {
     if (!authState.user) await loadCurrentUser();
     this.resetForm();
+    await this.loadLocations();
   },
   beforeUnmount() {
     clearTimeout(this.toastTimer);
   },
   methods: {
+    async loadLocations() {
+      const [res, brgy] = await Promise.all([
+        apiGet('locations.php?action=provinces'),
+        apiGet('residency.php?action=status').catch(() => null),
+      ]);
+      this.provinces = res.provinces;
+      this.homeCityCode = res.home.city_code;
+      if (brgy && brgy.barangays) this.barangays = brgy.barangays;
+      if (this.form.province_code) await this.loadCities(this.form.province_code);
+    },
+    async loadCities(provinceCode) {
+      if (!provinceCode) { this.cities = []; return; }
+      this.loadingCities = true;
+      try {
+        const res = await apiGet('locations.php?action=cities&province_code=' + encodeURIComponent(provinceCode));
+        this.cities = res.cities;
+      } finally {
+        this.loadingCities = false;
+      }
+    },
+    // Changing province invalidates the city under it, and leaving Dasmariñas drops the barangay.
+    async onProvinceChange() {
+      this.form.city_code = '';
+      this.form.barangay = '';
+      await this.loadCities(this.form.province_code);
+    },
+    onCityChange() {
+      if (!this.inHomeCity) this.form.barangay = '';
+    },
     formatDate,
     timeAgo,
     openChangePassword,
@@ -113,19 +165,32 @@ export default {
       this.error = '';
       this.resetForm();
     },
-    async save() {
+    // The server refuses an address change that would cost the user their residency until it is
+    // confirmed, and answers 409 saying so. That refusal is what raises this dialog, so the warning
+    // cannot be missed by going straight at the API.
+    async save(confirmed = false) {
       this.error = '';
       this.saving = true;
       try {
-        const { user } = await apiPost('account.php?action=update_profile', this.form);
-        authState.user = user;
+        const payload = confirmed ? { ...this.form, confirm_residency_reset: true } : this.form;
+        const res = await apiPost('account.php?action=update_profile', payload);
+        authState.user = res.user;
         this.editing = false;
-        this.showToast('Profile updated');
+        this.residencyWarning = null;
+        this.showToast(res.residency_reset ? 'Profile updated — residency needs reapplying' : 'Profile updated');
       } catch (e) {
-        this.error = e.message;
+        if (e.body && e.body.requires_confirmation === 'residency_reset') {
+          this.residencyWarning = e.body;
+        } else {
+          this.error = e.message;
+        }
       } finally {
         this.saving = false;
       }
+    },
+    confirmAddressChange() {
+      this.residencyWarning = null;
+      this.save(true);
     },
     showToast(message) {
       this.toast = message;
@@ -227,14 +292,45 @@ export default {
                 <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-addr">House / street</label>
                 <input id="p-addr" v-model="form.address_line" required autocomplete="address-line1" placeholder="e.g. 12 Mabini St., Unit B" :class="inputClass" />
               </div>
-              <div class="grid sm:grid-cols-3 gap-4">
+              <!-- Province and city come from the PSGC list, not free text: whether an account is in
+                   Dasmariñas decides what it may file, so it cannot rest on spelling. -->
+              <div class="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
-                  <input id="p-brgy" v-model="form.barangay" required :class="inputClass" />
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-prov">Province</label>
+                  <select id="p-prov" v-model="form.province_code" @change="onProvinceChange" required :class="inputClass">
+                    <option value="">Choose a province…</option>
+                    <option v-for="pr in provinces" :key="pr.code" :value="pr.code">{{ pr.name }}</option>
+                  </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-city">City</label>
-                  <input id="p-city" v-model="form.city" required autocomplete="address-level2" :class="inputClass" />
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-city">City / Municipality</label>
+                  <select id="p-city" v-model="form.city_code" @change="onCityChange" required :disabled="!form.province_code || loadingCities" :class="inputClass">
+                    <option value="">{{ loadingCities ? 'Loading…' : (form.province_code ? 'Choose a city or municipality…' : 'Choose a province first') }}</option>
+                    <option v-for="c in cities" :key="c.code" :value="c.code">{{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid sm:grid-cols-2 gap-4">
+                <!-- Only inside Dasmariñas: this is the link that routes a permit to a barangay
+                     secretariat, so it is matched against the 75 rather than typed freely. -->
+                <div v-if="inHomeCity">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
+                  <input id="p-brgy" v-model="form.barangay" list="p-brgy-list" autocomplete="off"
+                    placeholder="Start typing to search…"
+                    :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '']" />
+                  <datalist id="p-brgy-list">
+                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
+                  </datalist>
+                  <p v-if="form.barangay && !matchedBarangay" class="text-xs text-red-600 mt-1">
+                    Not one of the {{ barangays.length }} barangays of Dasmariñas.
+                  </p>
+                </div>
+                <div v-else-if="form.city_code" class="sm:col-span-1">
+                  <p class="text-xs text-slate-500 leading-relaxed mt-6">
+                    Barangay is only recorded for addresses inside Dasmariñas, because it is what sends
+                    a permit to the right barangay office.
+                  </p>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-zip">Postal code</label>
@@ -342,6 +438,30 @@ export default {
     </div>
 
     <!-- Save confirmation -->
+    <transition name="modal">
+      <BaseModal v-if="residencyWarning" title="Change your address?" eyebrow="This affects your residency" tone="sun"
+        @close="residencyWarning = null">
+        <template #icon>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>
+        </template>
+        <p class="text-sm text-slate-600 leading-relaxed">{{ residencyWarning.message }}</p>
+        <p class="text-sm text-slate-600 leading-relaxed mt-3">
+          Your residency was checked against the address on file. Once that address changes it no
+          longer stands, so you would start again from the new one — two proofs of residence, checked
+          by City Staff. Permits you have already filed are not affected.
+        </p>
+        <template #footer>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" @click="residencyWarning = null" :disabled="saving"
+              class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-100 disabled:opacity-60 transition">Keep my address</button>
+            <button type="button" @click="confirmAddressChange" :disabled="saving"
+              class="text-sm font-semibold text-white bg-sun-600 hover:bg-sun-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">
+              {{ saving ? 'Saving…' : 'Change it anyway' }}
+            </button>
+          </div>
+        </template>
+      </BaseModal>
+    </transition>
     <transition enter-from-class="opacity-0 translate-y-2" enter-active-class="transition duration-200" leave-to-class="opacity-0 translate-y-2" leave-active-class="transition duration-200">
       <div v-if="toast" role="status"
         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-2 bg-ink-700 text-white text-sm font-semibold pl-3 pr-4 py-2.5 rounded-full shadow-[0_16px_40px_-12px_rgba(0,0,0,0.5)]">

@@ -9,7 +9,12 @@ async function handle(res) {
   }
   if (!res.ok) {
     const message = (body && body.error) || `Request failed (${res.status})`;
-    throw new Error(message);
+    const err = new Error(message);
+    // Some refusals carry more than a message — a confirmation the caller has to collect before
+    // retrying, for instance. Keep the body and status on the error so it is not thrown away.
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
   return body;
 }

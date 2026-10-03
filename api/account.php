@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require __DIR__ . '/config.php';
 require __DIR__ . '/lib/verification.php';
+require_once __DIR__ . '/lib/support.php';   // find_barangay()
+require_once __DIR__ . '/lib/psgc.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -37,7 +39,8 @@ if ($action === 'update_profile' && $method === 'POST') {
     $birthdate = $str('birthdate');
     $addressLine = $str('address_line');
     $barangay = $str('barangay');
-    $city = $str('city');
+    $provinceCode = $str('province_code');
+    $cityCode = $str('city_code');
     $postal = $str('postal_code');
 
     if ($first === '' || $last === '') {
@@ -54,8 +57,34 @@ if ($action === 'update_profile' && $method === 'POST') {
     if ($age > 80) {
         fail('Please enter a valid date of birth (age must be 80 or below).');
     }
-    if ($addressLine === '' || $barangay === '' || $city === '') {
-        fail('House/street, barangay and city are required.');
+    if ($addressLine === '') {
+        fail('House / street is required.');
+    }
+    // The city is picked from the PSGC list, not typed, and the pair is re-checked here: a form can
+    // be tampered with, and whether an account is in this city decides what it may file.
+    if ($provinceCode === '' || $cityCode === '') {
+        fail('Please choose your province and city or municipality.');
+    }
+    if (!psgc_is_valid_pair($provinceCode, $cityCode)) {
+        fail('That city or municipality is not in the province you chose.');
+    }
+    $province = psgc_name(psgc_provinces(), $provinceCode);
+    $city = psgc_name(psgc_cities($provinceCode), $cityCode);
+    if ($province === null || $city === null) {
+        fail('Please choose your province and city or municipality.');
+    }
+
+    // Barangay is only asked for, and only means anything, inside the city this system serves.
+    $inHomeCity = psgc_is_home_city($cityCode);
+    if ($inHomeCity) {
+        if ($barangay === '') {
+            fail('Please choose your barangay.');
+        }
+        if (!find_barangay($barangay)) {
+            fail('Please choose your barangay from the list.');
+        }
+    } else {
+        $barangay = '';
     }
     if (!preg_match('/^\d{4}$/', $postal)) {
         fail('Postal / ZIP code must be 4 digits.');
@@ -63,17 +92,54 @@ if ($action === 'update_profile' && $method === 'POST') {
 
     $fullName = trim($first . ' ' . ($middle !== '' ? $middle . ' ' : '') . $last);
 
-    $stmt = db()->prepare(
-        'UPDATE users SET first_name = ?, middle_name = ?, last_name = ?, full_name = ?, birthdate = ?,
-                          address_line = ?, barangay = ?, city = ?, postal_code = ?
-         WHERE id = ?'
-    );
-    $stmt->execute([
-        $first, $middle ?: null, $last, $fullName, $birthdate,
-        $addressLine, $barangay, $city, $postal, $user['id'],
-    ]);
+    // Residency is a statement about living at one particular address in this city, checked by
+    // City Staff against two proofs. Move, and that statement no longer holds — so changing the
+    // address gives the residency up, and it has to be applied for again from the new one.
+    $addressChanged = $addressLine !== (string)($user['address_line'] ?? '')
+        || $barangay !== (string)($user['barangay'] ?? '')
+        || $cityCode !== (string)($user['city_code'] ?? '');
+    $holdsResidency = in_array($user['resident_status'], ['verified', 'pending'], true);
+    $losesResidency = $addressChanged && $holdsResidency;
 
-    respond(['user' => current_user()]);
+    // The warning is enforced here, not only in the form: a client that skips it still has to come
+    // back with the confirmation before anything is written.
+    if ($losesResidency && empty($in['confirm_residency_reset'])) {
+        respond([
+            'requires_confirmation' => 'residency_reset',
+            'current_status' => $user['resident_status'],
+            'message' => $user['resident_status'] === 'verified'
+                ? 'Changing your address gives up your verified residency. You will not be able to file resident permits until you apply again from your new address.'
+                : 'Changing your address cancels the residency application you have under review. You will need to apply again from your new address.',
+        ], 409);
+    }
+
+    // The barangay only means something inside this city. Outside it there is no barangay office to
+    // route to, so the link is dropped rather than left pointing at the old secretariat.
+    $matchedBarangay = $inHomeCity ? find_barangay($barangay) : null;
+    $barangayId = $matchedBarangay ? (int)$matchedBarangay['id'] : null;
+
+    $sql = 'UPDATE users SET first_name = ?, middle_name = ?, last_name = ?, full_name = ?, birthdate = ?,
+                             address_line = ?, barangay = ?, barangay_id = ?,
+                             city = ?, city_code = ?, province = ?, province_code = ?, postal_code = ?';
+    $params = [
+        $first, $middle ?: null, $last, $fullName, $birthdate,
+        $addressLine, $barangay ?: null, $barangayId,
+        $city, $cityCode, $province, $provinceCode, $postal,
+    ];
+    if ($losesResidency) {
+        $sql .= ", resident_status = 'none'";
+    }
+    $sql .= ' WHERE id = ?';
+    $params[] = $user['id'];
+
+    db()->prepare($sql)->execute($params);
+
+    if ($losesResidency) {
+        audit((int)$user['id'], 'account.residency_reset', 'user', (int)$user['id'],
+            'Address changed, so residency went back to none');
+    }
+
+    respond(['user' => current_user(), 'residency_reset' => $losesResidency]);
 }
 
 // Add the contact the user didn't sign up with (email or mobile) — sends a code to it first

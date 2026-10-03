@@ -5,4 +5,10 @@ Thumbs.db
 api/config.local.php
 storage/*
 !storage/.htaccess
+# The PSGC reference data ships with the repo so a fresh install works offline.
+# It refreshes itself weekly from psgc.gitlab.io; uploads and logs stay ignored.
+!storage/cache/
+storage/cache/*
+!storage/cache/psgc/
+!storage/cache/psgc/*.json
 database/backups/

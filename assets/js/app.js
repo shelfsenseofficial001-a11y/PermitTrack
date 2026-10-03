@@ -1,9 +1,9 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=108';
-import { authState } from './store/auth.js?v=108';
-import { uiState } from './store/ui.js?v=108';
-import ChangePasswordModal from './components/ChangePasswordModal.js?v=108';
-import CookieBanner from './components/CookieBanner.js?v=108';
+import { router } from './router/router.js?v=112';
+import { authState } from './store/auth.js?v=112';
+import { uiState } from './store/ui.js?v=112';
+import ChangePasswordModal from './components/ChangePasswordModal.js?v=112';
+import CookieBanner from './components/CookieBanner.js?v=112';
 
 // Explicit durations make the page swap finish on a timer instead of waiting for
 // transitionend. A hidden tab never paints, so transitionend would never fire there and the
