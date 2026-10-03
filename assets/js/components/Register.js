@@ -1,6 +1,6 @@
-import { register } from '../store/auth.js?v=113';
-import { apiGet } from '../api/client.js?v=113';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=113';
+import { register } from '../store/auth.js?v=114';
+import { apiGet } from '../api/client.js?v=114';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=114';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 

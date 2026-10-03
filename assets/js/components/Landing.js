@@ -1,5 +1,6 @@
-import { permitIconClass } from '../util.js?v=113';
-import ChatWidget from './ChatWidget.js?v=113';
+import { permitIconClass } from '../util.js?v=114';
+import ChatWidget from './ChatWidget.js?v=114';
+import { authState, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=114';
 
 // The public front door. Everything on it describes what PermitTrack really does — the offices a
 // permit actually passes through, the real permit catalogue and its real requirements — so nothing
@@ -23,12 +24,12 @@ const HERO_STAGES = [
 // of Residency is a single stop at your barangay — and a few are longer. The page says so rather
 // than implying every permit looks like this one.
 const JOURNEY = [
-  { office: 'Your Barangay', step: 'Barangay Construction Clearance', text: 'Every permit starts where you are. Your barangay signs off first.' },
-  { office: 'City Planning', step: 'Zoning Clearance', text: 'CPDO confirms what you are building is allowed on that lot.' },
-  { office: 'Building Official', step: 'Technical plan review', text: 'The OBO checks your plans against the building code.' },
-  { office: 'CENRO', step: 'Environmental clearance', text: 'Environmental impact is reviewed before any ground is broken.' },
-  { office: 'City Assessor', step: 'RPT clearance', text: 'Real property taxes on the lot are confirmed paid.' },
-  { office: 'Building Official', step: 'Building Permit issued', text: 'Back to the OBO, who issues the permit itself.' },
+  { office: 'Your Barangay', step: 'Construction Clearance', art: 'barangay' },
+  { office: 'City Planning', step: 'Zoning Clearance', art: 'zoning' },
+  { office: 'Building Official', step: 'Plan review', art: 'plans' },
+  { office: 'CENRO', step: 'Environmental clearance', art: 'environment' },
+  { office: 'City Assessor', step: 'RPT clearance', art: 'tax' },
+  { office: 'Building Official', step: 'Permit issued', art: 'permit' },
 ];
 
 // Mirrors required_documents_for() and PERMIT_RULES in the API
@@ -43,6 +44,14 @@ const PERMITS = [
     docs: ['Business Formation Document', 'BIR Certificate of Registration (Form 2303)', 'Zoning Compliance Letter'] },
   { type: 'Sign', blurb: 'Storefront, pylon and illuminated signage.', residents: false,
     docs: ['Sign Drawing / Rendering', 'Property Owner Authorization'] },
+];
+
+// A short slice of RESIDENCY_DOC_TYPES (api/lib/residency.php) for the mockup's dropdown
+const PROOF_OPTIONS = [
+  'Barangay Certificate of Residency',
+  'Utility bill (electricity, water…)',
+  'National ID (PhilSys) with address',
+  'Lease or rental contract',
 ];
 
 const FEATURES = [
@@ -101,10 +110,32 @@ export default {
       permits: PERMITS,
       features: FEATURES,
       faqs: FAQS,
+      authState,
+      accountOpen: false,
+      proofOptions: PROOF_OPTIONS,
+      // The mockups are inert, but these let them be poked at: a dropdown opens, a segmented
+      // control switches, a button pretends to upload. Nothing here reaches the API.
+      demo: {
+        open: null,
+        contact: 'email',
+        proofs: [PROOF_OPTIONS[0], PROOF_OPTIONS[1]],
+        permit: 0,
+        uploading: false,
+      },
       year: new Date().getFullYear(),
     };
   },
   computed: {
+    // Signed-in applicants get their account menu here instead of Log in / Get started. Staff
+    // keep the plain buttons: their work lives in the Staff Portal, not on this page.
+    accountUser() {
+      const u = authState.user;
+      return u && u.role === 'applicant' ? u : null;
+    },
+    initials() {
+      const name = (this.accountUser && this.accountUser.full_name) || '';
+      return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+    },
     progress() {
       return (this.stage / (HERO_STAGES.length - 1)) * 100;
     },
@@ -142,6 +173,8 @@ export default {
     // Mobile menu: Escape closes it (and hands focus back to the toggle); so does widening
     // to desktop, where the menu has no place and would otherwise linger open underneath
     this.onKey = (e) => {
+      if (e.key === 'Escape' && this.demo.open) this.demo.open = null;
+      if (e.key === 'Escape' && this.accountOpen) this.accountOpen = false;
       if (e.key === 'Escape' && this.menuOpen) {
         this.closeMenu();
         const toggle = this.$refs.header && this.$refs.header.querySelector('[aria-controls="mobile-menu"]');
@@ -149,7 +182,11 @@ export default {
       }
     };
     this.onResize = () => { if (window.innerWidth >= 768) this.closeMenu(); };
+    this.onDocClick = (e) => {
+      if (this.accountOpen && this.$refs.account && !this.$refs.account.contains(e.target)) this.accountOpen = false;
+    };
     document.addEventListener('keydown', this.onKey);
+    document.addEventListener('click', this.onDocClick);
     window.addEventListener('resize', this.onResize);
 
     if ('IntersectionObserver' in window) {
@@ -187,15 +224,42 @@ export default {
     clearTimeout(this.timer);
     window.removeEventListener('scroll', this.onScroll);
     document.removeEventListener('keydown', this.onKey);
+    document.removeEventListener('click', this.onDocClick);
     window.removeEventListener('resize', this.onResize);
     if (this.observer) this.observer.disconnect();
     if (this.statsObserver) this.statsObserver.disconnect();
     if (this.statsFrame) cancelAnimationFrame(this.statsFrame);
     clearTimeout(this.statsBackstop);
     clearTimeout(this.statsFallback);
+    clearTimeout(this.uploadTimer);
   },
   methods: {
     permitIconClass,
+    async doLogout() {
+      this.accountOpen = false;
+      const leaving = authState.user;
+      const next = await logout();
+      // Another account on this browser takes over; otherwise wherever this role signs out to
+      if (next) reloadAs(next);
+      else this.$router.push(signOutPathFor(leaving));
+    },
+    toggleDemo(key) {
+      this.demo.open = this.demo.open === key ? null : key;
+    },
+    pickProof(slot, label) {
+      this.demo.proofs[slot] = label;
+      this.demo.open = null;
+    },
+    pickPermit(i) {
+      this.demo.permit = i;
+      this.demo.open = null;
+    },
+    // Goes through the motions of replacing a document and lands back where it started
+    fakeUpload() {
+      if (this.demo.uploading) return;
+      this.demo.uploading = true;
+      this.uploadTimer = setTimeout(() => { this.demo.uploading = false; }, 1400);
+    },
     // Counts every figure up together over ~1.1s, easing out so they slow into their final value.
     // Nothing moves for someone who asked for less motion — the numbers are simply there.
     countStatsUp() {
@@ -317,7 +381,7 @@ export default {
       :class="scrolled || menuOpen ? 'bg-white/90 backdrop-blur-md shadow-[0_8px_30px_-18px_rgba(16,48,29,0.35)]' : 'bg-transparent'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <button type="button" @click="go('top')" class="flex items-center gap-2.5 shrink-0" aria-label="PermitTrack, back to top">
-          <img src="assets/images/PermitTrackIcon.png?v=113" alt="" class="w-9 h-9 object-contain" />
+          <img src="assets/images/PermitTrackIcon.png?v=114" alt="" class="w-9 h-9 object-contain" />
           <span class="leading-tight text-left">
             <span class="block text-[15px] font-bold text-ink-700">PermitTrack</span>
             <span class="block text-[11px] text-slate-500">City of Dasmariñas</span>
@@ -327,9 +391,57 @@ export default {
           <button v-for="l in navLinks" :key="l.id" type="button" @click="go(l.id)" class="hover:text-ink-700 transition">{{ l.label }}</button>
         </nav>
         <div class="flex items-center gap-2 shrink-0">
+          <!-- Signed in, the two sign-up buttons give way to the account menu. The app's own pages
+               are in here because this page has no nav of its own to put them in. -->
+          <div v-if="accountUser" ref="account" class="relative">
+            <button type="button" @click="accountOpen = !accountOpen" :aria-expanded="accountOpen" aria-haspopup="menu"
+              class="flex items-center gap-2 rounded-full pl-1 pr-2 py-1 hover:bg-ink-700/5 transition">
+              <span class="w-8 h-8 rounded-full bg-brand-600 text-white ring-2 ring-sun-300/70 flex items-center justify-center text-xs font-bold">{{ initials }}</span>
+              <span class="hidden sm:inline text-sm font-semibold text-ink-700 max-w-[9rem] truncate">{{ accountUser.full_name }}</span>
+              <svg class="w-4 h-4 text-slate-400 transition-transform" :class="accountOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+
+            <transition name="pop">
+            <div v-if="accountOpen" role="menu"
+              class="absolute right-0 mt-2 w-64 origin-top-right rounded-2xl bg-ink-700 border border-white/10 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] p-2 text-sm">
+              <div class="px-3 py-2.5 border-b border-white/10 mb-1">
+                <div class="font-semibold text-white truncate">{{ accountUser.full_name }}</div>
+                <div class="text-xs text-ink-300 truncate">{{ accountUser.email || accountUser.phone }}</div>
+                <div class="flex flex-wrap gap-1 mt-2">
+                  <span v-for="level in accountUser.levels" :key="level"
+                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Normal User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
+                </div>
+              </div>
+              <router-link to="/dashboard" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
+                <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+                Dashboard
+              </router-link>
+              <router-link to="/permits" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
+                <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/></svg>
+                My Permits
+              </router-link>
+              <router-link to="/applications/new" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
+                <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                {{ accountUser.can_apply ? 'New Application' : 'Browse Permits' }}
+              </router-link>
+              <div class="h-px bg-white/10 my-1"></div>
+              <router-link to="/account" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
+                <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                My account
+              </router-link>
+              <button type="button" role="menuitem" @click="doLogout" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-red-300 hover:bg-red-500/15">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+                Sign out
+              </button>
+            </div>
+            </transition>
+          </div>
+
           <!-- On phones, Log in moves into the menu so the main action and the toggle fit -->
-          <router-link to="/login" class="hidden md:inline-flex text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">Log in</router-link>
-          <router-link to="/register" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">Get started</router-link>
+          <template v-else>
+            <router-link to="/login" class="hidden md:inline-flex text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">Log in</router-link>
+            <router-link to="/register" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">Get started</router-link>
+          </template>
           <button type="button" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen" aria-controls="mobile-menu"
             :aria-label="menuOpen ? 'Close menu' : 'Open menu'"
             class="md:hidden relative w-10 h-10 -mr-1 rounded-xl flex items-center justify-center text-ink-700 hover:bg-ink-700/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40 transition">
@@ -354,7 +466,13 @@ export default {
                 <svg class="w-4 h-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
               </button>
             </nav>
-            <div class="border-t border-brand-100 bg-slate-50/70 p-4 grid grid-cols-2 gap-2.5">
+            <div v-if="accountUser" class="border-t border-brand-100 bg-slate-50/70 p-4 grid gap-2.5">
+              <router-link to="/dashboard" @click="closeMenu" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">Dashboard</router-link>
+              <router-link to="/permits" @click="closeMenu" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">My Permits</router-link>
+              <router-link to="/applications/new" @click="closeMenu" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">{{ accountUser.can_apply ? 'New Application' : 'Browse Permits' }}</router-link>
+              <router-link to="/account" @click="closeMenu" class="text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">My account →</router-link>
+            </div>
+            <div v-else class="border-t border-brand-100 bg-slate-50/70 p-4 grid grid-cols-2 gap-2.5">
               <router-link to="/login" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">Log in</router-link>
               <router-link to="/register" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">Get started</router-link>
               <router-link to="/staff/login" class="col-span-2 text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">City staff? Sign in to the Staff Portal →</router-link>
@@ -508,29 +626,74 @@ export default {
           <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">How it works</span>
           <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Every office.<br>Named as you pass it.</h2>
           <p class="mt-4 text-lg text-slate-600 leading-relaxed">
-            A permit is not a set of vague stages — it is a route through real offices, and you always
-            know which one is holding yours. Here is a Building Permit, all six stops of it.
-          </p>
-          <p class="mt-3 text-sm text-slate-500 leading-relaxed">
-            Routes differ by permit. A Certificate of Residency is one stop at your barangay; a Building
-            Permit is six, and more if your site needs mechanical, electronics or subdivision review.
+            A Building Permit, all six stops of it. Other permits are shorter — a Certificate of
+            Residency is a single stop at your barangay.
           </p>
         </div>
 
-        <ol class="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 relative">
-          <li v-for="(s, i) in journey" :key="i" class="relative reveal" :style="{ transitionDelay: (i * 90) + 'ms' }">
-            <div class="flex md:flex-col items-start md:items-center gap-4 md:gap-0 md:text-center">
-              <span class="relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_10px_24px_-10px_rgba(16,48,29,0.5)] ring-4 ring-meadow"
-                :class="i === journey.length - 1 ? 'bg-sun-400 text-ink-700' : 'bg-ink-700 text-sun-300'">
-                <svg v-if="i === journey.length - 1" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 15 5h4v4l3 3-3 3v4h-4l-3 3-3-3H5v-4l-3-3 3-3V5h4z"/><path d="m9 12 2 2 4-4"/></svg>
-                <span v-else class="text-lg font-extrabold">{{ i + 1 }}</span>
-              </span>
-              <div class="md:mt-5">
-                <div class="text-xs font-bold text-brand-600">Stop {{ i + 1 }} of {{ journey.length }}</div>
-                <h3 class="mt-0.5 font-bold text-ink-700">{{ s.office }}</h3>
-                <p class="text-xs font-semibold text-slate-400 mt-0.5">{{ s.step }}</p>
-                <p class="mt-1.5 text-sm text-slate-500 leading-relaxed md:px-1">{{ s.text }}</p>
+        <ol class="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <li v-for="(s, i) in journey" :key="i" class="reveal" :style="{ transitionDelay: (i * 90) + 'ms' }">
+            <div class="rounded-3xl bg-white ring-1 ring-brand-100 p-3 shadow-[0_18px_40px_-32px_rgba(16,48,29,0.5)] text-center">
+
+              <!-- The office itself, drawn — the stop is recognised before a word is read -->
+              <div class="relative">
+                <div class="relative aspect-square rounded-2xl overflow-hidden flex items-center justify-center"
+                  :class="i === journey.length - 1 ? 'bg-sun-400 text-ink-700' : 'bg-ink-700 text-sun-300'" aria-hidden="true">
+                  <span class="pt-gradient absolute -right-8 -bottom-8 w-28 h-28 rounded-full blur-2xl opacity-30"></span>
+
+                  <svg class="relative w-3/5 h-3/5" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <template v-if="s.art === 'barangay'">
+                      <path d="M7 21 24 10l17 11"/>
+                      <path d="M11 21v19h26V21"/>
+                      <path d="M5 40h38"/>
+                      <path d="M20 40v-9a4 4 0 0 1 8 0v9"/>
+                      <path d="M15 26h4M29 26h4"/>
+                      <path d="M24 10V4"/>
+                      <path d="M24 4h7l-1.8 2.4L31 9h-7z" fill="currentColor" stroke="none"/>
+                    </template>
+                    <template v-else-if="s.art === 'zoning'">
+                      <rect x="6" y="10" width="36" height="28" rx="3"/>
+                      <path d="M18 10v28M30 10v28M6 24h36"/>
+                      <rect x="18" y="10" width="12" height="14" fill="currentColor" stroke="none" opacity=".25"/>
+                      <path d="M24 22s3.2-3.4 3.2-5.6a3.2 3.2 0 0 0-6.4 0C20.8 18.6 24 22 24 22z"/>
+                      <circle cx="24" cy="16.4" r="1.1" fill="currentColor" stroke="none"/>
+                    </template>
+                    <template v-else-if="s.art === 'plans'">
+                      <rect x="6" y="7" width="27" height="33" rx="2.5"/>
+                      <path d="M11 14h17M11 20h17M11 26h11"/>
+                      <path d="M27 42 42 24v18z"/>
+                    </template>
+                    <template v-else-if="s.art === 'environment'">
+                      <path d="M8 41h32"/>
+                      <path d="M24 41v-9"/>
+                      <path d="M24 32c-6 0-10-4-10-9s4-9 10-9 10 4 10 9-4 9-10 9z"/>
+                      <path d="M24 32V18M24 25l-4-3M24 27l4-3"/>
+                    </template>
+                    <template v-else-if="s.art === 'tax'">
+                      <path d="M11 6h26v36l-4.3-3-4.3 3-4.4-3-4.3 3-4.4-3L11 42z"/>
+                      <path d="M17 14h14M17 20h14"/>
+                      <text x="24" y="35" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor" stroke="none">₱</text>
+                    </template>
+                    <template v-else>
+                      <rect x="7" y="8" width="34" height="24" rx="2.5"/>
+                      <path d="M13 16h14M13 22h10"/>
+                      <circle cx="33" cy="31" r="6.5"/>
+                      <path d="M30 36.5 29 45l4-2.6 4 2.6-1-8.5"/>
+                      <path d="m30.6 31 1.9 1.9 3.4-3.4"/>
+                    </template>
+                  </svg>
+
+                  <span class="absolute top-2 left-2 w-6 h-6 rounded-lg bg-white/15 text-[11px] font-extrabold flex items-center justify-center">{{ i + 1 }}</span>
+                </div>
+
+                <!-- the route carrying on to the next office -->
+                <span v-if="i < journey.length - 1" class="hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-[1.35rem] w-5 h-5 items-center justify-center text-brand-300" aria-hidden="true">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>
+                </span>
               </div>
+
+              <h3 class="mt-3 text-sm font-bold text-ink-700 leading-tight">{{ s.office }}</h3>
+              <p class="mt-1 text-[11px] font-semibold text-brand-600 leading-tight">{{ s.step }}</p>
             </div>
           </li>
         </ol>
@@ -546,21 +709,247 @@ export default {
           <p class="mt-4 text-lg text-slate-600 leading-relaxed">No more lost forms, missed calls, or “come back next week.” Here is what changes when your permit lives online.</p>
         </div>
 
-        <div class="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div v-for="(f, i) in features" :key="f.title"
-            class="reveal group rounded-3xl bg-meadow/60 ring-1 ring-brand-100 p-7 hover:bg-white hover:ring-brand-200 hover:shadow-[0_24px_50px_-28px_rgba(16,48,29,0.45)] hover:-translate-y-0.5 transition duration-300"
-            :style="{ transitionDelay: (i % 3) * 80 + 'ms' }">
-            <span class="w-12 h-12 rounded-2xl bg-ink-700 text-sun-300 flex items-center justify-center shadow-sm">
-              <svg v-if="f.icon === 'timeline'" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><path d="M5 8v8"/><path d="M11 6h9M11 18h9M11 12h6"/></svg>
-              <svg v-else-if="f.icon === 'bell'" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <svg v-else-if="f.icon === 'upload'" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-              <svg v-else-if="f.icon === 'chat'" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>
-              <svg v-else-if="f.icon === 'list'" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-              <svg v-else class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4M17 19h4"/></svg>
-            </span>
-            <h3 class="mt-5 text-lg font-bold text-ink-700">{{ f.title }}</h3>
-            <p class="mt-2 text-[15px] text-slate-600 leading-relaxed">{{ f.text }}</p>
-          </div>
+        <div class="mt-10 grid md:grid-cols-2 gap-5">
+          <article v-for="(f, i) in features" :key="f.title"
+            class="reveal group rounded-3xl bg-meadow/60 ring-1 ring-brand-100 overflow-hidden hover:bg-white hover:ring-brand-200 hover:shadow-[0_24px_50px_-28px_rgba(16,48,29,0.45)] hover:-translate-y-0.5 transition duration-300"
+            :style="{ transitionDelay: (i % 2) * 80 + 'ms' }">
+
+            <!-- A cropped glimpse of the real screen, deliberately clipped by the fixed height -->
+            <div class="h-60 px-6 pt-6 overflow-hidden" aria-hidden="true">
+              <div class="rounded-2xl bg-white ring-1 ring-brand-100 shadow-[0_18px_40px_-30px_rgba(16,48,29,0.6)] p-4">
+
+                <template v-if="f.icon === 'timeline'">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-sm font-bold text-ink-700 truncate">Building/Renovation Permit</p>
+                      <p class="text-[11px] text-slate-400 mt-0.5 truncate">12 Mabini St. · #BR-2026-0142</p>
+                    </div>
+                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-sun-100 text-sun-700 shrink-0">In progress</span>
+                  </div>
+                  <ol class="mt-4">
+                    <li class="relative flex gap-3 pb-4">
+                      <span class="absolute left-[5px] top-4 bottom-0 w-0.5 bg-brand-200 rounded-full"></span>
+                      <span class="relative mt-1 w-3 h-3 rounded-full bg-brand-600 shrink-0"></span>
+                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                          <p class="text-xs font-semibold text-ink-700 truncate">Barangay Burol I</p>
+                          <p class="text-[11px] text-slate-400 mt-0.5 truncate">Construction Clearance signed</p>
+                        </div>
+                        <span class="text-[10px] text-slate-400 shrink-0">Sep 2</span>
+                      </div>
+                    </li>
+                    <li class="relative flex gap-3 pb-4">
+                      <span class="absolute left-[5px] top-4 bottom-0 w-0.5 bg-brand-200 rounded-full"></span>
+                      <span class="relative mt-1 w-3 h-3 rounded-full bg-brand-600 shrink-0"></span>
+                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                          <p class="text-xs font-semibold text-ink-700 truncate">City Planning (CPDO)</p>
+                          <p class="text-[11px] text-slate-400 mt-0.5 truncate">Zoning Clearance issued</p>
+                        </div>
+                        <span class="text-[10px] text-slate-400 shrink-0">Sep 4</span>
+                      </div>
+                    </li>
+                    <li class="relative flex gap-3 pb-4">
+                      <span class="absolute left-[5px] top-4 bottom-0 w-0.5 bg-slate-200 rounded-full"></span>
+                      <span class="relative mt-1 w-3 h-3 rounded-full bg-sun-400 ring-4 ring-sun-100 shrink-0">
+                        <span class="demo-ring absolute inset-0 rounded-full bg-sun-400"></span>
+                      </span>
+                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                          <p class="text-xs font-semibold text-ink-700 truncate">Building Official</p>
+                          <p class="text-[11px] text-slate-400 mt-0.5 truncate">Technical plan review passed</p>
+                        </div>
+                        <span class="text-[10px] text-slate-400 shrink-0">Sep 9</span>
+                      </div>
+                    </li>
+                    <li class="relative flex gap-3">
+                      <span class="relative mt-1 w-3 h-3 rounded-full bg-slate-200 shrink-0"></span>
+                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
+                        <p class="text-xs font-semibold text-slate-400 truncate">CENRO</p>
+                        <span class="text-[10px] text-slate-300 shrink-0">Pending</span>
+                      </div>
+                    </li>
+                  </ol>
+                </template>
+
+                <template v-else-if="f.icon === 'bell'">
+                  <div class="space-y-2.5">
+                    <div class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 ring-brand-100 p-2.5">
+                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="m4 6 8 6 8-6"/></svg>
+                      </span>
+                      <div class="min-w-0">
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">Email · Sep 4</p>
+                        <p class="text-xs font-semibold text-ink-700 truncate">Zoning Clearance issued</p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 ring-brand-100 p-2.5">
+                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+                      </span>
+                      <div class="min-w-0">
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">SMS · Sep 9</p>
+                        <p class="text-xs font-semibold text-ink-700 truncate">Moved to Building Official</p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 ring-brand-100 p-2.5">
+                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                      </span>
+                      <div class="min-w-0">
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">In-app · Sep 10</p>
+                        <p class="text-xs font-semibold text-ink-700 truncate">A document needs changes</p>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else-if="f.icon === 'upload'">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Documents</p>
+                  <div class="mt-3 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="w-7 h-7 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
+                          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        </span>
+                        <div class="min-w-0">
+                          <p class="text-xs font-semibold text-ink-700 truncate">Site Plan.pdf</p>
+                          <p class="text-[10px] text-brand-600 mt-0.5">Approved</p>
+                        </div>
+                      </div>
+                      <svg class="w-4 h-4 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </div>
+                    <div>
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors"
+                            :class="demo.uploading ? 'bg-brand-50 text-brand-600' : 'bg-rose-50 text-rose-500'">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                          </span>
+                          <div class="min-w-0">
+                            <p class="text-xs font-semibold text-ink-700 truncate">Floor Plan.pdf</p>
+                            <p class="text-[10px] mt-0.5" :class="demo.uploading ? 'text-brand-600' : 'text-rose-500'">{{ demo.uploading ? 'Uploading…' : 'Needs changes' }}</p>
+                          </div>
+                        </div>
+                        <button type="button" tabindex="-1" @click="fakeUpload"
+                          class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand-600 text-white shrink-0 transition hover:bg-brand-700 active:scale-95 disabled:opacity-60"
+                          :disabled="demo.uploading">Replace</button>
+                      </div>
+                      <div v-if="demo.uploading" class="mt-2 h-1 rounded-full bg-brand-100 overflow-hidden">
+                        <div class="demo-bar h-full w-1/3 rounded-full bg-brand-600"></div>
+                      </div>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="w-7 h-7 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
+                          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        </span>
+                        <div class="min-w-0">
+                          <p class="text-xs font-semibold text-ink-700 truncate">Proof of Insurance.pdf</p>
+                          <p class="text-[10px] text-slate-400 mt-0.5">In review</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="w-7 h-7 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
+                          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        </span>
+                        <div class="min-w-0">
+                          <p class="text-xs font-semibold text-ink-700 truncate">Contractor License.pdf</p>
+                          <p class="text-[10px] text-brand-600 mt-0.5">Approved</p>
+                        </div>
+                      </div>
+                      <svg class="w-4 h-4 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else-if="f.icon === 'chat'">
+                  <p class="text-[11px] font-bold text-slate-400">Engr. Cruz · Building Official</p>
+                  <div class="mt-3 space-y-2">
+                    <p class="text-xs bg-meadow text-ink-700 rounded-2xl rounded-bl-sm px-3 py-2 w-fit max-w-[88%]">The floor plan scan is too low-res to read the dimensions.</p>
+                    <p class="text-xs bg-ink-700 text-white rounded-2xl rounded-br-sm px-3 py-2 w-fit max-w-[88%] ml-auto">Re-uploaded a 300dpi scan just now.</p>
+                    <div class="flex items-center gap-1 bg-meadow rounded-2xl rounded-bl-sm px-3 py-3 w-fit">
+                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700"></span>
+                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.15s"></span>
+                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.3s"></span>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else-if="f.icon === 'list'">
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 flex items-center gap-2 rounded-lg bg-white ring-2 ring-brand-500 px-2.5 py-1.5 min-w-0">
+                      <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                      <span class="text-[11px] text-ink-700 truncate">Mabini</span>
+                      <span class="demo-caret w-px h-3 bg-brand-600 shrink-0 -ml-1"></span>
+                    </div>
+                    <span class="text-[11px] font-semibold text-ink-700 ring-1 ring-brand-100 rounded-lg px-2.5 py-1.5 shrink-0">All</span>
+                  </div>
+                  <div class="mt-3 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-ink-700 truncate">Food Service</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">24 Rizal Ave.</p>
+                      </div>
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sun-100 text-sun-700 shrink-0">In progress</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-ink-700 truncate">Sign Permit</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">12 Mabini St.</p>
+                      </div>
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 shrink-0">Approved</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-ink-700 truncate">Building/Renovation</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">12 Mabini St.</p>
+                      </div>
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sun-100 text-sun-700 shrink-0">In progress</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-slate-400 truncate">Special Event</p>
+                        <p class="text-[10px] text-slate-300 mt-0.5 truncate">Plaza Rizal</p>
+                      </div>
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Draft</span>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <p class="text-xs bg-ink-700 text-white rounded-2xl rounded-br-sm px-3 py-2 w-fit max-w-[85%] ml-auto">What do I need for a Sign Permit?</p>
+                  <div class="mt-3 flex items-start gap-2.5">
+                    <span class="w-7 h-7 rounded-full bg-sun-300 text-ink-700 flex items-center justify-center shrink-0">
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+                    </span>
+                    <div class="min-w-0">
+                      <p class="text-xs text-slate-600 leading-relaxed">Two documents, and you already have one on file:</p>
+                      <ul class="mt-2 space-y-1.5">
+                        <li class="flex items-start gap-2 text-xs text-ink-700">
+                          <svg class="w-3.5 h-3.5 text-brand-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                          Sign Drawing / Rendering
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-ink-700">
+                          <svg class="w-3.5 h-3.5 text-brand-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                          Property Owner Authorization
+                        </li>
+                      </ul>
+                      <p class="mt-2 text-[11px] text-slate-400 leading-relaxed">Both can be uploaded from your permit page.</p>
+                    </div>
+                  </div>
+                </template>
+
+              </div>
+            </div>
+
+            <div class="px-7 pb-7 pt-5 text-center">
+              <h3 class="text-lg font-bold text-ink-700">{{ f.title }}</h3>
+              <p class="mt-2 text-[15px] text-slate-600 leading-relaxed">{{ f.text }}</p>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -640,6 +1029,119 @@ export default {
             <span class="text-6xl font-extrabold tracking-tighter text-brand-200 leading-none">0{{ i + 1 }}</span>
             <h3 class="mt-4 text-lg font-bold text-ink-700">{{ s.t }}</h3>
             <p class="mt-2 text-[15px] text-slate-600 leading-relaxed">{{ s.d }}</p>
+
+            <!-- The actual screen this step lands on: same fields, same wording as the real form -->
+            <div class="mt-5 rounded-2xl bg-white ring-1 ring-brand-100 p-4" aria-hidden="true">
+
+              <template v-if="i === 0">
+                <div class="flex gap-1 p-1 rounded-xl bg-meadow/70 ring-1 ring-brand-100">
+                  <button type="button" tabindex="-1" @click="demo.contact = 'email'"
+                    class="flex-1 text-center text-[11px] py-1.5 rounded-lg transition"
+                    :class="demo.contact === 'email' ? 'font-bold bg-white text-ink-700 shadow-sm' : 'font-semibold text-slate-400 hover:text-slate-600'">Email</button>
+                  <button type="button" tabindex="-1" @click="demo.contact = 'phone'"
+                    class="flex-1 text-center text-[11px] py-1.5 rounded-lg transition"
+                    :class="demo.contact === 'phone' ? 'font-bold bg-white text-ink-700 shadow-sm' : 'font-semibold text-slate-400 hover:text-slate-600'">Mobile number</button>
+                </div>
+                <p class="mt-3 text-[11px] font-semibold text-slate-500">{{ demo.contact === 'email' ? 'Email address' : 'Mobile number' }}</p>
+                <div class="mt-1 flex items-center rounded-lg ring-1 ring-brand-100 px-2.5 py-2 text-xs text-ink-700">
+                  <span class="truncate">{{ demo.contact === 'email' ? 'juan.delacruz@email.com' : '0917 123 4567' }}</span>
+                  <span class="demo-caret w-px h-3.5 bg-brand-600 shrink-0 ml-0.5"></span>
+                </div>
+                <p class="mt-3 text-[11px] font-semibold text-slate-500">Verification code</p>
+                <div class="mt-1.5 flex gap-1.5">
+                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">4</span>
+                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">8</span>
+                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">2</span>
+                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">7</span>
+                  <span class="flex-1 h-9 rounded-lg ring-2 ring-brand-500 flex items-center justify-center"><span class="demo-caret w-px h-4 bg-brand-500"></span></span>
+                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-100"></span>
+                </div>
+                <p class="mt-2 text-[10px] text-slate-400 truncate">Code sent to {{ demo.contact === 'email' ? 'juan.delacruz@email.com' : '0917 123 4567' }}</p>
+              </template>
+
+              <template v-else-if="i === 1">
+                <p class="text-[11px] font-semibold text-slate-500">Proof 1 of 2</p>
+                <div class="relative mt-1">
+                  <button type="button" tabindex="-1" @click="toggleDemo('proof0')"
+                    class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
+                    :class="demo.open === 'proof0' ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
+                    <span class="text-xs text-ink-700 truncate">{{ demo.proofs[0] }}</span>
+                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="demo.open === 'proof0' ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <div v-if="demo.open === 'proof0'" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1">
+                    <button v-for="o in proofOptions" :key="o" type="button" tabindex="-1" @click="pickProof(0, o)"
+                      class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
+                      :class="o === demo.proofs[0] ? 'font-semibold text-brand-700' : 'text-slate-600'">{{ o }}</button>
+                  </div>
+                </div>
+                <div class="mt-1.5 flex items-center gap-2">
+                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                  <span class="text-[11px] text-slate-500 truncate">brgy-certificate.pdf</span>
+                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </div>
+
+                <p class="mt-3 text-[11px] font-semibold text-slate-500">Proof 2 of 2</p>
+                <div class="relative mt-1">
+                  <button type="button" tabindex="-1" @click="toggleDemo('proof1')"
+                    class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
+                    :class="demo.open === 'proof1' ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
+                    <span class="text-xs text-ink-700 truncate">{{ demo.proofs[1] }}</span>
+                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="demo.open === 'proof1' ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <div v-if="demo.open === 'proof1'" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1">
+                    <button v-for="o in proofOptions" :key="o" type="button" tabindex="-1" @click="pickProof(1, o)"
+                      class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
+                      :class="o === demo.proofs[1] ? 'font-semibold text-brand-700' : 'text-slate-600'">{{ o }}</button>
+                  </div>
+                </div>
+                <div class="mt-1.5 flex items-center gap-2">
+                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                  <span class="text-[11px] text-slate-500 truncate">electric-bill-sep.pdf</span>
+                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </div>
+
+                <div class="mt-3 pt-3 border-t border-slate-100">
+                  <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-sun-100 text-sun-700">Waiting for City Staff review</span>
+                </div>
+              </template>
+
+              <template v-else>
+                <p class="text-[11px] font-semibold text-slate-500">Permit type</p>
+                <div class="relative mt-1">
+                  <button type="button" tabindex="-1" @click="toggleDemo('permit')"
+                    class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
+                    :class="demo.open === 'permit' ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
+                    <span class="text-xs font-semibold text-ink-700 truncate">{{ permits[demo.permit].type }}</span>
+                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="demo.open === 'permit' ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <div v-if="demo.open === 'permit'" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1">
+                    <button v-for="(p, k) in permits" :key="p.type" type="button" tabindex="-1" @click="pickPermit(k)"
+                      class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
+                      :class="k === demo.permit ? 'font-semibold text-brand-700' : 'text-slate-600'">{{ p.type }}</button>
+                  </div>
+                </div>
+                <p class="mt-3 text-[11px] font-semibold text-slate-500">Required documents</p>
+                <ul class="mt-1.5 space-y-1.5">
+                  <li v-for="(d, k) in permits[demo.permit].docs" :key="d"
+                    class="flex items-center gap-2 text-[11px]" :class="k < 2 ? 'text-ink-700' : 'text-slate-400'">
+                    <svg v-if="k < 2" class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    <span v-else class="w-3.5 h-3.5 rounded-full ring-1 ring-slate-300 shrink-0"></span>
+                    {{ d }}
+                  </li>
+                </ul>
+                <div class="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-brand-600 shrink-0"></span>
+                  <span class="flex-1 h-0.5 rounded bg-brand-200"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-sun-400 ring-2 ring-sun-100 shrink-0"></span>
+                  <span class="flex-1 h-0.5 rounded bg-slate-200"></span>
+                  <span class="w-2 h-2 rounded-full bg-slate-200 shrink-0"></span>
+                  <span class="flex-1 h-0.5 rounded bg-slate-200"></span>
+                  <span class="w-2 h-2 rounded-full bg-slate-200 shrink-0"></span>
+                  <span class="ml-1.5 text-[10px] font-bold text-sun-700 shrink-0">Stop 2 of 6</span>
+                </div>
+              </template>
+
+            </div>
           </div>
         </div>
       </div>
@@ -706,7 +1208,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr] gap-10">
         <div>
           <div class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=113" alt="" class="w-9 h-9 object-contain" />
+            <img src="assets/images/PermitTrackIcon.png?v=114" alt="" class="w-9 h-9 object-contain" />
             <span class="leading-tight">
               <span class="block text-[15px] font-bold text-white">PermitTrack</span>
               <span class="block text-[11px] text-ink-300">City of Dasmariñas</span>
