@@ -1,6 +1,6 @@
-import { authState } from '../store/auth.js?v=112';
-import { backButtonClass, backIconClass } from '../util.js?v=112';
-import Loader from './Loader.js?v=112';
+import { authState } from '../store/auth.js?v=113';
+import { backButtonClass, backIconClass } from '../util.js?v=113';
+import Loader from './Loader.js?v=113';
 
 // Shared card for the sign-in pages: gradient panel on the left, form on the right.
 export default {
@@ -33,7 +33,7 @@ export default {
 
       <div class="pt-gradient hidden lg:flex relative overflow-hidden rounded-[22px] flex-col justify-between p-10 text-white">
         <router-link to="/" class="flex items-center gap-3 text-[#0b3d20] self-start rounded-xl hover:opacity-90 transition" aria-label="PermitTrack home">
-          <img src="assets/images/PermitTrackIcon.png?v=112" alt="" class="w-14 h-14 object-contain shrink-0 drop-shadow" />
+          <img src="assets/images/PermitTrackIcon.png?v=113" alt="" class="w-14 h-14 object-contain shrink-0 drop-shadow" />
           <div class="leading-tight">
             <div class="text-lg font-semibold tracking-tight">PermitTrack</div>
             <div v-if="portal" class="text-xs font-bold uppercase tracking-widest">{{ portal }}</div>
@@ -57,7 +57,7 @@ export default {
             </button>
           </div>
           <router-link to="/" class="flex lg:hidden items-center gap-2 mb-5 self-start" aria-label="PermitTrack home">
-            <img src="assets/images/PermitTrackIcon.png?v=112" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=113" alt="" class="w-9 h-9 object-contain shrink-0" />
             <span class="text-lg font-bold text-slate-900">PermitTrack</span>
           </router-link>
           <slot></slot>

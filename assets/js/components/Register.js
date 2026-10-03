@@ -1,5 +1,6 @@
-import { register } from '../store/auth.js?v=112';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=112';
+import { register } from '../store/auth.js?v=113';
+import { apiGet } from '../api/client.js?v=113';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=113';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
@@ -19,7 +20,7 @@ export default {
       form: {
         first_name: '', middle_name: '', last_name: '', birthdate: '',
         contact_method: 'email', email: '', phone: '',
-        address_line: '', barangay: '', city: '', postal_code: '',
+        address_line: '', barangay: '', province_code: '', city_code: '', postal_code: '',
         password: '', confirm_password: '', privacy_consent: false,
       },
       showPassword: false,
@@ -27,6 +28,11 @@ export default {
       minBirthdate: yearsAgo(80),
       error: '',
       loading: false,
+      provinces: [],
+      cities: [],
+      barangays: [],      // the 75 of Dasmariñas, used only when the chosen city is this one
+      homeCityCode: '',
+      loadingCities: false,
       inputClass, labelClass, primaryButtonClass,
     };
   },
@@ -41,8 +47,50 @@ export default {
       const p = this.form.password;
       return p.length >= 8 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p) && /[^A-Za-z0-9]/.test(p);
     },
+    // Barangay is only collected inside the city this system serves — elsewhere there is no
+    // barangay office for a permit to go to.
+    inHomeCity() {
+      return !!this.homeCityCode && this.form.city_code === this.homeCityCode;
+    },
+    matchedBarangay() {
+      const typed = (this.form.barangay || '').trim().toLowerCase();
+      if (!typed) return null;
+      return this.barangays.find((b) => b.name.toLowerCase() === typed) || null;
+    },
+  },
+  async mounted() {
+    try {
+      const [loc, brgy] = await Promise.all([
+        apiGet('locations.php?action=provinces'),
+        apiGet('locations.php?action=barangays'),
+      ]);
+      this.provinces = loc.provinces;
+      this.homeCityCode = loc.home.city_code;
+      this.barangays = brgy.barangays;
+    } catch (e) {
+      // The address step will say so rather than silently offering empty lists.
+      this.error = 'Could not load the address list. Please reload the page.';
+    }
   },
   methods: {
+    async loadCities(provinceCode) {
+      if (!provinceCode) { this.cities = []; return; }
+      this.loadingCities = true;
+      try {
+        const res = await apiGet('locations.php?action=cities&province_code=' + encodeURIComponent(provinceCode));
+        this.cities = res.cities;
+      } finally {
+        this.loadingCities = false;
+      }
+    },
+    async onProvinceChange() {
+      this.form.city_code = '';
+      this.form.barangay = '';
+      await this.loadCities(this.form.province_code);
+    },
+    onCityChange() {
+      if (!this.inHomeCity) this.form.barangay = '';
+    },
     // Client-side checks per step; the server re-validates everything.
     stepError() {
       const f = this.form;
@@ -55,7 +103,9 @@ export default {
       if (this.step === 1) {
         if (f.contact_method === 'email' && !/^\S+@\S+\.\S+$/.test(f.email.trim())) return 'Please enter a valid email address.';
         if (f.contact_method === 'phone' && !/^(\+?63|0)?9\d{9}$/.test(f.phone.replace(/[\s-]/g, ''))) return 'Please enter a valid mobile number, e.g. 0917 123 4567.';
-        if (!f.address_line.trim() || !f.barangay.trim() || !f.city.trim()) return 'Please complete your address.';
+        if (!f.address_line.trim()) return 'Please enter your house number and street.';
+        if (!f.province_code || !f.city_code) return 'Please choose your province and city or municipality.';
+        if (this.inHomeCity && !this.matchedBarangay) return 'Please choose your barangay from the list.';
         if (!/^\d{4}$/.test(f.postal_code.trim())) return 'Postal / ZIP code must be 4 digits.';
       }
       if (this.step === 2) {
@@ -86,7 +136,7 @@ export default {
         // Send the user back to the step that holds the problem field
         if (/email|mobile/i.test(e.message)) this.step = 1;
         else if (/name|birth|18/i.test(e.message)) this.step = 0;
-        else if (/postal|address|barangay|city/i.test(e.message)) this.step = 1;
+        else if (/postal|address|barangay|city|province|municipalit/i.test(e.message)) this.step = 1;
       } finally {
         this.loading = false;
       }
@@ -150,20 +200,46 @@ export default {
           <label :class="labelClass" for="r-street">House no. / Street</label>
           <input id="r-street" v-model="form.address_line" type="text" autocomplete="address-line1" placeholder="Blk 4 Lot 18, Narra Drive" :class="inputClass" />
         </div>
+        <!-- Province and city come from the PSGC list rather than being typed: whether an account is
+             in Dasmariñas decides what it can file, so it cannot rest on spelling. -->
         <div>
-          <label :class="labelClass" for="r-brgy">Barangay</label>
-          <input id="r-brgy" v-model="form.barangay" type="text" placeholder="Barangay name" :class="inputClass" />
+          <label :class="labelClass" for="r-prov">Province</label>
+          <select id="r-prov" v-model="form.province_code" @change="onProvinceChange" :class="inputClass">
+            <option value="">Choose a province…</option>
+            <option v-for="pr in provinces" :key="pr.code" :value="pr.code">{{ pr.name }}</option>
+          </select>
         </div>
         <div class="grid grid-cols-[1fr_7rem] gap-3">
           <div>
             <label :class="labelClass" for="r-city">City / Municipality</label>
-            <input id="r-city" v-model="form.city" type="text" autocomplete="address-level2" placeholder="City" :class="inputClass" />
+            <select id="r-city" v-model="form.city_code" @change="onCityChange" :disabled="!form.province_code || loadingCities" :class="inputClass">
+              <option value="">{{ loadingCities ? 'Loading…' : (form.province_code ? 'Choose…' : 'Province first') }}</option>
+              <option v-for="c in cities" :key="c.code" :value="c.code">{{ c.name }}</option>
+            </select>
           </div>
           <div>
             <label :class="labelClass" for="r-zip">Postal code</label>
             <input id="r-zip" v-model="form.postal_code" type="text" inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="1870" :class="inputClass" />
           </div>
         </div>
+
+        <!-- Only for Dasmariñas: this is the link that routes a permit to a barangay secretariat. -->
+        <div v-if="inHomeCity">
+          <label :class="labelClass" for="r-brgy">Barangay</label>
+          <input id="r-brgy" v-model="form.barangay" list="r-brgy-list" type="text" autocomplete="off"
+            placeholder="Start typing to search…"
+            :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '']" />
+          <datalist id="r-brgy-list">
+            <option v-for="b in barangays" :key="b.id" :value="b.name" />
+          </datalist>
+          <p v-if="form.barangay && !matchedBarangay" class="text-xs text-red-600 mt-1">
+            Not one of the {{ barangays.length }} barangays of Dasmariñas.
+          </p>
+        </div>
+        <p v-else-if="form.city_code" class="text-xs text-slate-500 leading-relaxed">
+          You can create an account and browse permits from anywhere. Filing them needs a verified
+          address in Dasmariñas, which you can apply for later from your profile.
+        </p>
       </template>
 
       <!-- Step 3: Password & consent -->

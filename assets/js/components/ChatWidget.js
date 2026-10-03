@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=112';
-import BaseModal from './BaseModal.js?v=112';
-import GibsMascot from './GibsMascot.js?v=112';
-import GibsPeek from './GibsPeek.js?v=112';
+import { apiGet, apiPost } from '../api/client.js?v=113';
+import BaseModal from './BaseModal.js?v=113';
+import GibsMascot from './GibsMascot.js?v=113';
+import GibsPeek from './GibsPeek.js?v=113';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
