@@ -91,7 +91,7 @@ function app_config(): array
 }
 
 const USER_COLUMNS = 'id, role, account_type, email, phone, full_name, first_name, middle_name, last_name, birthdate,
-    address_line, barangay, barangay_id, city, postal_code, email_verified_at, phone_verified_at, resident_status, onboarding_completed,
+    address_line, barangay, barangay_id, city, city_code, province, province_code, postal_code, email_verified_at, phone_verified_at, resident_status, onboarding_completed,
     (SELECT COUNT(*) FROM businesses b WHERE b.user_id = users.id AND b.status = \'approved\') AS approved_businesses,
     department_id, is_active, must_change_password, last_login_at, created_at,
     (SELECT d.name FROM departments d WHERE d.id = users.department_id) AS department_name,

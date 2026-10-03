@@ -3,6 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/config.php';
 require __DIR__ . '/lib/business.php';
 require __DIR__ . '/lib/pipeline.php';
+require_once __DIR__ . '/lib/support.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -84,7 +85,14 @@ if ($action === 'eligibility' && $method === 'GET') {
 if ($action === 'permit_types' && $method === 'GET') {
     $user = require_role('applicant');
     $businesses = approved_businesses((int)$user['id']);
-    respond(['permit_types' => eligible_permit_types($user, $businesses), 'businesses' => $businesses]);
+    respond([
+        'permit_types' => eligible_permit_types($user, $businesses),
+        'businesses' => $businesses,
+        // Every barangay of Dasmariñas, for the address picker. The one the applicant is
+        // registered in is the sensible default, but any of them can be chosen.
+        'barangays' => barangay_options(),
+        'default_barangay_id' => $user['barangay_id'] !== null ? (int)$user['barangay_id'] : null,
+    ]);
 }
 
 if ($action === 'list' && $method === 'GET') {
@@ -274,29 +282,58 @@ if ($action === 'create_v2' && $method === 'POST') {
         fail('Only verified Residents or Business Owners can apply for permits. Verify your account first.', 403);
     }
 
-    $permitTypeId = (int)($_POST['permit_type_id'] ?? 0);
+    // One submission can cover several permits. Each becomes its own application — an application
+    // carries exactly one permit_type_id and instantiates its own route — but they share the filing
+    // details, and where two permits ask for the same document the one upload serves both.
+    $idsRaw = json_decode((string)($_POST['permit_type_ids'] ?? '[]'), true);
+    $permitTypeIds = is_array($idsRaw)
+        ? array_values(array_unique(array_filter(array_map('intval', $idsRaw))))
+        : [];
+    if (!$permitTypeIds && (int)($_POST['permit_type_id'] ?? 0)) {
+        $permitTypeIds = [(int)$_POST['permit_type_id']];
+    }
+    if (!$permitTypeIds) {
+        fail('Please choose at least one permit.');
+    }
+    if (count($permitTypeIds) > 10) {
+        fail('You can file up to 10 permits in one go.');
+    }
     $propertyAddress = trim((string)($_POST['property_address'] ?? ''));
     $description = trim((string)($_POST['project_description'] ?? ''));
     $businessId = (int)($_POST['business_id'] ?? 0);
+    // The barangay the permit is ABOUT, which is not necessarily where the applicant lives.
+    $chosenBarangayId = (int)($_POST['barangay_id'] ?? 0);
     $conditionsRaw = json_decode((string)($_POST['conditions'] ?? '{}'), true);
     $conditions = is_array($conditionsRaw) ? array_map('boolval', $conditionsRaw) : [];
 
     $typeStmt = db()->prepare('SELECT * FROM permit_types WHERE id = ? AND is_active = 1');
-    $typeStmt->execute([$permitTypeId]);
-    $permitType = $typeStmt->fetch();
-    if (!$permitType) {
-        fail('Please choose a valid permit type.');
+    $permitTypes = [];
+    foreach ($permitTypeIds as $id) {
+        $typeStmt->execute([$id]);
+        $row = $typeStmt->fetch();
+        if (!$row) {
+            fail('Please choose a valid permit type.');
+        }
+        $permitTypes[] = $row;
     }
+    // Eligibility, the address and the barangay are checked against each permit in turn, because
+    // a selection can mix tracks; whichever is strictest wins.
+    $permitType = $permitTypes[0];
 
     $isResident = in_array('Resident', $user['levels'], true);
-    $isStandalone = $permitType['track'] === 'barangay_standalone' || $permitType['track'] === 'personal';
+    $isStandalone = false;
+    foreach ($permitTypes as $pt) {
+        if ($pt['track'] === 'barangay_standalone' || $pt['track'] === 'personal') {
+            $isStandalone = true;
+        }
+    }
     $business = null;
     $businessName = '';
     $barangayId = null;
 
     if ($businessId) {
         if ($isStandalone) {
-            fail('This is a resident-only clearance and cannot be filed under a business.', 403);
+            fail('A resident-only clearance cannot be filed under a business. File it separately, as yourself.', 403);
         }
         foreach (approved_businesses((int)$user['id']) as $b) {
             if ((int)$b['id'] === $businessId) {
@@ -306,8 +343,10 @@ if ($action === 'create_v2' && $method === 'POST') {
         if (!$business) {
             fail('Please choose one of your verified businesses.');
         }
-        if (!$permitType['business_eligible']) {
-            fail("A {$permitType['name']} permit can't be filed for a business.");
+        foreach ($permitTypes as $pt) {
+            if (!$pt['business_eligible']) {
+                fail("A {$pt['name']} permit can't be filed for a business.");
+            }
         }
         $businessName = $business['business_name'];
         $barangayId = $business['barangay_id'] !== null ? (int)$business['barangay_id'] : null;
@@ -316,30 +355,67 @@ if ($action === 'create_v2' && $method === 'POST') {
             $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
         }
     } else {
-        if (!$permitType['resident_eligible'] || ($isStandalone && !$isResident)) {
-            fail("A {$permitType['name']} permit must be filed for one of your verified businesses.", 403);
+        foreach ($permitTypes as $pt) {
+            if (!$pt['resident_eligible']) {
+                fail("A {$pt['name']} permit must be filed for one of your verified businesses.", 403);
+            }
         }
         if (!$isResident) {
-            fail("Only verified Residents can file a {$permitType['name']} permit as an individual. Choose one of your businesses, or verify your residency.", 403);
+            fail('Only verified Residents can file these permits as an individual. Choose one of your businesses, or verify your residency.', 403);
         }
         $barangayId = $user['barangay_id'] !== null ? (int)$user['barangay_id'] : null;
-        if ($propertyAddress === '' && !$isStandalone) {
+        $needsAddress = false;
+        foreach ($permitTypes as $pt) {
+            if ($pt['track'] === 'construction' || $pt['track'] === 'business') {
+                $needsAddress = true;
+            }
+        }
+        if ($propertyAddress === '' && $needsAddress) {
             fail('Property address is required.');
         }
     }
+    // A permit about a place is routed by that place. The applicant's own barangay is only the
+    // default the form starts from, and it is overridden the moment the address is somewhere else.
+    // Permits with no address stay with the applicant's barangay: those are about the person.
+    $needsAddress = false;
+    foreach ($permitTypes as $pt) {
+        if ($pt['track'] === 'construction' || $pt['track'] === 'business') {
+            $needsAddress = true;
+        }
+    }
+    if ($needsAddress && $chosenBarangayId) {
+        $brgyStmt = db()->prepare('SELECT id FROM barangays WHERE id = ?');
+        $brgyStmt->execute([$chosenBarangayId]);
+        if (!$brgyStmt->fetchColumn()) {
+            fail('Please choose the barangay from the list.');
+        }
+        $barangayId = $chosenBarangayId;
+    }
+
     if ($barangayId === null) {
-        fail('No barangay is on file for ' . ($business ? 'this business' : 'your account') . ' yet — this is required to route the application.', 422);
+        fail($needsAddress
+            ? 'Please choose the barangay the property is in — this is what routes the application.'
+            : 'No barangay is on file for ' . ($business ? 'this business' : 'your account') . ' yet — this is required to route the application.', 422);
     }
 
     $pdo = db();
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare(
-            'INSERT INTO applications (applicant_id, business_id, permit_type_id, property_address, business_name, project_description, priority)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO applications (applicant_id, business_id, permit_type_id, property_address, barangay_id, business_name, project_description, priority)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$user['id'], $businessId ?: null, $permitTypeId, $propertyAddress ?: 'N/A', $businessName ?: null, $description ?: null, 'Standard']);
+
+        // An uploaded file can only be moved out of its temp location once, but the same document
+        // can be required by more than one of the permits being filed. The first application to
+        // need it moves it; the rest get a copy, so one upload really does serve them all.
+        $movedFiles = [];
+        $createdIds = [];
+
+        foreach ($permitTypeIds as $permitTypeId) {
+        $stmt->execute([$user['id'], $businessId ?: null, $permitTypeId, $propertyAddress ?: 'N/A', $barangayId, $businessName ?: null, $description ?: null, 'Standard']);
         $appId = (int)$pdo->lastInsertId();
+        $createdIds[] = $appId;
 
         instantiate_pipeline($appId, $permitTypeId, $conditions, $barangayId);
 
@@ -383,7 +459,12 @@ if ($action === 'create_v2' && $method === 'POST') {
                     $originalName = basename($_FILES[$fileKey]['name']);
                     $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
                     $dest = $uploadDir . '/' . $safeName;
-                    move_uploaded_file($_FILES[$fileKey]['tmp_name'], $dest);
+                    if (isset($movedFiles[$fileKey])) {
+                        copy($movedFiles[$fileKey], $dest);   // same paper, a second permit
+                    } else {
+                        move_uploaded_file($_FILES[$fileKey]['tmp_name'], $dest);
+                        $movedFiles[$fileKey] = $dest;
+                    }
                     $filePath = 'uploads/' . $appId . '/' . $safeName;
                     $status = 'Pending Review';
                     $uploadedAt = date('Y-m-d H:i:s');
@@ -397,13 +478,17 @@ if ($action === 'create_v2' && $method === 'POST') {
         );
         $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
 
+        } // end of the per-permit loop
+
         $pdo->commit();
     } catch (RuntimeException $e) {
         $pdo->rollBack();
         fail($e->getMessage());
     }
 
-    respond(['application_id' => $appId], 201);
+    // application_id is the first one filed, so a caller that only knows about single submissions
+    // still lands somewhere sensible.
+    respond(['application_id' => $createdIds[0], 'application_ids' => $createdIds], 201);
 }
 
 if ($action === 'create' && $method === 'POST') {

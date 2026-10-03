@@ -1,28 +1,28 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
-import { authState, loadCurrentUser, homePathFor } from '../store/auth.js?v=108';
+import { authState, loadCurrentUser, homePathFor } from '../store/auth.js?v=112';
 
-import Landing from '../components/Landing.js?v=108';
-import Login from '../components/Login.js?v=108';
-import Register from '../components/Register.js?v=108';
-import Verify from '../components/Verify.js?v=108';
-import StaffLogin from '../components/StaffLogin.js?v=108';
-import Dashboard from '../components/Dashboard.js?v=108';
-import MyPermits from '../components/MyPermits.js?v=108';
-import Notifications from '../components/Notifications.js?v=108';
-import NotFound from '../components/NotFound.js?v=108';
-import PermitDetail from '../components/PermitDetail.js?v=108';
-import NewApplication from '../components/NewApplication.js?v=108';
-import ReviewerQueue from '../components/ReviewerQueue.js?v=108';
-import ReviewDetail from '../components/ReviewDetail.js?v=108';
-import ResidencyUpgrade from '../components/ResidencyUpgrade.js?v=108';
-import ResidencyQueue from '../components/ResidencyQueue.js?v=108';
-import ResidencyReview from '../components/ResidencyReview.js?v=108';
-import BusinessForm from '../components/BusinessForm.js?v=108';
-import BusinessQueue from '../components/BusinessQueue.js?v=108';
-import BusinessReview from '../components/BusinessReview.js?v=108';
-import Admin from '../components/Admin.js?v=108';
-import Profile from '../components/Profile.js?v=108';
-import { openChangePassword } from '../store/ui.js?v=108';
+import Landing from '../components/Landing.js?v=112';
+import Login from '../components/Login.js?v=112';
+import Register from '../components/Register.js?v=112';
+import Verify from '../components/Verify.js?v=112';
+import StaffLogin from '../components/StaffLogin.js?v=112';
+import Dashboard from '../components/Dashboard.js?v=112';
+import MyPermits from '../components/MyPermits.js?v=112';
+import Notifications from '../components/Notifications.js?v=112';
+import NotFound from '../components/NotFound.js?v=112';
+import PermitDetail from '../components/PermitDetail.js?v=112';
+import NewApplication from '../components/NewApplication.js?v=112';
+import ReviewerQueue from '../components/ReviewerQueue.js?v=112';
+import ReviewDetail from '../components/ReviewDetail.js?v=112';
+import ResidencyUpgrade from '../components/ResidencyUpgrade.js?v=112';
+import ResidencyQueue from '../components/ResidencyQueue.js?v=112';
+import ResidencyReview from '../components/ResidencyReview.js?v=112';
+import BusinessForm from '../components/BusinessForm.js?v=112';
+import BusinessQueue from '../components/BusinessQueue.js?v=112';
+import BusinessReview from '../components/BusinessReview.js?v=112';
+import Admin from '../components/Admin.js?v=112';
+import Profile from '../components/Profile.js?v=112';
+import { openChangePassword } from '../store/ui.js?v=112';
 
 const routes = [
   // Signed-out visitors get the landing page; signed-in users go to their home (guard below)
