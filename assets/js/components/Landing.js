@@ -1,6 +1,7 @@
 import { permitIconClass } from '../util.js?v=115';
 import ChatWidget from './ChatWidget.js?v=115';
-import { authState, logout, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=115';
+import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=115';
+import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=115';
 
 // The public front door. Everything on it describes what PermitTrack really does — the offices a
 // permit actually passes through, the real permit catalogue and its real requirements — so nothing
@@ -426,6 +427,10 @@ export default {
     clearInterval(this.stepsTimer);
   },
   watch: {
+    // Signed out on this page: whoever is still signed in now belongs in the chooser
+    'authState.user'(user) {
+      if (!user) listAccounts().then((a) => { this.otherAccounts = a; }).catch(() => { this.otherAccounts = []; });
+    },
     featMotion(on) { this.motionChanged('feat', on); },
     stepsMotion(on) { this.motionChanged('steps', on); },
   },
@@ -494,22 +499,22 @@ export default {
         { text: text.slice(at + q.length), hit: false },
       ].filter((p) => p.text);
     },
-    // Signing out leaves nobody signed in and lands here, on the landing page. Whoever else is
-    // still signed in on this browser moves into the Sign in chooser.
-    async doLogout() {
+    // Asks first; the sign-out itself (and its veil) runs from app.js, shared by every menu.
+    // Whoever else is still signed in moves into the Sign in chooser (see the authState watcher).
+    doLogout() {
       this.accountOpen = false;
-      await logout();
-      this.otherAccounts = await listAccounts().catch(() => []);
-      if (this.$route.path !== '/') this.$router.push('/');
+      askSignOut();
     },
     // Those accounts never signed out, so stepping back into one needs no password
     async resumeAccount(id) {
       if (this.resuming) return;
       this.resuming = true;
+      this.signInOpen = false;
+      beginTransition('switch');
       try {
         reloadAs(await switchAccount(id));
       } catch (e) {
-        this.signInOpen = false;
+        endTransition();
         this.otherAccounts = await listAccounts().catch(() => []);
       } finally {
         this.resuming = false;

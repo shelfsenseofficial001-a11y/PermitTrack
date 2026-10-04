@@ -1,4 +1,5 @@
-import { changePassword, logout, signOutPathFor } from '../store/auth.js?v=115';
+import { changePassword } from '../store/auth.js?v=115';
+import { askSignOut } from '../store/ui.js?v=115';
 import { inputClass } from './AuthLayout.js?v=115';
 import BaseModal from './BaseModal.js?v=115';
 
@@ -69,10 +70,10 @@ export default {
         this.loading = false;
       }
     },
-    async signOut() {
-      // Admins can reset anyone's password, so this dialog is shown to staff and residents alike
-      await logout();
-      this.$router.push(signOutPathFor());
+    // Admins can reset anyone's password, so this dialog is shown to staff and residents alike.
+    // Same confirmation and veil as every other Sign out (run from app.js).
+    signOut() {
+      askSignOut();
     },
   },
   template: `

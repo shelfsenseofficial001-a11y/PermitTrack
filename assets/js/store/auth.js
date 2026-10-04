@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { apiGet, apiPost } from '../api/client.js?v=115';
+import { beginTransition, carryTransitionThroughReload } from './ui.js?v=115';
 
 export const authState = reactive({
   user: null,
@@ -73,10 +74,18 @@ export async function switchAccount(id) {
   return user;
 }
 
-/** After switching or signing out into another account, reload so every page shows that user's data. */
+/**
+ * After switching into another account, reload so every page shows that user's data. The
+ * "Switching accounts…" veil goes up first and stays up through the reload (see ui.js).
+ */
 export function reloadAs(user) {
-  location.hash = '#' + homePathFor(user);
-  location.reload();
+  beginTransition('switch');
+  carryTransitionThroughReload('switch');
+  // Long enough for the blur to settle over the page before it goes
+  setTimeout(() => {
+    location.hash = '#' + homePathFor(user);
+    location.reload();
+  }, 450);
 }
 
 export async function changePassword(currentPassword, newPassword) {
