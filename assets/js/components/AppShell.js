@@ -17,6 +17,10 @@ const MAX_TOASTS = 3;
 export default {
   name: 'AppShell',
   components: { ChatWidget, AddAccountModal, BaseModal, Loader, NotificationToasts },
+  props: {
+    // For a page with its own sticky action bar along the bottom: lifts the Ask button above it
+    liftChat: { type: Boolean, default: false },
+  },
   data() {
     return {
       authState, uiState, menuOpen: false, accountsOpen: false, accounts: [], accountsLoading: false,
@@ -225,7 +229,10 @@ export default {
   },
   template: `
   <div class="min-h-screen bg-meadow">
-    <header class="bg-ink-700 text-white sticky top-0 z-10 shadow-[0_8px_24px_-12px_rgba(16,48,29,0.6)]">
+    <!-- With the account menu or the bell open, the header rises above the Gibs chat (z-50)
+         so the menu isn't hidden under it, while staying below dialogs (z-60). -->
+    <header class="bg-ink-700 text-white sticky top-0 shadow-[0_8px_24px_-12px_rgba(16,48,29,0.6)]"
+      :class="menuOpen || notifOpen ? 'z-[55]' : 'z-10'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2.5">
@@ -411,7 +418,7 @@ export default {
 
     <NotificationToasts v-if="isApplicant" :items="toasts" @open="openToast" @close="dismissToast" />
 
-    <ChatWidget v-if="authState.user && authState.user.role === 'applicant'" />
+    <ChatWidget v-if="authState.user && authState.user.role === 'applicant'" :lift-for-bar="liftChat" />
     <transition name="modal">
       <AddAccountModal v-if="addingAccount" @close="addingAccount = false" />
     </transition>

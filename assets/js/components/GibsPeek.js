@@ -13,6 +13,7 @@ export default {
   props: {
     suppressed: { type: Boolean, default: false }, // true while the chat panel is open
     liftForFab: { type: Boolean, default: false },
+    liftForBar: { type: Boolean, default: false }, // follows the Ask button above an action bar
   },
   emits: ['open'],
   data() {
@@ -78,8 +79,9 @@ export default {
   },
   template: `
   <!-- Sits just above the Ask button: its bottom offsets are the button's own plus its height. -->
-  <div class="fixed right-0 z-40 select-none pointer-events-none bottom-[calc(8.5rem+env(safe-area-inset-bottom))]"
-    :class="liftForFab ? 'md:bottom-[9rem]' : 'md:bottom-[5rem]'"
+  <div class="fixed right-0 z-40 select-none pointer-events-none"
+    :class="liftForBar ? 'bottom-[calc(12.75rem+env(safe-area-inset-bottom))] md:bottom-[9.75rem]'
+      : ['bottom-[calc(8.5rem+env(safe-area-inset-bottom))]', liftForFab ? 'md:bottom-[9rem]' : 'md:bottom-[5rem]']"
     :style="{ width: width + 'px', height: height + 'px' }" aria-hidden="true">
     <transition name="pop">
       <div v-if="showBubble && out && !suppressed"

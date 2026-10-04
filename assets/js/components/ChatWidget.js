@@ -23,6 +23,9 @@ export default {
     // True while another bottom-right floating control (e.g. Landing's "Back to top") is also
     // showing, so the Ask button lifts above it instead of the two overlapping.
     liftForFab: { type: Boolean, default: false },
+    // True on pages with a sticky action bar along the bottom (New Application's Back /
+    // Continue), so the Ask button rides above it on every screen size instead of covering it.
+    liftForBar: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -49,7 +52,7 @@ export default {
       // The panel only covers the page on phones. From md up it's a corner panel anchored over
       // the Ask button, so the page behind it stays scrollable.
       const coversPage = !window.matchMedia('(min-width: 768px)').matches;
-      document.body.style.overflow = isOpen && coversPage ? 'hidden' : '';
+      document.documentElement.style.overflow = isOpen && coversPage ? 'hidden' : '';
     },
   },
   mounted() {
@@ -62,7 +65,7 @@ export default {
   beforeUnmount() {
     clearTimeout(this.mascotTimer);
     document.removeEventListener('keydown', this.onKey);
-    if (this.open) document.body.style.overflow = '';
+    if (this.open) document.documentElement.style.overflow = '';
   },
   methods: {
     // Splits an answer into paragraphs and "- " bullet lists for display
@@ -154,7 +157,7 @@ export default {
     },
     // BaseModal releases the page scroll lock when it closes, but the chat dialog is still open.
     relockScroll() {
-      this.$nextTick(() => { if (this.open) document.body.style.overflow = 'hidden'; });
+      this.$nextTick(() => { if (this.open) document.documentElement.style.overflow = 'hidden'; });
     },
     go(path) {
       this.close();
@@ -171,9 +174,10 @@ export default {
   <!-- On phones the Ask button sits above the bottom tab tray (4rem + the home-bar inset), which
        already clears a page-level FAB like Landing's "Back to top"; from md up it normally sits at
        bottom-5, but lifts higher when liftForFab is set so the two don't overlap. -->
-  <div class="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex flex-col items-end gap-3"
-    :class="liftForFab ? 'md:bottom-[5.25rem]' : 'md:bottom-5'">
-    <GibsPeek v-if="!gibsHidden" :suppressed="open" :lift-for-fab="liftForFab" @open="openChat" />
+  <div class="fixed right-5 z-40 flex flex-col items-end gap-3"
+    :class="liftForBar ? 'bottom-[calc(9rem+env(safe-area-inset-bottom))] md:bottom-24'
+      : ['bottom-[calc(4.75rem+env(safe-area-inset-bottom))]', liftForFab ? 'md:bottom-[5.25rem]' : 'md:bottom-5']">
+    <GibsPeek v-if="!gibsHidden" :suppressed="open" :lift-for-fab="liftForFab" :lift-for-bar="liftForBar" @open="openChat" />
 
     <button ref="askButton" type="button" @click="open ? close() : openChat()" :aria-expanded="open"
       :aria-label="open ? 'Close Gibs P.' : 'Open Gibs P., the PermitTrack assistant'"
@@ -190,7 +194,7 @@ export default {
     leave-to-class="opacity-0 md:translate-y-2 md:scale-[0.98]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none">
     <div v-if="open"
       class="font-inter gibs-shell z-50 flex bg-ink-900/45 backdrop-blur-[3px] md:bg-transparent md:backdrop-blur-none md:origin-bottom-right"
-      :class="liftForFab ? 'is-lifted' : ''" @click.self="close">
+      :class="liftForFab || liftForBar ? 'is-lifted' : ''" @click.self="close">
       <section role="dialog" aria-modal="true" aria-labelledby="gibs-title"
         class="gibs-panel relative flex flex-col bg-white md:rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
         :class="gibsHidden ? 'is-narrow' : ''">
@@ -208,11 +212,6 @@ export default {
           <button v-if="gibsHidden" type="button" @click="toggleGibs" aria-label="Show Visualization" title="Show Visualization"
             class="shrink-0 inline-flex items-center p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-          <button type="button" @click="confirmReset = true" :disabled="sending || messages.length < 2"
-            class="shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 px-3 py-2 rounded-xl hover:bg-brand-50 disabled:text-slate-300 disabled:hover:bg-transparent transition">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-            New chat
           </button>
           <button type="button" @click="close" aria-label="Close assistant"
             class="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
@@ -235,7 +234,7 @@ export default {
         <!-- The chat. min-w-0 matters as much as min-h-0: without it this flex item will not
              shrink below its content's min-content width and would spill past the panel. -->
         <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-meadow/40">
-          <div ref="log" class="flex-1 min-h-0 overflow-y-auto scroll-soft px-5 py-5" aria-live="polite">
+          <div ref="log" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-5 py-5" aria-live="polite">
             <transition-group name="list" tag="div" class="space-y-3">
             <div v-for="(m, i) in messages" :key="i" :class="m.from === 'user' ? 'flex justify-end' : ''">
               <div v-if="m.from === 'user'" class="max-w-[85%] rounded-2xl rounded-br-md bg-brand-600 text-white px-3.5 py-2 text-sm">{{ m.text }}</div>
@@ -257,10 +256,17 @@ export default {
             <div v-if="sending" class="text-xs text-slate-400 mt-3">{{ typingLine }}</div>
           </div>
 
-          <form @submit.prevent="send()" class="border-t border-slate-100 bg-white p-3 flex gap-2 shrink-0">
+          <form @submit.prevent="send()" class="border-t border-slate-100 bg-white p-3 flex items-center gap-2 shrink-0">
+            <!-- New chat sits where you type, as a round plus — it starts the conversation over -->
+            <button type="button" @click="confirmReset = true" :disabled="sending || messages.length < 2"
+              aria-label="New chat" title="New chat"
+              class="shrink-0 w-10 h-10 rounded-full bg-brand-600 text-white flex items-center justify-center transition"
+              :class="sending || messages.length < 2 ? 'opacity-50 cursor-not-allowed' : 'shadow-[0_6px_14px_-6px_rgba(31,122,58,0.6)] hover:bg-brand-700 active:scale-95'">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
             <input ref="input" v-model="draft" maxlength="500" placeholder="Ask Gibs about permits, verification…" aria-label="Your question"
               class="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-600/15" />
-            <button type="submit" :disabled="sending || !draft.trim()" class="shrink-0 px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold disabled:opacity-50">Send</button>
+            <button type="submit" :disabled="sending || !draft.trim()" class="shrink-0 self-stretch px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold disabled:opacity-50">Send</button>
           </form>
         </div>
 

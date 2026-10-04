@@ -35,7 +35,7 @@ const Toast = {
     },
   },
   template: `
-  <div class="pointer-events-auto relative w-[min(22rem,calc(100vw-2rem))] rounded-2xl bg-white ring-1 ring-brand-100 shadow-[0_18px_40px_-18px_rgba(7,24,14,0.45)] overflow-hidden"
+  <div class="toast-in pointer-events-auto relative w-[min(22rem,calc(100vw-2rem))] rounded-2xl bg-white ring-1 ring-brand-100 shadow-[0_18px_40px_-18px_rgba(7,24,14,0.45)] overflow-hidden"
     role="status" @mouseenter="pause" @mouseleave="resume" @focusin="pause" @focusout="resume">
     <button type="button" @click="$emit('open', item)" class="group w-full text-left flex gap-3 pl-4 pr-9 py-3.5 transition hover:bg-meadow/60 focus:outline-none focus-visible:bg-meadow">
       <span class="mt-0.5 w-9 h-9 rounded-xl shrink-0 flex items-center justify-center"
@@ -72,10 +72,8 @@ export default {
   emits: ['open', 'close'],
   template: `
   <!-- Below the sticky header, and click-through except on the toasts themselves -->
-  <transition-group tag="div" name="toast" :duration="{ enter: 320, leave: 220 }"
-    class="fixed top-20 right-4 z-[60] flex flex-col items-end gap-2.5 pointer-events-none"
-    move-class="transition-transform duration-300 ease-out">
+  <div class="fixed top-20 right-4 z-[60] flex flex-col items-end gap-2.5 pointer-events-none">
     <Toast v-for="n in items" :key="n.id" :item="n" @open="$emit('open', $event)" @close="$emit('close', $event)" />
-  </transition-group>
+  </div>
   `,
 };

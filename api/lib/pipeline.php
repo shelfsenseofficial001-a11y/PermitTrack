@@ -49,10 +49,12 @@ function permit_types_catalog(): array
         // many steps it has. Conditional steps are marked: they only appear if the branch question
         // is answered yes, so the real length varies.
         $type['route'] = array_values(array_map(fn($s) => [
-            'office_code' => $s['office_code'],
-            'office'      => $officeNames[$s['office_code']] ?? $s['office_code'],
-            'step_label'  => $s['step_label'],
-            'conditional' => $s['condition_key'] !== null,
+            'office_code'   => $s['office_code'],
+            'office'        => $officeNames[$s['office_code']] ?? $s['office_code'],
+            'step_label'    => $s['step_label'],
+            'conditional'   => $s['condition_key'] !== null,
+            // Which question adds this step, so the form can show the route your answers produce
+            'condition_key' => $s['condition_key'],
         ], $typeSteps));
         $type['base_steps'] = count(array_filter($typeSteps, fn($s) => $s['condition_key'] === null));
     }

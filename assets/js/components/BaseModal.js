@@ -20,11 +20,13 @@ export default {
   mounted() {
     this.onKey = (e) => { if (e.key === 'Escape') this.dismiss(); };
     document.addEventListener('keydown', this.onKey);
-    document.body.style.overflow = 'hidden';
+    // The page scrolls on <html> (index.html sets its overflow), so that is what gets locked.
+    // Locking <body> instead leaves the page scrolling and unsticks the sticky header.
+    document.documentElement.style.overflow = 'hidden';
   },
   beforeUnmount() {
     document.removeEventListener('keydown', this.onKey);
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   },
   methods: {
     dismiss() {

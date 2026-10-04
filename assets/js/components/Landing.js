@@ -654,8 +654,11 @@ export default {
       <div v-if="menuOpen" class="md:hidden fixed inset-0 z-30 bg-ink-900/25 backdrop-blur-[2px]" @click="closeMenu" aria-hidden="true"></div>
     </transition>
 
-    <header ref="header" class="sticky top-0 z-40 transition-all duration-300"
-      :class="scrolled || menuOpen ? 'bg-white/90 backdrop-blur-md shadow-[0_8px_30px_-18px_rgba(16,48,29,0.35)]' : 'bg-transparent'">
+    <!-- With one of its menus open the header rises above the Gibs chat (z-50) so the menu
+         isn't hidden under it, while staying below dialogs (z-60). -->
+    <header ref="header" class="sticky top-0 transition-[background-color,box-shadow] duration-300"
+      :class="[scrolled || menuOpen ? 'bg-white/90 backdrop-blur-md shadow-[0_8px_30px_-18px_rgba(16,48,29,0.35)]' : 'bg-transparent',
+        menuOpen || accountOpen || signInOpen ? 'z-[55]' : 'z-40']">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <button type="button" @click="go('top')" class="flex items-center gap-2.5 shrink-0" aria-label="PermitTrack, back to top">
           <img src="assets/images/PermitTrackIcon.png?v=115" alt="" class="w-9 h-9 object-contain" />
