@@ -35,6 +35,11 @@ if ($action === 'reupload' && $method === 'POST') {
     if (!$doc || (int)$doc['applicant_id'] !== (int)$user['id']) {
         fail('Document not found.', 404);
     }
+    // A verified document has already been signed off by an office. Swapping the file would
+    // silently reset that approval, so only the office that asked for it can reopen it.
+    if ($doc['status'] === 'Verified') {
+        fail('This document has already been verified. Message your reviewer if it needs to change.', 409);
+    }
     if (!empty($_FILES['file']) && $_FILES['file']['error'] === UPLOAD_ERR_INI_SIZE) {
         fail('That file is too large to upload.');
     }

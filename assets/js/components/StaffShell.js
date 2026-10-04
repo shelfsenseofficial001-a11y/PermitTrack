@@ -59,7 +59,9 @@ export default {
   },
   template: `
   <div class="min-h-screen bg-meadow">
-    <header class="bg-ink-700 text-white sticky top-0 z-10 shadow-[0_8px_24px_-12px_rgba(16,48,29,0.6)]">
+    <!-- With the account menu open the header rises above anything floating (z-50), below dialogs (z-60) -->
+    <header class="bg-ink-700 text-white sticky top-0 shadow-[0_8px_24px_-12px_rgba(16,48,29,0.6)]"
+      :class="menuOpen ? 'z-[55]' : 'z-10'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/reviewer" class="flex items-center gap-2.5">

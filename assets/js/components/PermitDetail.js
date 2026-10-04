@@ -1,14 +1,15 @@
 import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=115';
 import AppShell from './AppShell.js?v=115';
 import StatusStepper from './StatusStepper.js?v=115';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass } from '../util.js?v=115';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError } from '../util.js?v=115';
 import { uiState, toggleReviewerHints } from '../store/ui.js?v=115';
 import Loader from './Loader.js?v=115';
+import BaseModal from './BaseModal.js?v=115';
 
 export default {
   name: 'PermitDetail',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell, StatusStepper, Loader },
+  components: { AppShell, StatusStepper, Loader, BaseModal },
   data() {
     return {
       uiState,
@@ -18,6 +19,17 @@ export default {
       newMessage: '',
       sending: false,
       reuploadingId: null,
+      uploadAccept: UPLOAD_ACCEPT,
+      docError: '',   // why the last file was refused, shown under the documents list
+      // Editing the details in place, and taking the application back out of the queue. Both are
+      // only offered while nobody has started reviewing it (the API's `editable`).
+      editing: false,
+      editForm: { property_address: '', project_description: '' },
+      saving: false,
+      editError: '',
+      confirmDiscard: false,
+      discarding: false,
+      discardError: '',
     };
   },
   async mounted() {
@@ -32,6 +44,14 @@ export default {
     // only where there is something to show.
     canShowHints() {
       return (this.app && this.app.pipeline || []).some((s) => s.reviewer_login);
+    },
+    // Until a reviewer picks it up, the applicant can still change it or pull it back
+    canEdit() {
+      return !!(this.app && this.app.editable);
+    },
+    // Only the tracks that collect one; the rest store 'N/A'
+    editNeedsAddress() {
+      return !!(this.app && this.app.property_address && this.app.property_address !== 'N/A');
     },
   },
   methods: {
@@ -63,9 +83,64 @@ export default {
         skipped: 'bg-slate-50 text-slate-300',
       }[status] || 'bg-slate-100 text-slate-400';
     },
+    startEdit() {
+      this.editForm.property_address = this.app.property_address === 'N/A' ? '' : (this.app.property_address || '');
+      this.editForm.project_description = this.app.project_description || '';
+      this.editError = '';
+      this.editing = true;
+    },
+    async saveEdit() {
+      if (this.saving) return;
+      this.editError = '';
+      if (this.editNeedsAddress && !this.editForm.property_address.trim()) {
+        this.editError = 'Property address is required.';
+        return;
+      }
+      this.saving = true;
+      try {
+        await apiPost('applications.php?action=update', {
+          id: this.app.id,
+          property_address: this.editForm.property_address,
+          project_description: this.editForm.project_description,
+        });
+        this.editing = false;
+        await this.refresh();
+      } catch (e) {
+        this.editError = e.message;
+      } finally {
+        this.saving = false;
+      }
+    },
+    async discard() {
+      if (this.discarding) return;
+      this.discardError = '';
+      this.discarding = true;
+      try {
+        await apiPost('applications.php?action=withdraw', { id: this.app.id });
+        this.confirmDiscard = false;
+        await this.refresh();
+      } catch (e) {
+        this.discardError = e.message;
+      } finally {
+        this.discarding = false;
+      }
+    },
     async reupload(doc, event) {
       const file = event.target.files[0];
       if (!file) return;
+      this.docError = '';
+      // Caught here as well as on the server, so an obviously wrong file fails before the upload
+      const typeError = uploadTypeError(file);
+      if (typeError) {
+        this.docError = typeError;
+        event.target.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        this.docError = file.name + ' is larger than the 5 MB limit.';
+        event.target.value = '';
+        return;
+      }
       const fd = new FormData();
       fd.append('document_id', doc.id);
       fd.append('file', file);
@@ -73,6 +148,8 @@ export default {
       try {
         await apiPostForm('documents.php?action=reupload', fd);
         await this.refresh();
+      } catch (e) {
+        this.docError = e.message;
       } finally {
         this.reuploadingId = null;
         event.target.value = '';
@@ -113,8 +190,28 @@ export default {
             <div class="text-sm text-slate-500">{{ app.property_address }} &middot; Permit #{{ permitNumber(app) }}</div>
           </div>
         </div>
-        <span class="text-xs font-bold px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 h-fit">{{ app.status }}</span>
+        <div class="flex items-center gap-2 h-fit">
+          <!-- Only while nobody has started on it: once a reviewer has, the way to change
+               anything is to message them. -->
+          <template v-if="canEdit">
+            <button type="button" @click="startEdit"
+              class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-700 bg-white ring-1 ring-slate-300 hover:ring-brand-400 hover:text-brand-700 px-3 py-1.5 rounded-full transition">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+              Edit
+            </button>
+            <button type="button" @click="confirmDiscard = true"
+              class="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-white ring-1 ring-red-200 hover:ring-red-400 hover:bg-red-50 px-3 py-1.5 rounded-full transition">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              Discard
+            </button>
+          </template>
+          <span class="text-xs font-bold px-3 py-1.5 rounded-full" :class="app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
+        </div>
       </div>
+
+      <p v-if="canEdit" class="mt-2 text-xs text-slate-400">
+        You can still change or discard this until a reviewer picks it up.
+      </p>
 
       <!-- Pipeline apps (27-type flow): show each office in order. Legacy apps (5-type flow,
            empty app.pipeline) keep the original single-stage stepper. -->
@@ -186,13 +283,23 @@ export default {
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <a v-if="doc.file_path" :href="downloadUrl(doc.id)" class="text-sm font-semibold text-brand-600 hover:underline">View</a>
-                <label v-if="doc.status === 'Needs Re-upload' || doc.status === 'Missing'" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-md cursor-pointer">
+                <!-- Anything an office hasn't verified yet can still be swapped: the one a
+                     reviewer sent back, one never uploaded, and one simply waiting its turn. -->
+                <label v-if="doc.status === 'Needs Re-upload' || doc.status === 'Missing'"
+                  class="shrink-0 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-md cursor-pointer transition">
                   {{ reuploadingId === doc.id ? 'Uploading…' : 'Re-upload' }}
-                  <input type="file" class="hidden" @change="reupload(doc, $event)" />
+                  <input type="file" class="hidden" :accept="uploadAccept" @change="reupload(doc, $event)" />
+                </label>
+                <label v-else-if="doc.status !== 'Verified'"
+                  class="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-ink-700 bg-white ring-1 ring-slate-300 hover:ring-brand-400 hover:text-brand-700 px-3 py-1.5 rounded-full cursor-pointer transition">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                  {{ reuploadingId === doc.id ? 'Uploading…' : 'Replace' }}
+                  <input type="file" class="hidden" :accept="uploadAccept" @change="reupload(doc, $event)" />
                 </label>
               </div>
             </li>
           </ul>
+          <p v-if="docError" class="mt-3 text-xs text-red-600">{{ docError }}</p>
         </div>
 
         <div class="bg-white rounded-xl border border-slate-200 p-6 flex flex-col">
@@ -217,6 +324,61 @@ export default {
           </form>
         </div>
       </div>
+
+      <!-- Editing what the applicant can still change: the address and the description. The
+           permit type, documents and declarations are what the route was built from, so those
+           are not editable — a different permit is a different application. -->
+      <BaseModal v-if="editing" title="Edit application" eyebrow="Before a reviewer picks it up"
+        :subtitle="app.permit_type || app.permit_type_name" @close="editing = false">
+        <template #icon>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+        </template>
+
+        <div v-if="editNeedsAddress">
+          <label class="block text-xs font-semibold text-slate-600 mb-1" for="edit-address">Property address</label>
+          <input id="edit-address" v-model="editForm.property_address" type="text"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
+        </div>
+        <div :class="editNeedsAddress ? 'mt-3' : ''">
+          <label class="block text-xs font-semibold text-slate-600 mb-1" for="edit-desc">Project description <span class="font-normal text-slate-400">(optional)</span></label>
+          <textarea id="edit-desc" v-model="editForm.project_description" rows="3"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"></textarea>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">To change the permit type or its documents, discard this and file again.</p>
+        <p v-if="editError" class="text-sm text-red-600 mt-3">{{ editError }}</p>
+
+        <template #footer>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" @click="editing = false" :disabled="saving" class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-200/60 disabled:opacity-60 transition">Cancel</button>
+            <button type="button" @click="saveEdit" :disabled="saving"
+              class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-5 py-2.5 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">
+              {{ saving ? 'Saving…' : 'Save changes' }}
+            </button>
+          </div>
+        </template>
+      </BaseModal>
+
+      <BaseModal v-if="confirmDiscard" title="Discard this application?" eyebrow="It leaves the queue" tone="sun"
+        :subtitle="app.permit_type || app.permit_type_name" @close="confirmDiscard = false">
+        <template #icon>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </template>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          No office will review it any further. The record and its history stay in
+          <span class="font-semibold text-ink-700">My Permits</span>, but it can't be put back —
+          you'd need to file it again.
+        </p>
+        <p v-if="discardError" class="text-sm text-red-600 mt-3">{{ discardError }}</p>
+        <template #footer>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" @click="confirmDiscard = false" :disabled="discarding" class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-200/60 disabled:opacity-60 transition">Keep it</button>
+            <button type="button" @click="discard" :disabled="discarding"
+              class="text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 px-5 py-2.5 rounded-xl transition">
+              {{ discarding ? 'Discarding…' : 'Yes, discard it' }}
+            </button>
+          </div>
+        </template>
+      </BaseModal>
     </template>
   </AppShell>
   `,

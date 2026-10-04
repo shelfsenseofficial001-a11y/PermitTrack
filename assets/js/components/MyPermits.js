@@ -20,12 +20,15 @@ export default {
       return !!(authState.user && authState.user.can_apply);
     },
     counts() {
+      // Withdrawn belongs to none of the others: nobody is reviewing it, so it is not in progress
+      const settled = (a) => a.status === 'Approved' || a.status === 'Rejected' || a.status === 'Withdrawn';
       return {
         all: this.apps.length,
         action: this.apps.filter((a) => a.blocked).length,
-        progress: this.apps.filter((a) => !a.blocked && a.status !== 'Approved' && a.status !== 'Rejected').length,
+        progress: this.apps.filter((a) => !a.blocked && !settled(a)).length,
         approved: this.apps.filter((a) => a.status === 'Approved').length,
         rejected: this.apps.filter((a) => a.status === 'Rejected').length,
+        withdrawn: this.apps.filter((a) => a.status === 'Withdrawn').length,
       };
     },
     tabs() {
@@ -35,6 +38,7 @@ export default {
         { key: 'progress', label: 'In progress', count: this.counts.progress },
         { key: 'approved', label: 'Approved', count: this.counts.approved },
         { key: 'rejected', label: 'Rejected', count: this.counts.rejected },
+        { key: 'withdrawn', label: 'Withdrawn', count: this.counts.withdrawn },
       ].filter((t) => t.key === 'all' || t.count > 0);
     },
     filtered() {
@@ -45,7 +49,8 @@ export default {
           this.filter === 'action' ? a.blocked :
           this.filter === 'approved' ? a.status === 'Approved' :
           this.filter === 'rejected' ? a.status === 'Rejected' :
-          !a.blocked && a.status !== 'Approved' && a.status !== 'Rejected';
+          this.filter === 'withdrawn' ? a.status === 'Withdrawn' :
+          !a.blocked && a.status !== 'Approved' && a.status !== 'Rejected' && a.status !== 'Withdrawn';
         if (!byStatus) return false;
         if (!q) return true;
         return [a.permit_type, a.property_address, a.status, a.permit_number]
@@ -101,7 +106,9 @@ export default {
         <div class="flex flex-wrap gap-2">
           <button v-for="t in tabs" :key="t.key" type="button" @click="filter = t.key"
             class="text-sm font-semibold px-3.5 py-2 rounded-full border transition"
-            :class="filter === t.key ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-brand-100 text-slate-600 hover:border-brand-300'">
+            :class="filter === t.key ? (t.key === 'withdrawn' ? 'bg-slate-500 border-slate-500 text-white' : 'bg-brand-600 border-brand-600 text-white')
+              : t.key === 'withdrawn' ? 'bg-white border-brand-100 text-slate-400 hover:border-slate-300'
+              : 'bg-white border-brand-100 text-slate-600 hover:border-brand-300'">
             {{ t.label }}
             <span class="ml-1 text-xs" :class="filter === t.key ? 'text-white/70' : 'text-slate-400'">{{ t.count }}</span>
           </button>

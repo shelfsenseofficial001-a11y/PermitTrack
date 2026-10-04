@@ -135,6 +135,30 @@
   .fade-leave-active, .swap-leave-active { transition: opacity .1s var(--ease-in); }
   .fade-enter-from, .fade-leave-to, .swap-enter-from, .swap-leave-to { opacity: 0; }
 
+  /* Filing an application: a paper plane carrying it off to the first office, looping until the
+     server answers, then landing as a tick. Reduce-motion keeps the plane still and lets the
+     wording carry it — a looping flight is exactly what that setting is asking us not to do. */
+  @keyframes file-plane {
+    0%   { transform: translate(-58px, 16px) rotate(-10deg) scale(.8); opacity: 0 }
+    15%  { opacity: 1 }
+    55%  { transform: translate(2px, -10px) rotate(4deg) scale(1.05); opacity: 1 }
+    88%  { opacity: 1 }
+    100% { transform: translate(64px, -38px) rotate(16deg) scale(.68); opacity: 0 }
+  }
+  .file-plane { animation: file-plane 1.8s cubic-bezier(.35,.65,.35,1) infinite; }
+
+  @keyframes file-trail { from { stroke-dashoffset: 170 } to { stroke-dashoffset: -170 } }
+  .file-trail { stroke-dasharray: 10 12; animation: file-trail 1.8s linear infinite; }
+
+  @keyframes file-pop { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.14) } 100% { transform: scale(1); opacity: 1 } }
+  .file-pop { animation: file-pop .5s cubic-bezier(.2,.9,.3,1.3) both; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .file-plane { animation: none; }
+    .file-trail { animation: none; stroke-dashoffset: 0; }
+    .file-pop { animation: none; }
+  }
+
   /* veil — the blurred "Switching accounts… / Signing out…" screen. Deliberately not slowed
      or stopped by reduce-motion: it marks a real change of who is signed in. */
   .veil-enter-active { transition: opacity .3s var(--ease-out); }
@@ -230,8 +254,16 @@
     .page-enter-from .page-body, .page-leave-to .page-body, .modal-leave-to [role="dialog"],
     .pop-enter-from, .pop-leave-to, .chat-enter-from, .chat-leave-to,
     .expand-enter-from, .list-enter-from, .toast-enter-from, .toast-leave-to { transform: none !important; }
-    .toast-timer { animation: none; }
+    /* The draining sliver stays: it is the countdown itself, not decoration, and a toast whose
+       timer looks frozen reads as one that will never leave. */
   }
+
+  /* Toasts arrive with their own CSS entrance and leave the moment their countdown ends. A Vue
+     leave transition would wait on an animation frame, and a tab that isn't painting would be
+     left with toasts stuck on screen after they had already been dismissed. */
+  @keyframes toast-in { from { opacity: 0; transform: translateX(16px) scale(.97) } to { opacity: 1; transform: none } }
+  .toast-in { animation: toast-in .32s cubic-bezier(.2,.7,.2,1) both; }
+  @media (prefers-reduced-motion: reduce) { .toast-in { animation-duration: .01s; } }
 
   /* Gibs P. reaction marks ("!", "?", "?!"): pop in with a wobble, drift up, fade out */
   @keyframes gibs-pop {

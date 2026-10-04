@@ -239,18 +239,22 @@ export default {
   template: `
   <div>
   <transition-group name="list" tag="div" class="relative space-y-3">
+    <!-- A withdrawn permit is kept for the record but is no longer live, so it sits back: no
+         white card, muted text, and it lifts back to full strength on hover or once opened. -->
     <div v-for="app in sortedApps" :key="app.id" :ref="'row-' + app.id"
-      class="bg-white rounded-2xl border transition"
-      :class="isOpen(app.id) ? 'border-brand-300 shadow-sm' : 'border-brand-100 hover:border-brand-300'">
+      class="rounded-2xl border transition"
+      :class="[isOpen(app.id) ? 'border-brand-300 shadow-sm' : 'border-brand-100 hover:border-brand-300',
+        app.status === 'Withdrawn' ? (isOpen(app.id) ? 'bg-white' : 'bg-slate-50/70 opacity-60 hover:opacity-100 hover:bg-white') : 'bg-white']">
 
       <!-- Row header — click anywhere on it to open the permit -->
       <button type="button" @click="toggle(app.id)" :aria-expanded="isOpen(app.id)" :aria-controls="'permit-panel-' + app.id"
         class="w-full flex items-center gap-3 sm:gap-4 p-4 text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40">
-        <div class="w-11 h-11 rounded-lg flex items-center justify-center shrink-0" :class="permitIconClass(app.permit_type)">
+        <div class="w-11 h-11 rounded-lg flex items-center justify-center shrink-0"
+          :class="app.status === 'Withdrawn' ? 'bg-slate-100 text-slate-400' : permitIconClass(app.permit_type)">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
         </div>
         <div class="min-w-0 flex-1">
-          <div class="font-bold text-ink-700 truncate">{{ app.permit_type }} Permit</div>
+          <div class="font-bold truncate" :class="app.status === 'Withdrawn' ? 'text-slate-500' : 'text-ink-700'">{{ app.permit_type }} Permit</div>
           <!-- personal and barangay permits have no address; they store 'N/A', which is noise here -->
           <div class="text-sm text-slate-500 truncate">
             <template v-if="app.property_address && app.property_address !== 'N/A'">{{ app.property_address }} &middot; </template>Permit #{{ permitNumber(app) }}
@@ -267,7 +271,10 @@ export default {
         </transition>
 
         <span class="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full"
-          :class="app.blocked ? 'bg-red-100 text-red-700' : app.status === 'Approved' ? 'bg-brand-100 text-brand-700' : app.status === 'Rejected' ? 'bg-slate-200 text-slate-600' : 'bg-sun-100 text-sun-700'"
+          :class="app.blocked ? 'bg-red-100 text-red-700'
+            : app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
+            : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-500'
+            : 'bg-sun-100 text-sun-700'"
         >{{ app.blocked ? 'Action needed' : app.status }}</span>
 
         <svg class="w-4 h-4 text-slate-400 shrink-0 transition-transform" :class="isOpen(app.id) ? 'rotate-180' : ''"
