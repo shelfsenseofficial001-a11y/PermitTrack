@@ -64,3 +64,11 @@ Ihanda: ang Mayor''s Permit noong nakaraang taon at ang opisyal na resibo nito, 
 Hindi kasama rito ang DTI o SEC registration mo — limang taon ang DTI at hindi nag-e-expire ang SEC.', 'renew, renewal, business permit, mayor permit, january, expire, surcharge, deadline', '/applications/new', 'File a renewal', 61, 1, NOW(), NOW()
   FROM (SELECT 1) AS one
  WHERE NOT EXISTS (SELECT 1 FROM faq_entries f WHERE f.question = 'When do I renew my business permit?');
+
+-- 005 seeds the FAQ with INSERT IGNORE, which is idempotent only because `question` is unique.
+-- Renaming #6 above frees its old text, so a later re-run of 005 would happily insert the old
+-- entry again as a new row. Clearing it here — after the rename — keeps a full re-run of the
+-- migration set landing on the same 21 entries rather than growing one each time.
+DELETE FROM faq_entries
+ WHERE question = 'How do I register a business?'
+   AND id <> 6;
