@@ -135,6 +135,12 @@
   .fade-leave-active, .swap-leave-active { transition: opacity .1s var(--ease-in); }
   .fade-enter-from, .fade-leave-to, .swap-enter-from, .swap-leave-to { opacity: 0; }
 
+  /* veil — the blurred "Switching accounts… / Signing out…" screen. Deliberately not slowed
+     or stopped by reduce-motion: it marks a real change of who is signed in. */
+  .veil-enter-active { transition: opacity .3s var(--ease-out); }
+  .veil-leave-active { transition: opacity .35s var(--ease-in); }
+  .veil-enter-from, .veil-leave-to { opacity: 0; }
+
   /* list — items entering, leaving and sliding into their new places (TransitionGroup) */
   .list-move, .list-enter-active { transition: opacity .22s var(--ease-out), transform .26s var(--ease-out); }
   .list-leave-active { transition: opacity .12s var(--ease-in); position: absolute; left: 0; right: 0; }

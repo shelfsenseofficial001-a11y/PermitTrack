@@ -1,10 +1,10 @@
-import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=115';
+import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=115';
 import { apiGet, apiPost } from '../api/client.js?v=115';
 import ChatWidget from './ChatWidget.js?v=115';
 import AddAccountModal from './AddAccountModal.js?v=115';
 import BaseModal from './BaseModal.js?v=115';
 import { formatDateTime } from '../util.js?v=115';
-import { uiState, openChangePassword } from '../store/ui.js?v=115';
+import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=115';
 import Loader from './Loader.js?v=115';
 import NotificationToasts from './NotificationToasts.js?v=115';
 
@@ -205,9 +205,11 @@ export default {
     async switchTo(a) {
       this.switching = true;
       this.switchError = '';
+      beginTransition('switch');
       try {
         reloadAs(await switchAccount(a.id));
       } catch (e) {
+        endTransition();
         this.switchError = e.message;
         this.confirmSwitch = null;
         this.accounts = await listAccounts();
@@ -215,11 +217,10 @@ export default {
         this.switching = false;
       }
     },
-    // Signing out never steps into another account: it lands on the landing page, signed out.
-    // Anyone else still signed in on this browser is offered by its Sign in chooser.
-    async doLogout() {
-      await logout();
-      this.$router.push(signOutPathFor());
+    // Asks first; the sign-out itself (and its veil) runs from app.js, shared by every menu
+    doLogout() {
+      this.menuOpen = false;
+      askSignOut();
     },
   },
   template: `

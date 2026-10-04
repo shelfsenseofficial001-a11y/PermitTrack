@@ -1,6 +1,6 @@
-import { authState, logout, signOutPathFor } from '../store/auth.js?v=115';
+import { authState } from '../store/auth.js?v=115';
 import { apiGet } from '../api/client.js?v=115';
-import { openChangePassword } from '../store/ui.js?v=115';
+import { openChangePassword, askSignOut } from '../store/ui.js?v=115';
 
 export default {
   name: 'StaffShell',
@@ -51,9 +51,10 @@ export default {
   },
   methods: {
     openChangePassword,
-    async doLogout() {
-      await logout();
-      this.$router.push(signOutPathFor());
+    // Asks first; the sign-out itself (and its veil) runs from app.js, shared by every menu
+    doLogout() {
+      this.menuOpen = false;
+      askSignOut();
     },
   },
   template: `
