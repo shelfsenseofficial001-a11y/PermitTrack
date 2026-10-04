@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { apiGet, apiPost } from '../api/client.js?v=114';
+import { apiGet, apiPost } from '../api/client.js?v=115';
 
 export const authState = reactive({
   user: null,
@@ -46,14 +46,14 @@ export async function resendCode() {
 }
 
 /**
- * Signs out the current account. If another account is signed in on this browser, the server
- * switches to it and that user is returned; otherwise returns null.
+ * Signs the current account out and leaves nobody signed in — it never steps into another
+ * account. Others that signed in on this browser stay signed in, and listAccounts() offers
+ * them to the chooser on the Sign in button.
  */
 export async function logout() {
-  const res = await apiPost('auth.php?action=logout', {});
-  authState.user = res.user || null;
+  await apiPost('auth.php?action=logout', {});
+  authState.user = null;
   authState.verification = null;
-  return authState.user;
 }
 
 /** Accounts signed in on this browser: [{ id, full_name, contact, role, current }] */
@@ -85,10 +85,10 @@ export async function changePassword(currentPassword, newPassword) {
   return user;
 }
 
-// Where someone lands after signing out: staff and admins back to the Staff Portal login,
-// residents and businesses to the public landing page. Pass the user from *before* logout.
-export function signOutPathFor(user) {
-  return user && (user.role === 'staff' || user.role === 'admin') ? '/staff/login' : '/';
+// Signing out always lands on the public landing page, whoever was signed in — staff included,
+// who reach the Staff Portal again from the link in its footer.
+export function signOutPathFor() {
+  return '/';
 }
 
 export function homePathFor(user) {

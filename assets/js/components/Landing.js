@@ -1,6 +1,6 @@
-import { permitIconClass } from '../util.js?v=114';
-import ChatWidget from './ChatWidget.js?v=114';
-import { authState, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=114';
+import { permitIconClass } from '../util.js?v=115';
+import ChatWidget from './ChatWidget.js?v=115';
+import { authState, logout, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=115';
 
 // The public front door. Everything on it describes what PermitTrack really does — the offices a
 // permit actually passes through, the real permit catalogue and its real requirements — so nothing
@@ -45,6 +45,56 @@ const PERMITS = [
   { type: 'Sign', blurb: 'Storefront, pylon and illuminated signage.', residents: false,
     docs: ['Sign Drawing / Rendering', 'Property Owner Authorization'] },
 ];
+
+function initialsOf(name) {
+  return (name || '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+}
+
+// ---- The looping demos (Features and Get started) ------------------------------------------
+// Every mockup loops a short story of what it shows. Each section has one tick driving all
+// its cards; each card turns it into its own frame at its own pace, so they never move in
+// lockstep. With a section's Animations switch off, each card holds a single still frame —
+// the one the page always had.
+const DEMO_TICK_MS = 400;
+const MOTION_KEYS = { feat: 'permittrack.featureMotion', steps: 'permittrack.stepsMotion' };
+
+const FEAT_TIMELINE = [
+  { name: 'Barangay Burol I', note: 'Construction Clearance signed', date: 'Sep 2' },
+  { name: 'City Planning (CPDO)', note: 'Zoning Clearance issued', date: 'Sep 4' },
+  { name: 'Building Official', note: 'Technical plan review passed', date: 'Sep 9' },
+  { name: 'CENRO', note: 'Environmental clearance granted', date: 'Sep 12' },
+];
+const FEAT_ALERTS = [
+  { channel: 'Email', date: 'Sep 4', text: 'Zoning Clearance issued', icon: 'mail' },
+  { channel: 'SMS', date: 'Sep 9', text: 'Moved to Building Official', icon: 'phone' },
+  { channel: 'In-app', date: 'Sep 10', text: 'A document needs changes', icon: 'bell' },
+];
+const FEAT_CHAT = [
+  { id: 'm1', from: 'them', text: 'The floor plan scan is too low-res to read the dimensions.' },
+  { id: 'm2', from: 'me', text: 'Re-uploaded a 300dpi scan just now.' },
+  { id: 'm3', from: 'them', text: 'Got it — approved. Moving this on to CENRO.' },
+];
+const FEAT_PERMITS = [
+  { name: 'Food Service', address: '24 Rizal Ave.', status: 'In progress' },
+  { name: 'Sign Permit', address: '12 Mabini St.', status: 'Approved' },
+  { name: 'Building/Renovation', address: '12 Mabini St.', status: 'In progress' },
+  { name: 'Special Event', address: 'Plaza Rizal', status: 'Draft' },
+];
+const FEAT_SEARCH = 'Mabini';
+
+// The Get started story: the real register screen's contact, a 6-digit code, the proofs
+const STEPS_CONTACT = { email: 'juan.delacruz@email.com', phone: '0917 123 4567' };
+const STEPS_CODE = '482791';
+const STEPS_FILES = ['brgy-certificate.pdf', 'electric-bill-sep.pdf'];
+
+// On unless this visitor has switched it off before. which: 'feat' | 'steps'
+function readMotion(which) {
+  try {
+    return localStorage.getItem(MOTION_KEYS[which]) !== '0';
+  } catch (e) {
+    return true;
+  }
+}
 
 // A short slice of RESIDENCY_DOC_TYPES (api/lib/residency.php) for the mockup's dropdown
 const PROOF_OPTIONS = [
@@ -110,8 +160,22 @@ export default {
       permits: PERMITS,
       features: FEATURES,
       faqs: FAQS,
+      featMotion: readMotion('feat'),
+      featTick: 0,
+      featVisible: true,
+      stepsMotion: readMotion('steps'),
+      stepsTick: 0,
+      stepsVisible: true,
+      stepsCode: STEPS_CODE,
+      stepsFiles: STEPS_FILES,
+      featTimeline: FEAT_TIMELINE,
       authState,
       accountOpen: false,
+      signInOpen: false,
+      // Accounts still signed in on this browser. Empty once the last one signs out, and the
+      // Sign in button goes back to being a plain Log in.
+      otherAccounts: [],
+      resuming: false,
       proofOptions: PROOF_OPTIONS,
       // The mockups are inert, but these let them be poked at: a dropdown opens, a segmented
       // control switches, a button pretends to upload. Nothing here reaches the API.
@@ -133,8 +197,116 @@ export default {
       return u && u.role === 'applicant' ? u : null;
     },
     initials() {
-      const name = (this.accountUser && this.accountUser.full_name) || '';
-      return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+      return initialsOf((this.accountUser && this.accountUser.full_name) || '');
+    },
+
+    // ---- Features demos: each returns the still frame when the switch is off ----
+    // Index of the office holding the permit; past the last one, it has been approved
+    timelineActive() {
+      return this.featMotion ? [0, 1, 2, 3, 4, 4][this.featFrame(4, 6)] : 2;
+    },
+    timelineApproved() {
+      return this.timelineActive >= FEAT_TIMELINE.length;
+    },
+    // Toasts arrive one at a time, newest at the bottom, then clear and start again
+    visibleAlerts() {
+      const n = this.featMotion ? [1, 2, 3, 3, 3][this.featFrame(4, 5)] : 3;
+      return FEAT_ALERTS.slice(0, n);
+    },
+    // A rejected document gets replaced: pressed, uploading, accepted
+    uploadPhase() {
+      if (this.demo.uploading) return 'click';
+      return this.featMotion ? ['needs', 'press', 'up1', 'up2', 'done', 'done'][this.featFrame(3, 6)] : 'needs';
+    },
+    uploadBusy() {
+      return ['click', 'up1', 'up2'].includes(this.uploadPhase);
+    },
+    uploadFixed() {
+      return !['needs', 'press'].includes(this.uploadPhase);
+    },
+    // The reviewer types, you answer, they type again and sign it off
+    chatItems() {
+      const [m1, m2, m3] = FEAT_CHAT;
+      const typing = { id: 'typing', from: 'them' };
+      const f = this.featMotion ? this.featFrame(4, 6) : 3;
+      return [[typing], [m1], [m1, m2], [m1, m2, typing], [m1, m2, m3], [m1, m2, m3]][f];
+    },
+    // The address is typed a letter at a time and the list narrows to match as it goes
+    listQuery() {
+      if (!this.featMotion) return FEAT_SEARCH;
+      return FEAT_SEARCH.slice(0, Math.min(this.featFrame(1, 16), FEAT_SEARCH.length));
+    },
+    listRows() {
+      const q = this.listQuery.toLowerCase();
+      if (!this.featMotion || !q) return FEAT_PERMITS;
+      return FEAT_PERMITS.filter((p) => p.address.toLowerCase().includes(q));
+    },
+    // A question, a moment's thought, then the answer one line at a time
+    askFrame() {
+      return this.featMotion ? this.featFrame(3, 9) : 8;
+    },
+    // Changes once per loop, remounting the conversation so its entrances replay
+    askLoop() {
+      return this.featMotion ? Math.floor(this.featTick / 27) : 0;
+    },
+
+    // ---- Get started demos: null frame = the switch is off, show the still ----
+    // Step 1 — the contact is typed, a code arrives, its digits go in, and you are verified
+    acctFrame() {
+      return this.stepsMotion ? this.stepsFrame(1, 19) : null;
+    },
+    acctContact() {
+      return STEPS_CONTACT[this.demo.contact];
+    },
+    acctTyped() {
+      const v = this.acctContact, f = this.acctFrame;
+      if (f === null || f >= 6) return v;
+      return v.slice(0, Math.round((v.length * (f + 1)) / 6));
+    },
+    acctTyping() {
+      return this.acctFrame !== null && this.acctFrame < 6;
+    },
+    acctCodeSent() {
+      return this.acctFrame === null || this.acctFrame >= 6;
+    },
+    acctDigits() {
+      const f = this.acctFrame;
+      if (f === null) return 4;
+      return f < 8 ? 0 : Math.min(f - 7, STEPS_CODE.length);
+    },
+    acctVerified() {
+      return this.acctFrame !== null && this.acctFrame >= 14;
+    },
+    // Step 2 — each proof: pick its type from the list, upload the file, then staff approve
+    proofFrame() {
+      return this.stepsMotion ? this.stepsFrame(3, 8) : null;
+    },
+    proofStatus() {
+      const f = this.proofFrame;
+      if (f === null) return 'waiting';
+      return f >= 6 ? 'approved' : f === 5 ? 'waiting' : null;
+    },
+    // Step 3 — pick the permit, its documents tick off, and it sets out on its route
+    applyFrame() {
+      return this.stepsMotion ? this.stepsFrame(3, 9) : null;
+    },
+    applyMenuOpen() {
+      if (this.demo.open) return this.demo.open === 'permit';
+      return this.applyFrame === 0;
+    },
+    applyPicked() {
+      return this.applyFrame === null || this.applyFrame >= 1;
+    },
+    applyChecked() {
+      const f = this.applyFrame;
+      if (f === null) return 2;
+      return Math.min(Math.max(f - 1, 0), this.permits[this.demo.permit].docs.length);
+    },
+    // Which of its first offices the permit has reached (0 = not filed yet)
+    applyStop() {
+      const f = this.applyFrame;
+      if (f === null) return 2;
+      return f < 5 ? 0 : f - 4;
     },
     progress() {
       return (this.stage / (HERO_STAGES.length - 1)) * 100;
@@ -175,6 +347,7 @@ export default {
     this.onKey = (e) => {
       if (e.key === 'Escape' && this.demo.open) this.demo.open = null;
       if (e.key === 'Escape' && this.accountOpen) this.accountOpen = false;
+      if (e.key === 'Escape' && this.signInOpen) this.signInOpen = false;
       if (e.key === 'Escape' && this.menuOpen) {
         this.closeMenu();
         const toggle = this.$refs.header && this.$refs.header.querySelector('[aria-controls="mobile-menu"]');
@@ -184,7 +357,13 @@ export default {
     this.onResize = () => { if (window.innerWidth >= 768) this.closeMenu(); };
     this.onDocClick = (e) => {
       if (this.accountOpen && this.$refs.account && !this.$refs.account.contains(e.target)) this.accountOpen = false;
+      if (this.signInOpen && this.$refs.signIn && !this.$refs.signIn.contains(e.target)) this.signInOpen = false;
     };
+    if (!this.accountUser) {
+      listAccounts().then((a) => { this.otherAccounts = a; }).catch(() => { /* chooser just stays a plain Log in */ });
+    }
+    this.runLoop('feat');
+    this.runLoop('steps');
     document.addEventListener('keydown', this.onKey);
     document.addEventListener('click', this.onDocClick);
     window.addEventListener('resize', this.onResize);
@@ -208,6 +387,16 @@ export default {
         }
       }, { threshold: 0.4 });
       if (this.$refs.statsBand) this.statsObserver.observe(this.$refs.statsBand);
+
+      // The looping demos only advance while you can see them
+      this.loopObserver = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.target === this.$refs.features) this.featVisible = e.isIntersecting;
+          if (e.target === this.$refs.steps) this.stepsVisible = e.isIntersecting;
+        });
+      }, { threshold: 0.05 });
+      if (this.$refs.features) this.loopObserver.observe(this.$refs.features);
+      if (this.$refs.steps) this.loopObserver.observe(this.$refs.steps);
       // Counting up is the nice version, not the only version: if the band is never observed
       // (a tab opened in the background, an engine that does not run the observer), the figures
       // simply appear rather than sitting at zero.
@@ -228,20 +417,103 @@ export default {
     window.removeEventListener('resize', this.onResize);
     if (this.observer) this.observer.disconnect();
     if (this.statsObserver) this.statsObserver.disconnect();
+    if (this.loopObserver) this.loopObserver.disconnect();
     if (this.statsFrame) cancelAnimationFrame(this.statsFrame);
     clearTimeout(this.statsBackstop);
     clearTimeout(this.statsFallback);
     clearTimeout(this.uploadTimer);
+    clearInterval(this.featTimer);
+    clearInterval(this.stepsTimer);
+  },
+  watch: {
+    featMotion(on) { this.motionChanged('feat', on); },
+    stepsMotion(on) { this.motionChanged('steps', on); },
   },
   methods: {
     permitIconClass,
+    initialsOf,
+    // Which frame of a card's loop its section's tick lands on. speed = ticks per frame.
+    featFrame(speed, count) {
+      return Math.floor(this.featTick / speed) % count;
+    },
+    stepsFrame(speed, count) {
+      return Math.floor(this.stepsTick / speed) % count;
+    },
+    motionChanged(which, on) {
+      try { localStorage.setItem(MOTION_KEYS[which], on ? '1' : '0'); } catch (e) { /* just not remembered */ }
+      this.runLoop(which);
+    },
+    // which: 'feat' | 'steps' — drives <which>Tick while <which>Motion is on
+    runLoop(which) {
+      clearInterval(this[which + 'Timer']);
+      this[which + 'Tick'] = 0;
+      if (!this[which + 'Motion']) return;
+      // Only counts while the section is on screen in a visible tab: a background tab doesn't
+      // paint, so frames advanced there would only queue up half-finished transitions
+      this[which + 'Timer'] = setInterval(() => {
+        if (this[which + 'Visible'] && document.visibilityState === 'visible') this[which + 'Tick']++;
+      }, DEMO_TICK_MS);
+    },
+    // Step 2's per-proof state, for slot 0 or 1
+    proofPicked(slot) {
+      const f = this.proofFrame;
+      return f === null || f >= (slot === 0 ? 2 : 4);
+    },
+    proofFile(slot) {
+      const f = this.proofFrame;
+      if (f === null) return 'done';
+      const at = slot === 0 ? 2 : 4;
+      return f < at ? null : f === at ? 'up' : 'done';
+    },
+    proofMenuOpen(slot) {
+      if (this.demo.open) return this.demo.open === 'proof' + slot;
+      return this.proofFrame === (slot === 0 ? 1 : 3);
+    },
+    // Step 3's route dots: done, the current office, or still ahead
+    stopState(i) {
+      const at = this.applyStop - 1;
+      return i < at ? 'done' : i === at ? 'active' : 'pending';
+    },
+    tlState(k) {
+      const a = this.timelineActive;
+      return k < a ? 'done' : k === a ? 'active' : 'pending';
+    },
+    statusPill(status) {
+      if (status === 'Approved') return 'bg-brand-100 text-brand-700';
+      if (status === 'Draft') return 'bg-slate-100 text-slate-500';
+      return 'bg-sun-100 text-sun-700';
+    },
+    // Splits an address around the search so the matching letters can be marked
+    searchParts(text) {
+      const q = this.listQuery.toLowerCase();
+      const at = this.featMotion && q ? text.toLowerCase().indexOf(q) : -1;
+      if (at < 0) return [{ text, hit: false }];
+      return [
+        { text: text.slice(0, at), hit: false },
+        { text: text.slice(at, at + q.length), hit: true },
+        { text: text.slice(at + q.length), hit: false },
+      ].filter((p) => p.text);
+    },
+    // Signing out leaves nobody signed in and lands here, on the landing page. Whoever else is
+    // still signed in on this browser moves into the Sign in chooser.
     async doLogout() {
       this.accountOpen = false;
-      const leaving = authState.user;
-      const next = await logout();
-      // Another account on this browser takes over; otherwise wherever this role signs out to
-      if (next) reloadAs(next);
-      else this.$router.push(signOutPathFor(leaving));
+      await logout();
+      this.otherAccounts = await listAccounts().catch(() => []);
+      if (this.$route.path !== '/') this.$router.push('/');
+    },
+    // Those accounts never signed out, so stepping back into one needs no password
+    async resumeAccount(id) {
+      if (this.resuming) return;
+      this.resuming = true;
+      try {
+        reloadAs(await switchAccount(id));
+      } catch (e) {
+        this.signInOpen = false;
+        this.otherAccounts = await listAccounts().catch(() => []);
+      } finally {
+        this.resuming = false;
+      }
     },
     toggleDemo(key) {
       this.demo.open = this.demo.open === key ? null : key;
@@ -381,7 +653,7 @@ export default {
       :class="scrolled || menuOpen ? 'bg-white/90 backdrop-blur-md shadow-[0_8px_30px_-18px_rgba(16,48,29,0.35)]' : 'bg-transparent'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <button type="button" @click="go('top')" class="flex items-center gap-2.5 shrink-0" aria-label="PermitTrack, back to top">
-          <img src="assets/images/PermitTrackIcon.png?v=114" alt="" class="w-9 h-9 object-contain" />
+          <img src="assets/images/PermitTrackIcon.png?v=115" alt="" class="w-9 h-9 object-contain" />
           <span class="leading-tight text-left">
             <span class="block text-[15px] font-bold text-ink-700">PermitTrack</span>
             <span class="block text-[11px] text-slate-500">City of Dasmariñas</span>
@@ -439,7 +711,39 @@ export default {
 
           <!-- On phones, Log in moves into the menu so the main action and the toggle fit -->
           <template v-else>
-            <router-link to="/login" class="hidden md:inline-flex text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">Log in</router-link>
+            <!-- Someone else is still signed in on this browser: stepping back into them needs no
+                 password, because they never signed out. With nobody left this is a plain Log in. -->
+            <div v-if="otherAccounts.length" ref="signIn" class="relative hidden md:block">
+              <button type="button" @click="signInOpen = !signInOpen" :aria-expanded="signInOpen" aria-haspopup="menu"
+                class="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">
+                Sign in
+                <svg class="w-4 h-4 text-slate-400 transition-transform" :class="signInOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+
+              <transition name="pop">
+              <div v-if="signInOpen" role="menu"
+                class="absolute right-0 mt-2 w-64 origin-top-right rounded-2xl bg-ink-700 border border-white/10 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] p-2 text-sm">
+                <button v-for="a in otherAccounts" :key="a.id" type="button" role="menuitem"
+                  @click="resumeAccount(a.id)" :disabled="resuming"
+                  class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-white/10 disabled:opacity-60">
+                  <span class="w-3.5 h-3.5 rounded-full ring-1 ring-white/25 shrink-0"></span>
+                  <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{{ initialsOf(a.full_name) }}</span>
+                  <span class="min-w-0">
+                    <span class="block font-semibold text-white truncate">{{ a.full_name }}</span>
+                    <span class="block text-[11px] text-ink-300 truncate">{{ a.contact }}</span>
+                  </span>
+                </button>
+                <div class="h-px bg-white/10 my-1"></div>
+                <router-link to="/login" role="menuitem" @click="signInOpen = false"
+                  class="flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-white hover:bg-white/10">
+                  <span class="w-3.5 text-center text-lg leading-none text-ink-300">+</span>
+                  Add account
+                </router-link>
+              </div>
+              </transition>
+            </div>
+
+            <router-link v-else to="/login" class="hidden md:inline-flex text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">Log in</router-link>
             <router-link to="/register" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">Get started</router-link>
           </template>
           <button type="button" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen" aria-controls="mobile-menu"
@@ -473,7 +777,17 @@ export default {
               <router-link to="/account" @click="closeMenu" class="text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">My account →</router-link>
             </div>
             <div v-else class="border-t border-brand-100 bg-slate-50/70 p-4 grid grid-cols-2 gap-2.5">
-              <router-link to="/login" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">Log in</router-link>
+              <div v-if="otherAccounts.length" class="col-span-2 grid gap-1.5 mb-1">
+                <button v-for="a in otherAccounts" :key="a.id" type="button" @click="resumeAccount(a.id)" :disabled="resuming"
+                  class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60 transition">
+                  <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{{ initialsOf(a.full_name) }}</span>
+                  <span class="min-w-0 text-left">
+                    <span class="block text-sm font-semibold text-ink-700 truncate">{{ a.full_name }}</span>
+                    <span class="block text-[11px] text-slate-400 truncate">{{ a.contact }}</span>
+                  </span>
+                </button>
+              </div>
+              <router-link to="/login" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">{{ otherAccounts.length ? 'Add account' : 'Log in' }}</router-link>
               <router-link to="/register" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">Get started</router-link>
               <router-link to="/staff/login" class="col-span-2 text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">City staff? Sign in to the Staff Portal →</router-link>
             </div>
@@ -701,12 +1015,23 @@ export default {
     </section>
 
     <!-- ============ FEATURES ============ -->
-    <section id="features" class="scroll-mt-16 py-14 sm:py-20 bg-white border-y border-brand-100">
+    <section id="features" ref="features" class="scroll-mt-16 py-14 sm:py-20 bg-white border-y border-brand-100"
+      :class="featMotion ? 'demo-live' : 'demo-still'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
-        <div class="max-w-2xl reveal">
-          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">Features</span>
-          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Everything about your permit.<br>One place.</h2>
-          <p class="mt-4 text-lg text-slate-600 leading-relaxed">No more lost forms, missed calls, or “come back next week.” Here is what changes when your permit lives online.</p>
+        <div class="flex flex-wrap items-end justify-between gap-6">
+          <div class="max-w-2xl reveal">
+            <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">Features</span>
+            <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Everything about your permit.<br>One place.</h2>
+            <p class="mt-4 text-lg text-slate-600 leading-relaxed">No more lost forms, missed calls, or “come back next week.” Here is what changes when your permit lives online.</p>
+          </div>
+          <!-- Off, every card holds a single still frame -->
+          <button type="button" role="switch" :aria-checked="featMotion" @click="featMotion = !featMotion"
+            class="inline-flex items-center gap-3 text-sm font-semibold text-ink-700 rounded-full bg-meadow/70 ring-1 ring-brand-100 pl-4 pr-1.5 py-1.5 hover:ring-brand-300 transition">
+            Animations
+            <span class="relative w-10 h-6 rounded-full transition-colors duration-200" :class="featMotion ? 'bg-brand-600' : 'bg-slate-300'" aria-hidden="true">
+              <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200" :class="featMotion ? 'translate-x-4' : ''"></span>
+            </span>
+          </button>
         </div>
 
         <div class="mt-10 grid md:grid-cols-2 gap-5">
@@ -724,84 +1049,47 @@ export default {
                       <p class="text-sm font-bold text-ink-700 truncate">Building/Renovation Permit</p>
                       <p class="text-[11px] text-slate-400 mt-0.5 truncate">12 Mabini St. · #BR-2026-0142</p>
                     </div>
-                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-sun-100 text-sun-700 shrink-0">In progress</span>
+                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 transition-colors duration-500"
+                      :class="timelineApproved ? 'bg-brand-100 text-brand-700' : 'bg-sun-100 text-sun-700'">{{ timelineApproved ? 'Approved' : 'In progress' }}</span>
                   </div>
                   <ol class="mt-4">
-                    <li class="relative flex gap-3 pb-4">
-                      <span class="absolute left-[5px] top-4 bottom-0 w-0.5 bg-brand-200 rounded-full"></span>
-                      <span class="relative mt-1 w-3 h-3 rounded-full bg-brand-600 shrink-0"></span>
-                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
-                        <div class="min-w-0">
-                          <p class="text-xs font-semibold text-ink-700 truncate">Barangay Burol I</p>
-                          <p class="text-[11px] text-slate-400 mt-0.5 truncate">Construction Clearance signed</p>
-                        </div>
-                        <span class="text-[10px] text-slate-400 shrink-0">Sep 2</span>
-                      </div>
-                    </li>
-                    <li class="relative flex gap-3 pb-4">
-                      <span class="absolute left-[5px] top-4 bottom-0 w-0.5 bg-brand-200 rounded-full"></span>
-                      <span class="relative mt-1 w-3 h-3 rounded-full bg-brand-600 shrink-0"></span>
-                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
-                        <div class="min-w-0">
-                          <p class="text-xs font-semibold text-ink-700 truncate">City Planning (CPDO)</p>
-                          <p class="text-[11px] text-slate-400 mt-0.5 truncate">Zoning Clearance issued</p>
-                        </div>
-                        <span class="text-[10px] text-slate-400 shrink-0">Sep 4</span>
-                      </div>
-                    </li>
-                    <li class="relative flex gap-3 pb-4">
-                      <span class="absolute left-[5px] top-4 bottom-0 w-0.5 bg-slate-200 rounded-full"></span>
-                      <span class="relative mt-1 w-3 h-3 rounded-full bg-sun-400 ring-4 ring-sun-100 shrink-0">
-                        <span class="demo-ring absolute inset-0 rounded-full bg-sun-400"></span>
+                    <li v-for="(s, k) in featTimeline" :key="s.name" class="relative flex gap-3" :class="k < featTimeline.length - 1 ? 'pb-4' : ''">
+                      <span v-if="k < featTimeline.length - 1" class="absolute left-[5px] top-4 bottom-0 w-0.5 rounded-full transition-colors duration-500"
+                        :class="k < timelineActive ? 'bg-brand-200' : 'bg-slate-200'"></span>
+                      <span class="relative mt-1 w-3 h-3 rounded-full shrink-0 transition-colors duration-500"
+                        :class="{ 'bg-brand-600': tlState(k) === 'done', 'bg-sun-400 ring-4 ring-sun-100': tlState(k) === 'active', 'bg-slate-200': tlState(k) === 'pending' }">
+                        <span v-if="tlState(k) === 'active'" class="demo-ring absolute inset-0 rounded-full bg-sun-400"></span>
                       </span>
                       <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                          <p class="text-xs font-semibold text-ink-700 truncate">Building Official</p>
-                          <p class="text-[11px] text-slate-400 mt-0.5 truncate">Technical plan review passed</p>
+                          <p class="text-xs font-semibold truncate transition-colors duration-500" :class="tlState(k) === 'pending' ? 'text-slate-400' : 'text-ink-700'">{{ s.name }}</p>
+                          <p v-if="tlState(k) !== 'pending'" class="text-[11px] text-slate-400 mt-0.5 truncate" :class="{ 'demo-in': featMotion }">{{ s.note }}</p>
                         </div>
-                        <span class="text-[10px] text-slate-400 shrink-0">Sep 9</span>
-                      </div>
-                    </li>
-                    <li class="relative flex gap-3">
-                      <span class="relative mt-1 w-3 h-3 rounded-full bg-slate-200 shrink-0"></span>
-                      <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
-                        <p class="text-xs font-semibold text-slate-400 truncate">CENRO</p>
-                        <span class="text-[10px] text-slate-300 shrink-0">Pending</span>
+                        <span class="text-[10px] shrink-0" :class="tlState(k) === 'pending' ? 'text-slate-300' : 'text-slate-400'">{{ tlState(k) === 'pending' ? 'Pending' : s.date }}</span>
                       </div>
                     </li>
                   </ol>
                 </template>
 
                 <template v-else-if="f.icon === 'bell'">
-                  <div class="space-y-2.5">
-                    <div class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 ring-brand-100 p-2.5">
-                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0">
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="m4 6 8 6 8-6"/></svg>
+                  <transition-group tag="div" class="space-y-2.5" :css="featMotion"
+                    enter-from-class="opacity-0 translate-x-10" enter-active-class="transition duration-500 ease-out"
+                    leave-to-class="opacity-0" leave-active-class="transition duration-200">
+                    <div v-for="(a, k) in visibleAlerts" :key="a.text"
+                      class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 p-2.5 transition-shadow duration-500"
+                      :class="featMotion && k === visibleAlerts.length - 1 ? 'ring-brand-300 shadow-[0_10px_24px_-14px_rgba(16,48,29,0.55)]' : 'ring-brand-100'">
+                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0"
+                        :class="{ 'demo-wiggle': featMotion && k === visibleAlerts.length - 1 }">
+                        <svg v-if="a.icon === 'mail'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="m4 6 8 6 8-6"/></svg>
+                        <svg v-else-if="a.icon === 'phone'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+                        <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                       </span>
                       <div class="min-w-0">
-                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">Email · Sep 4</p>
-                        <p class="text-xs font-semibold text-ink-700 truncate">Zoning Clearance issued</p>
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">{{ a.channel }} · {{ a.date }}</p>
+                        <p class="text-xs font-semibold text-ink-700 truncate">{{ a.text }}</p>
                       </div>
                     </div>
-                    <div class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 ring-brand-100 p-2.5">
-                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0">
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
-                      </span>
-                      <div class="min-w-0">
-                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">SMS · Sep 9</p>
-                        <p class="text-xs font-semibold text-ink-700 truncate">Moved to Building Official</p>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-3 rounded-xl bg-meadow/60 ring-1 ring-brand-100 p-2.5">
-                      <span class="w-8 h-8 rounded-full bg-ink-700 text-sun-300 flex items-center justify-center shrink-0">
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                      </span>
-                      <div class="min-w-0">
-                        <p class="text-[10px] font-bold uppercase tracking-wide text-brand-600">In-app · Sep 10</p>
-                        <p class="text-xs font-semibold text-ink-700 truncate">A document needs changes</p>
-                      </div>
-                    </div>
-                  </div>
+                  </transition-group>
                 </template>
 
                 <template v-else-if="f.icon === 'upload'">
@@ -822,21 +1110,27 @@ export default {
                     <div>
                       <div class="flex items-center justify-between gap-3">
                         <div class="flex items-center gap-2.5 min-w-0">
-                          <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors"
-                            :class="demo.uploading ? 'bg-brand-50 text-brand-600' : 'bg-rose-50 text-rose-500'">
+                          <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-500"
+                            :class="uploadFixed ? 'bg-brand-50 text-brand-600' : 'bg-rose-50 text-rose-500'">
                             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                           </span>
                           <div class="min-w-0">
                             <p class="text-xs font-semibold text-ink-700 truncate">Floor Plan.pdf</p>
-                            <p class="text-[10px] mt-0.5" :class="demo.uploading ? 'text-brand-600' : 'text-rose-500'">{{ demo.uploading ? 'Uploading…' : 'Needs changes' }}</p>
+                            <p class="text-[10px] mt-0.5 transition-colors duration-500" :class="uploadFixed ? 'text-brand-600' : 'text-rose-500'">
+                              {{ uploadPhase === 'done' ? 'Uploaded · in review' : uploadBusy ? 'Uploading…' : 'Needs changes' }}
+                            </p>
                           </div>
                         </div>
-                        <button type="button" tabindex="-1" @click="fakeUpload"
-                          class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand-600 text-white shrink-0 transition hover:bg-brand-700 active:scale-95 disabled:opacity-60"
-                          :disabled="demo.uploading">Replace</button>
+                        <svg v-if="uploadPhase === 'done'" class="demo-in w-4 h-4 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        <button v-else type="button" tabindex="-1" @click="fakeUpload"
+                          class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand-600 text-white shrink-0 transition duration-200 hover:bg-brand-700 active:scale-95 disabled:opacity-60"
+                          :class="uploadPhase === 'press' ? 'scale-90 ring-4 ring-brand-200' : ''"
+                          :disabled="uploadBusy">Replace</button>
                       </div>
-                      <div v-if="demo.uploading" class="mt-2 h-1 rounded-full bg-brand-100 overflow-hidden">
-                        <div class="demo-bar h-full w-1/3 rounded-full bg-brand-600"></div>
+                      <div v-if="uploadBusy" class="mt-2 h-1 rounded-full bg-brand-100 overflow-hidden">
+                        <div v-if="uploadPhase === 'click'" class="demo-bar h-full w-1/3 rounded-full bg-brand-600"></div>
+                        <div v-else class="h-full rounded-full bg-brand-600 transition-[width] duration-1000 ease-out"
+                          :style="{ width: uploadPhase === 'up2' ? '100%' : '40%' }"></div>
                       </div>
                     </div>
                     <div class="flex items-center justify-between gap-3">
@@ -867,80 +1161,78 @@ export default {
 
                 <template v-else-if="f.icon === 'chat'">
                   <p class="text-[11px] font-bold text-slate-400">Engr. Cruz · Building Official</p>
-                  <div class="mt-3 space-y-2">
-                    <p class="text-xs bg-meadow text-ink-700 rounded-2xl rounded-bl-sm px-3 py-2 w-fit max-w-[88%]">The floor plan scan is too low-res to read the dimensions.</p>
-                    <p class="text-xs bg-ink-700 text-white rounded-2xl rounded-br-sm px-3 py-2 w-fit max-w-[88%] ml-auto">Re-uploaded a 300dpi scan just now.</p>
-                    <div class="flex items-center gap-1 bg-meadow rounded-2xl rounded-bl-sm px-3 py-3 w-fit">
-                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700"></span>
-                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.15s"></span>
-                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.3s"></span>
+                  <transition-group tag="div" class="mt-3 space-y-2" :css="featMotion"
+                    enter-from-class="opacity-0 translate-y-2" enter-active-class="transition duration-300 ease-out"
+                    leave-to-class="opacity-0" leave-active-class="transition duration-150">
+                    <div v-for="m in chatItems" :key="m.id" :class="m.from === 'me' ? 'flex justify-end' : ''">
+                      <div v-if="m.id === 'typing'" class="flex items-center gap-1 bg-meadow rounded-2xl rounded-bl-sm px-3 py-3 w-fit">
+                        <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700"></span>
+                        <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.15s"></span>
+                        <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.3s"></span>
+                      </div>
+                      <p v-else class="text-xs rounded-2xl px-3 py-2 w-fit max-w-[88%]"
+                        :class="m.from === 'me' ? 'bg-ink-700 text-white rounded-br-sm' : 'bg-meadow text-ink-700 rounded-bl-sm'">{{ m.text }}</p>
                     </div>
-                  </div>
+                  </transition-group>
                 </template>
 
                 <template v-else-if="f.icon === 'list'">
                   <div class="flex items-center gap-2">
                     <div class="flex-1 flex items-center gap-2 rounded-lg bg-white ring-2 ring-brand-500 px-2.5 py-1.5 min-w-0">
                       <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                      <span class="text-[11px] text-ink-700 truncate">Mabini</span>
-                      <span class="demo-caret w-px h-3 bg-brand-600 shrink-0 -ml-1"></span>
+                      <template v-if="listQuery">
+                        <span class="text-[11px] text-ink-700 truncate">{{ listQuery }}</span>
+                        <span class="demo-caret w-px h-3 bg-brand-600 shrink-0 -ml-1"></span>
+                      </template>
+                      <template v-else>
+                        <span class="demo-caret w-px h-3 bg-brand-600 shrink-0"></span>
+                        <span class="text-[11px] text-slate-400 truncate -ml-1">Search by address</span>
+                      </template>
                     </div>
                     <span class="text-[11px] font-semibold text-ink-700 ring-1 ring-brand-100 rounded-lg px-2.5 py-1.5 shrink-0">All</span>
                   </div>
-                  <div class="mt-3 space-y-3">
-                    <div class="flex items-center justify-between gap-3">
+                  <transition-group tag="div" class="mt-3 space-y-3" :css="featMotion"
+                    enter-from-class="opacity-0 -translate-y-1" enter-active-class="transition duration-300 ease-out"
+                    leave-to-class="opacity-0" leave-active-class="transition duration-200">
+                    <div v-for="r in listRows" :key="r.name" class="flex items-center justify-between gap-3">
                       <div class="min-w-0">
-                        <p class="text-xs font-semibold text-ink-700 truncate">Food Service</p>
-                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">24 Rizal Ave.</p>
+                        <p class="text-xs font-semibold truncate" :class="r.status === 'Draft' ? 'text-slate-400' : 'text-ink-700'">{{ r.name }}</p>
+                        <p class="text-[10px] mt-0.5 truncate" :class="r.status === 'Draft' ? 'text-slate-300' : 'text-slate-400'"><template
+                          v-for="(part, pi) in searchParts(r.address)" :key="pi"><mark v-if="part.hit"
+                          class="bg-sun-200 text-ink-700 rounded-sm">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></p>
                       </div>
-                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sun-100 text-sun-700 shrink-0">In progress</span>
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" :class="statusPill(r.status)">{{ r.status }}</span>
                     </div>
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-xs font-semibold text-ink-700 truncate">Sign Permit</p>
-                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">12 Mabini St.</p>
-                      </div>
-                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 shrink-0">Approved</span>
-                    </div>
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-xs font-semibold text-ink-700 truncate">Building/Renovation</p>
-                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">12 Mabini St.</p>
-                      </div>
-                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sun-100 text-sun-700 shrink-0">In progress</span>
-                    </div>
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-xs font-semibold text-slate-400 truncate">Special Event</p>
-                        <p class="text-[10px] text-slate-300 mt-0.5 truncate">Plaza Rizal</p>
-                      </div>
-                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Draft</span>
-                    </div>
-                  </div>
+                  </transition-group>
                 </template>
 
-                <template v-else>
-                  <p class="text-xs bg-ink-700 text-white rounded-2xl rounded-br-sm px-3 py-2 w-fit max-w-[85%] ml-auto">What do I need for a Sign Permit?</p>
-                  <div class="mt-3 flex items-start gap-2.5">
+                <div v-else :key="askLoop">
+                  <p class="text-xs bg-ink-700 text-white rounded-2xl rounded-br-sm px-3 py-2 w-fit max-w-[85%] ml-auto" :class="{ 'demo-in': featMotion }">What do I need for a Sign Permit?</p>
+                  <div v-if="askFrame >= 1" class="mt-3 flex items-start gap-2.5" :class="{ 'demo-in': featMotion }">
                     <span class="w-7 h-7 rounded-full bg-sun-300 text-ink-700 flex items-center justify-center shrink-0">
                       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
                     </span>
-                    <div class="min-w-0">
-                      <p class="text-xs text-slate-600 leading-relaxed">Two documents, and you already have one on file:</p>
+                    <div v-if="askFrame === 1" class="flex items-center gap-1 bg-meadow rounded-2xl rounded-bl-sm px-3 py-3 w-fit">
+                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700"></span>
+                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.15s"></span>
+                      <span class="demo-dot w-1.5 h-1.5 rounded-full bg-ink-700" style="animation-delay:.3s"></span>
+                    </div>
+                    <div v-else class="min-w-0">
+                      <p class="text-xs text-slate-600 leading-relaxed" :class="{ 'demo-in': featMotion }">Two documents, and you already have one on file:</p>
                       <ul class="mt-2 space-y-1.5">
-                        <li class="flex items-start gap-2 text-xs text-ink-700">
+                        <li v-if="askFrame >= 3" class="flex items-start gap-2 text-xs text-ink-700" :class="{ 'demo-in': featMotion }">
                           <svg class="w-3.5 h-3.5 text-brand-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                           Sign Drawing / Rendering
                         </li>
-                        <li class="flex items-start gap-2 text-xs text-ink-700">
+                        <li v-if="askFrame >= 4" class="flex items-start gap-2 text-xs text-ink-700" :class="{ 'demo-in': featMotion }">
                           <svg class="w-3.5 h-3.5 text-brand-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                           Property Owner Authorization
                         </li>
                       </ul>
-                      <p class="mt-2 text-[11px] text-slate-400 leading-relaxed">Both can be uploaded from your permit page.</p>
+                      <p v-if="askFrame >= 5" class="mt-2 text-[11px] text-slate-400 leading-relaxed" :class="{ 'demo-in': featMotion }">Both can be uploaded from your permit page.</p>
                     </div>
                   </div>
-                </template>
+                </div>
 
               </div>
             </div>
@@ -1012,12 +1304,23 @@ export default {
     </section>
 
     <!-- ============ GET STARTED ============ -->
-    <section class="py-14 sm:py-20 bg-white border-y border-brand-100">
+    <section ref="steps" class="py-14 sm:py-20 bg-white border-y border-brand-100"
+      :class="stepsMotion ? 'demo-live' : 'demo-still'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
         <div class="text-center max-w-2xl mx-auto reveal">
           <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">Get started</span>
           <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Verify once.<br>Apply anytime.</h2>
           <p class="mt-4 text-lg text-slate-600 leading-relaxed">Three steps stand between you and your first tracked permit.</p>
+        </div>
+        <!-- Off, every step holds a single still frame -->
+        <div class="mt-6 flex justify-center">
+          <button type="button" role="switch" :aria-checked="stepsMotion" @click="stepsMotion = !stepsMotion"
+            class="inline-flex items-center gap-3 text-sm font-semibold text-ink-700 rounded-full bg-meadow/70 ring-1 ring-brand-100 pl-4 pr-1.5 py-1.5 hover:ring-brand-300 transition">
+            Animations
+            <span class="relative w-10 h-6 rounded-full transition-colors duration-200" :class="stepsMotion ? 'bg-brand-600' : 'bg-slate-300'" aria-hidden="true">
+              <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200" :class="stepsMotion ? 'translate-x-4' : ''"></span>
+            </span>
+          </button>
         </div>
 
         <div class="mt-10 grid md:grid-cols-3 gap-5">
@@ -1043,65 +1346,63 @@ export default {
                     :class="demo.contact === 'phone' ? 'font-bold bg-white text-ink-700 shadow-sm' : 'font-semibold text-slate-400 hover:text-slate-600'">Mobile number</button>
                 </div>
                 <p class="mt-3 text-[11px] font-semibold text-slate-500">{{ demo.contact === 'email' ? 'Email address' : 'Mobile number' }}</p>
-                <div class="mt-1 flex items-center rounded-lg ring-1 ring-brand-100 px-2.5 py-2 text-xs text-ink-700">
-                  <span class="truncate">{{ demo.contact === 'email' ? 'juan.delacruz@email.com' : '0917 123 4567' }}</span>
-                  <span class="demo-caret w-px h-3.5 bg-brand-600 shrink-0 ml-0.5"></span>
+                <div class="mt-1 flex items-center rounded-lg px-2.5 py-2 text-xs text-ink-700 transition"
+                  :class="acctTyping ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100'">
+                  <span class="truncate">{{ acctTyped }}</span>
+                  <span v-if="acctFrame === null || acctTyping" class="demo-caret w-px h-3.5 bg-brand-600 shrink-0 ml-0.5"></span>
                 </div>
                 <p class="mt-3 text-[11px] font-semibold text-slate-500">Verification code</p>
                 <div class="mt-1.5 flex gap-1.5">
-                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">4</span>
-                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">8</span>
-                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">2</span>
-                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-200 bg-meadow/50 flex items-center justify-center text-sm font-bold text-ink-700">7</span>
-                  <span class="flex-1 h-9 rounded-lg ring-2 ring-brand-500 flex items-center justify-center"><span class="demo-caret w-px h-4 bg-brand-500"></span></span>
-                  <span class="flex-1 h-9 rounded-lg ring-1 ring-brand-100"></span>
+                  <span v-for="(digit, j) in stepsCode" :key="j"
+                    class="flex-1 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-colors duration-300"
+                    :class="acctVerified ? 'ring-1 ring-brand-500 bg-brand-50 text-brand-700'
+                      : j < acctDigits ? 'ring-1 ring-brand-200 bg-meadow/50 text-ink-700'
+                      : j === acctDigits && acctCodeSent ? 'ring-2 ring-brand-500'
+                      : 'ring-1 ring-brand-100'">
+                    <span v-if="j < acctDigits || acctVerified" :class="{ 'demo-in': stepsMotion }">{{ digit }}</span>
+                    <span v-else-if="j === acctDigits && acctCodeSent" class="demo-caret w-px h-4 bg-brand-500"></span>
+                  </span>
                 </div>
-                <p class="mt-2 text-[10px] text-slate-400 truncate">Code sent to {{ demo.contact === 'email' ? 'juan.delacruz@email.com' : '0917 123 4567' }}</p>
+                <p v-if="acctVerified" class="mt-2 text-[10px] font-semibold text-brand-600 truncate demo-in">Verified — welcome to PermitTrack</p>
+                <p v-else-if="acctCodeSent" class="mt-2 text-[10px] text-slate-400 truncate" :class="{ 'demo-in': stepsMotion }">Code sent to {{ acctContact }}</p>
+                <p v-else class="mt-2 text-[10px] text-slate-400 truncate">We'll send you a 6-digit code</p>
               </template>
 
               <template v-else-if="i === 1">
-                <p class="text-[11px] font-semibold text-slate-500">Proof 1 of 2</p>
-                <div class="relative mt-1">
-                  <button type="button" tabindex="-1" @click="toggleDemo('proof0')"
-                    class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
-                    :class="demo.open === 'proof0' ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
-                    <span class="text-xs text-ink-700 truncate">{{ demo.proofs[0] }}</span>
-                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="demo.open === 'proof0' ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                  </button>
-                  <div v-if="demo.open === 'proof0'" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1">
-                    <button v-for="o in proofOptions" :key="o" type="button" tabindex="-1" @click="pickProof(0, o)"
-                      class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
-                      :class="o === demo.proofs[0] ? 'font-semibold text-brand-700' : 'text-slate-600'">{{ o }}</button>
+                <template v-for="slot in [0, 1]" :key="slot">
+                  <p class="text-[11px] font-semibold text-slate-500" :class="slot === 1 ? 'mt-3' : ''">Proof {{ slot + 1 }} of 2</p>
+                  <div class="relative mt-1">
+                    <button type="button" tabindex="-1" @click="toggleDemo('proof' + slot)"
+                      class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
+                      :class="proofMenuOpen(slot) ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
+                      <span class="text-xs truncate" :class="proofPicked(slot) ? 'text-ink-700' : 'text-slate-400'">{{ proofPicked(slot) ? demo.proofs[slot] : 'Choose a document…' }}</span>
+                      <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="proofMenuOpen(slot) ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div v-if="proofMenuOpen(slot)" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1"
+                      :class="{ 'demo-in': stepsMotion }">
+                      <button v-for="o in proofOptions" :key="o" type="button" tabindex="-1" @click="pickProof(slot, o)"
+                        class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
+                        :class="o === demo.proofs[slot] ? 'font-semibold text-brand-700 bg-meadow/60' : 'text-slate-600'">{{ o }}</button>
+                    </div>
                   </div>
-                </div>
-                <div class="mt-1.5 flex items-center gap-2">
-                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                  <span class="text-[11px] text-slate-500 truncate">brgy-certificate.pdf</span>
-                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </div>
-
-                <p class="mt-3 text-[11px] font-semibold text-slate-500">Proof 2 of 2</p>
-                <div class="relative mt-1">
-                  <button type="button" tabindex="-1" @click="toggleDemo('proof1')"
-                    class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
-                    :class="demo.open === 'proof1' ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
-                    <span class="text-xs text-ink-700 truncate">{{ demo.proofs[1] }}</span>
-                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="demo.open === 'proof1' ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                  </button>
-                  <div v-if="demo.open === 'proof1'" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1">
-                    <button v-for="o in proofOptions" :key="o" type="button" tabindex="-1" @click="pickProof(1, o)"
-                      class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
-                      :class="o === demo.proofs[1] ? 'font-semibold text-brand-700' : 'text-slate-600'">{{ o }}</button>
+                  <div class="mt-1.5 min-h-4 flex items-center gap-2">
+                    <template v-if="proofFile(slot)">
+                      <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                      <span class="text-[11px] text-slate-500 truncate" :class="{ 'demo-in': stepsMotion }">{{ stepsFiles[slot] }}</span>
+                      <span v-if="proofFile(slot) === 'up'" class="ml-auto w-12 h-1 rounded-full bg-brand-100 overflow-hidden shrink-0">
+                        <span class="demo-bar block h-full w-1/2 rounded-full bg-brand-600"></span>
+                      </span>
+                      <svg v-else class="w-3.5 h-3.5 text-brand-600 shrink-0 ml-auto" :class="{ 'demo-in': stepsMotion }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </template>
                   </div>
-                </div>
-                <div class="mt-1.5 flex items-center gap-2">
-                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                  <span class="text-[11px] text-slate-500 truncate">electric-bill-sep.pdf</span>
-                  <svg class="w-3.5 h-3.5 text-brand-600 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </div>
+                </template>
 
-                <div class="mt-3 pt-3 border-t border-slate-100">
-                  <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-sun-100 text-sun-700">Waiting for City Staff review</span>
+                <div class="mt-3 pt-3 border-t border-slate-100 min-h-[2.1rem]">
+                  <span v-if="proofStatus === 'approved'" class="demo-in inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-brand-100 text-brand-700">
+                    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    Approved — you're a Resident
+                  </span>
+                  <span v-else-if="proofStatus === 'waiting'" class="text-[10px] font-bold px-2 py-1 rounded-full bg-sun-100 text-sun-700" :class="{ 'demo-in': stepsMotion }">Waiting for City Staff review</span>
                 </div>
               </template>
 
@@ -1110,34 +1411,37 @@ export default {
                 <div class="relative mt-1">
                   <button type="button" tabindex="-1" @click="toggleDemo('permit')"
                     class="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition"
-                    :class="demo.open === 'permit' ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
-                    <span class="text-xs font-semibold text-ink-700 truncate">{{ permits[demo.permit].type }}</span>
-                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="demo.open === 'permit' ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    :class="applyMenuOpen ? 'ring-2 ring-brand-500' : 'ring-1 ring-brand-100 hover:ring-brand-300'">
+                    <span class="text-xs font-semibold truncate" :class="applyPicked ? 'text-ink-700' : 'text-slate-400'">{{ applyPicked ? permits[demo.permit].type : 'Choose a permit…' }}</span>
+                    <svg class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform" :class="applyMenuOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
-                  <div v-if="demo.open === 'permit'" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1">
+                  <div v-if="applyMenuOpen" class="absolute z-20 inset-x-0 mt-1 rounded-xl bg-white ring-1 ring-brand-200 shadow-[0_18px_40px_-20px_rgba(16,48,29,0.45)] py-1"
+                    :class="{ 'demo-in': stepsMotion }">
                     <button v-for="(p, k) in permits" :key="p.type" type="button" tabindex="-1" @click="pickPermit(k)"
                       class="w-full text-left text-[11px] px-2.5 py-1.5 truncate transition hover:bg-meadow/70"
-                      :class="k === demo.permit ? 'font-semibold text-brand-700' : 'text-slate-600'">{{ p.type }}</button>
+                      :class="k === demo.permit ? 'font-semibold text-brand-700 bg-meadow/60' : 'text-slate-600'">{{ p.type }}</button>
                   </div>
                 </div>
                 <p class="mt-3 text-[11px] font-semibold text-slate-500">Required documents</p>
                 <ul class="mt-1.5 space-y-1.5">
                   <li v-for="(d, k) in permits[demo.permit].docs" :key="d"
-                    class="flex items-center gap-2 text-[11px]" :class="k < 2 ? 'text-ink-700' : 'text-slate-400'">
-                    <svg v-if="k < 2" class="w-3.5 h-3.5 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    class="flex items-center gap-2 text-[11px] transition-colors duration-300"
+                    :class="[k < applyChecked ? 'text-ink-700' : 'text-slate-400', applyPicked ? '' : 'invisible']">
+                    <svg v-if="k < applyChecked" class="w-3.5 h-3.5 text-brand-600 shrink-0" :class="{ 'demo-in': stepsMotion }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                     <span v-else class="w-3.5 h-3.5 rounded-full ring-1 ring-slate-300 shrink-0"></span>
                     {{ d }}
                   </li>
                 </ul>
-                <div class="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-brand-600 shrink-0"></span>
-                  <span class="flex-1 h-0.5 rounded bg-brand-200"></span>
-                  <span class="w-2.5 h-2.5 rounded-full bg-sun-400 ring-2 ring-sun-100 shrink-0"></span>
-                  <span class="flex-1 h-0.5 rounded bg-slate-200"></span>
-                  <span class="w-2 h-2 rounded-full bg-slate-200 shrink-0"></span>
-                  <span class="flex-1 h-0.5 rounded bg-slate-200"></span>
-                  <span class="w-2 h-2 rounded-full bg-slate-200 shrink-0"></span>
-                  <span class="ml-1.5 text-[10px] font-bold text-sun-700 shrink-0">Stop 2 of 6</span>
+                <div class="mt-3 pt-3 border-t border-slate-100 min-h-7 flex items-center gap-1.5">
+                  <template v-if="applyStop">
+                    <template v-for="i in 4" :key="i">
+                      <span class="rounded-full shrink-0 transition-colors duration-500"
+                        :class="{ 'w-2 h-2 bg-brand-600': stopState(i - 1) === 'done', 'w-2.5 h-2.5 bg-sun-400 ring-2 ring-sun-100': stopState(i - 1) === 'active', 'w-2 h-2 bg-slate-200': stopState(i - 1) === 'pending' }"></span>
+                      <span v-if="i < 4" class="flex-1 h-0.5 rounded transition-colors duration-500" :class="i - 1 < applyStop - 1 ? 'bg-brand-200' : 'bg-slate-200'"></span>
+                    </template>
+                    <span class="ml-1.5 text-[10px] font-bold text-sun-700 shrink-0">Stop {{ applyStop }} of 6</span>
+                  </template>
+                  <span v-else class="text-[10px] font-semibold text-slate-400">Not filed yet</span>
                 </div>
               </template>
 
@@ -1208,7 +1512,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr] gap-10">
         <div>
           <div class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=114" alt="" class="w-9 h-9 object-contain" />
+            <img src="assets/images/PermitTrackIcon.png?v=115" alt="" class="w-9 h-9 object-contain" />
             <span class="leading-tight">
               <span class="block text-[15px] font-bold text-white">PermitTrack</span>
               <span class="block text-[11px] text-ink-300">City of Dasmariñas</span>

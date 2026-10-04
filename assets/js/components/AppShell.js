@@ -1,12 +1,12 @@
-import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=114';
-import { apiGet, apiPost } from '../api/client.js?v=114';
-import ChatWidget from './ChatWidget.js?v=114';
-import AddAccountModal from './AddAccountModal.js?v=114';
-import BaseModal from './BaseModal.js?v=114';
-import { formatDateTime } from '../util.js?v=114';
-import { uiState, openChangePassword } from '../store/ui.js?v=114';
-import Loader from './Loader.js?v=114';
-import NotificationToasts from './NotificationToasts.js?v=114';
+import { authState, logout, listAccounts, switchAccount, forgetAccount, reloadAs, signOutPathFor } from '../store/auth.js?v=115';
+import { apiGet, apiPost } from '../api/client.js?v=115';
+import ChatWidget from './ChatWidget.js?v=115';
+import AddAccountModal from './AddAccountModal.js?v=115';
+import BaseModal from './BaseModal.js?v=115';
+import { formatDateTime } from '../util.js?v=115';
+import { uiState, openChangePassword } from '../store/ui.js?v=115';
+import Loader from './Loader.js?v=115';
+import NotificationToasts from './NotificationToasts.js?v=115';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -215,12 +215,11 @@ export default {
         this.switching = false;
       }
     },
+    // Signing out never steps into another account: it lands on the landing page, signed out.
+    // Anyone else still signed in on this browser is offered by its Sign in chooser.
     async doLogout() {
-      const leaving = authState.user;
-      const next = await logout();
-      // Another account on this browser takes over; otherwise wherever this role signs out to
-      if (next) reloadAs(next);
-      else this.$router.push(signOutPathFor(leaving));
+      await logout();
+      this.$router.push(signOutPathFor());
     },
   },
   template: `
@@ -229,7 +228,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=114" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=115" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
