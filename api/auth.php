@@ -362,14 +362,20 @@ if ($action === 'change_password' && $method === 'POST') {
     respond(['user' => current_user()]);
 }
 
-// Accounts signed in on this browser session, for the "Switch account" menu
+/**
+ * Accounts signed in on this browser session: the "Switch account" menu while signed in, and
+ * the chooser on the Sign in button once you have signed out but others are still in. Signed
+ * out with none left, this is empty and the button goes back to being a plain Log in.
+ */
 if ($action === 'accounts' && $method === 'GET') {
     $current = current_user();
-    if (!$current) {
+    if ($current) {
+        remember_account((int)$current['id']); // the current account always counts as signed in
+    }
+    $ids = array_values(array_filter(array_map('intval', array_keys($_SESSION['accounts'] ?? []))));
+    if (!$ids) {
         respond(['accounts' => []]);
     }
-    remember_account((int)$current['id']); // the current account always counts as signed in
-    $ids = array_keys($_SESSION['accounts']);
     $stmt = db()->prepare(
         'SELECT id, role, full_name, email, phone FROM users WHERE is_active = 1 AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')'
     );
@@ -379,7 +385,7 @@ if ($action === 'accounts' && $method === 'GET') {
         'full_name' => $u['full_name'],
         'contact' => $u['email'] ?: $u['phone'],
         'role' => $u['role'],
-        'current' => (int)$u['id'] === (int)$current['id'],
+        'current' => $current && (int)$u['id'] === (int)$current['id'],
     ], $stmt->fetchAll());
     respond(['accounts' => $accounts]);
 }
@@ -413,24 +419,27 @@ if ($action === 'forget' && $method === 'POST') {
     unset($_SESSION['accounts'][$id]);
     respond(['ok' => true]);
 }
-// Signs out the current account; if other accounts are signed in on this browser, switches to one of them
+/**
+ * Signs the current account out and leaves it that way — signing out of one account is not a
+ * way of stepping into another, so nobody is signed in when this returns. Any other account
+ * that signed in on this browser stays signed in and is offered by the chooser on the Sign in
+ * button; once the last one goes, the session goes with it. Pass all = true to sign out every
+ * account at once.
+ */
 if ($action === 'logout' && $method === 'POST') {
     $currentId = (int)($_SESSION['user_id'] ?? 0);
     unset($_SESSION['accounts'][$currentId]);
-    $all = (bool)(json_input()['all'] ?? false);
-    $remaining = $all ? [] : array_keys($_SESSION['accounts'] ?? []);
-    foreach ($remaining as $id) {
-        $stmt = db()->prepare('SELECT is_active FROM users WHERE id = ?');
-        $stmt->execute([$id]);
-        if ((int)$stmt->fetchColumn()) {
-            session_regenerate_id(true);
-            $_SESSION['user_id'] = (int)$id;
-            respond(['ok' => true, 'user' => current_user()]);
-        }
-        unset($_SESSION['accounts'][$id]);
+    if ((bool)(json_input()['all'] ?? false)) {
+        $_SESSION['accounts'] = [];
     }
-    $_SESSION = [];
-    session_destroy();
+    unset($_SESSION['user_id'], $_SESSION['pending_user_id'], $_SESSION['pending_registration']);
+
+    if (empty($_SESSION['accounts'])) {
+        $_SESSION = [];
+        session_destroy();
+        respond(['ok' => true, 'user' => null]);
+    }
+    session_regenerate_id(true);
     respond(['ok' => true, 'user' => null]);
 }
 

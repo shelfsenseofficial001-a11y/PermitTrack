@@ -1,6 +1,6 @@
-import { authState, changePassword, logout, reloadAs, signOutPathFor } from '../store/auth.js?v=114';
-import { inputClass } from './AuthLayout.js?v=114';
-import BaseModal from './BaseModal.js?v=114';
+import { changePassword, logout, signOutPathFor } from '../store/auth.js?v=115';
+import { inputClass } from './AuthLayout.js?v=115';
+import BaseModal from './BaseModal.js?v=115';
 
 // Change password as a dialog over the current page. With `forced` (a temporary password
 // set by an Admin), it cannot be dismissed — the only ways out are a new password or signing out.
@@ -71,10 +71,8 @@ export default {
     },
     async signOut() {
       // Admins can reset anyone's password, so this dialog is shown to staff and residents alike
-      const leaving = authState.user;
-      const next = await logout();
-      if (next) reloadAs(next);
-      else this.$router.push(signOutPathFor(leaving));
+      await logout();
+      this.$router.push(signOutPathFor());
     },
   },
   template: `
