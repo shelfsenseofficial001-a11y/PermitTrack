@@ -108,8 +108,8 @@ if ($action === 'submit' && $method === 'POST') {
         $pdo->prepare('UPDATE users SET address_line = ?, barangay = ?, barangay_id = ?, city = ?, postal_code = ?, resident_status = \'pending\' WHERE id = ?')
             ->execute([$address['address_line'], $address['barangay'], $barangay['id'], $address['city'], $address['postal_code'], $user['id']]);
         $pdo->prepare(
-            'INSERT INTO resident_verifications (user_id, address_line, barangay, city, postal_code, declared_at) VALUES (?, ?, ?, ?, ?, NOW())'
-        )->execute([$user['id'], $address['address_line'], $address['barangay'], $address['city'], $address['postal_code']]);
+            'INSERT INTO resident_verifications (user_id, address_line, barangay, barangay_id, city, postal_code, declared_at) VALUES (?, ?, ?, ?, ?, ?, NOW())'
+        )->execute([$user['id'], $address['address_line'], $address['barangay'], $barangay['id'], $address['city'], $address['postal_code']]);
         $requestId = (int)$pdo->lastInsertId();
 
         $insertProof = $pdo->prepare(
@@ -136,11 +136,14 @@ if ($action === 'submit' && $method === 'POST') {
 // View a proof file inline — its owner or staff only
 if ($action === 'file' && $method === 'GET') {
     $user = require_auth();
-    $stmt = db()->prepare('SELECT p.*, rv.user_id FROM resident_proofs p JOIN resident_verifications rv ON rv.id = p.verification_id WHERE p.id = ?');
+    $stmt = db()->prepare('SELECT p.*, rv.user_id, rv.barangay_id FROM resident_proofs p JOIN resident_verifications rv ON rv.id = p.verification_id WHERE p.id = ?');
     $stmt->execute([(int)($_GET['id'] ?? 0)]);
     $proof = $stmt->fetch();
     $isStaff = in_array($user['role'], ['staff', 'admin'], true);
     if (!$proof || (!$isStaff && (int)$proof['user_id'] !== (int)$user['id'])) {
+        fail('File not found.', 404);
+    }
+    if ($isStaff && !in_barangay_scope(barangay_scope($user), $proof['barangay_id'])) {
         fail('File not found.', 404);
     }
     send_private_file($proof['file_path'], $proof['mime_type'], $proof['original_filename']);
@@ -149,8 +152,10 @@ if ($action === 'file' && $method === 'GET') {
 // ---------- City Staff / Admin ----------
 
 if ($action === 'counts' && $method === 'GET') {
-    require_role('staff');
-    $rows = db()->query('SELECT status, COUNT(*) c FROM resident_verifications GROUP BY status')->fetchAll();
+    $scope = barangay_scope(require_role('staff'));
+    $cs = db()->prepare('SELECT status, COUNT(*) c FROM resident_verifications WHERE (? IS NULL OR barangay_id = ?) GROUP BY status');
+    $cs->execute([$scope, $scope]);
+    $rows = $cs->fetchAll();
     $counts = ['pending' => 0, 'approved' => 0, 'rejected' => 0];
     foreach ($rows as $r) {
         $counts[$r['status']] = (int)$r['c'];
@@ -163,23 +168,27 @@ if ($action === 'queue' && $method === 'GET') {
     $status = in_array($_GET['status'] ?? '', ['pending', 'approved', 'rejected'], true) ? $_GET['status'] : 'pending';
     // Oldest first while waiting; most recent first for the history tabs
     $order = $status === 'pending' ? 'rv.created_at ASC' : 'rv.reviewed_at DESC';
+    $scope = barangay_scope(require_role('staff'));
     $stmt = db()->prepare(
         "SELECT rv.id, rv.status, rv.barangay, rv.city, rv.created_at, rv.reviewed_at, rv.rejection_reason,
                 u.full_name, DATEDIFF(NOW(), rv.created_at) AS days_waiting, r.full_name AS reviewer_name
          FROM resident_verifications rv
          JOIN users u ON u.id = rv.user_id
          LEFT JOIN users r ON r.id = rv.reviewed_by
-         WHERE rv.status = ? ORDER BY $order"
+         WHERE rv.status = ? AND (? IS NULL OR rv.barangay_id = ?) ORDER BY $order"
     );
-    $stmt->execute([$status]);
+    $stmt->execute([$status, $scope, $scope]);
     respond(['requests' => $stmt->fetchAll()]);
 }
 
 if ($action === 'detail' && $method === 'GET') {
-    require_role('staff');
+    $scope = barangay_scope(require_role('staff'));
     $request = residency_request((int)($_GET['id'] ?? 0));
     if (!$request) {
         fail('Request not found.', 404);
+    }
+    if (!in_barangay_scope($scope, $request['barangay_id'])) {
+        fail('This request belongs to another barangay.', 403);
     }
     $u = db()->prepare('SELECT id, full_name, first_name, middle_name, last_name, birthdate, email, phone, email_verified_at, phone_verified_at, created_at FROM users WHERE id = ?');
     $u->execute([$request['user_id']]);
@@ -205,6 +214,9 @@ if ($action === 'decide' && $method === 'POST') {
     $request = residency_request((int)($in['id'] ?? 0));
     if (!$request) {
         fail('Request not found.', 404);
+    }
+    if (!in_barangay_scope(barangay_scope($staff), $request['barangay_id'])) {
+        fail('This request belongs to another barangay, so you cannot decide it.', 403);
     }
     if ($request['status'] !== 'pending') {
         fail('This request has already been ' . $request['status'] . '.', 409);

@@ -89,6 +89,33 @@ function find_barangay(string $name): ?array
     return $row ?: null;
 }
 
+/**
+ * Which barangay's residency and business requests this staff member may see and decide.
+ *
+ *   null  - unrestricted: Admin, and staff in a city department that is not tied to a barangay.
+ *   int   - a barangay secretariat: only requests whose barangay_id is that barangay.
+ */
+function barangay_scope(array $user): ?int
+{
+    if ($user['role'] === 'admin' || empty($user['department_id'])) {
+        return null;
+    }
+    $s = db()->prepare('SELECT barangay_id FROM departments WHERE id = ?');
+    $s->execute([(int)$user['department_id']]);
+    $bid = $s->fetchColumn();
+    return ($bid === false || $bid === null) ? null : (int)$bid;
+}
+
+/** Whether a request with this barangay_id falls inside the scope. A request with no barangay is
+ *  visible only when the scope is unrestricted. */
+function in_barangay_scope(?int $scope, $barangayId): bool
+{
+    if ($scope === null) {
+        return true;
+    }
+    return $barangayId !== null && (int)$barangayId === $scope;
+}
+
 function audit(?int $actorId, string $action, string $subjectType, int $subjectId, ?string $details = null): void
 {
     db()->prepare('INSERT INTO audit_log (actor_id, action, subject_type, subject_id, details) VALUES (?, ?, ?, ?, ?)')
