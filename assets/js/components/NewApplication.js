@@ -1,8 +1,8 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=117';
-import AppShell from './AppShell.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
-import { authState } from '../store/auth.js?v=117';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=117';
+import { apiGet, apiPostForm } from '../api/client.js?v=128';
+import AppShell from './AppShell.js?v=128';
+import BaseModal from './BaseModal.js?v=128';
+import { authState } from '../store/auth.js?v=128';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=128';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
 // these two have to move together.
