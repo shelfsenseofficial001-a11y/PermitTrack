@@ -3,14 +3,23 @@
 // the bottom right, and each is the same item the bell and the Notifications page show — clicking
 // it opens that permit.
 
+import NotificationIcon from './NotificationIcon.js?v=128';
+import { notificationTone } from '../util.js?v=128';
+
 const DISMISS_MS = 7000;
 
 // One toast, so each can run its own countdown. The countdown pauses while the pointer is over it
 // or while it has keyboard focus, so a toast can't vanish mid-read or mid-click.
 const Toast = {
   name: 'NotificationToast',
+  components: { NotificationIcon },
   props: { item: { type: Object, required: true } },
   emits: ['open', 'close'],
+  computed: {
+    tone() {
+      return notificationTone(this.item);
+    },
+  },
   data() {
     return { paused: false, timer: null };
   },
@@ -38,11 +47,7 @@ const Toast = {
   <div class="toast-in pointer-events-auto relative w-[min(22rem,calc(100vw-2rem))] rounded-2xl bg-white ring-1 ring-brand-100 shadow-[0_18px_40px_-18px_rgba(7,24,14,0.45)] overflow-hidden"
     role="status" @mouseenter="pause" @mouseleave="resume" @focusin="pause" @focusout="resume">
     <button type="button" @click="$emit('open', item)" class="group w-full text-left flex gap-3 pl-4 pr-9 py-3.5 transition hover:bg-meadow/60 focus:outline-none focus-visible:bg-meadow">
-      <span class="mt-0.5 w-9 h-9 rounded-xl shrink-0 flex items-center justify-center"
-        :class="item.kind === 'message' ? 'bg-sun-100 text-sun-700' : 'bg-brand-100 text-brand-700'">
-        <svg v-if="item.kind === 'message'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>
-        <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-      </span>
+      <NotificationIcon :item="item" class="mt-0.5" />
       <span class="min-w-0 flex-1">
         <span class="block text-sm font-semibold text-ink-700 leading-snug">{{ item.title }}</span>
         <span class="block text-[13px] text-slate-600 leading-snug mt-0.5 line-clamp-2">{{ item.body }}</span>
@@ -59,7 +64,7 @@ const Toast = {
     </button>
 
     <!-- How long it has left. Freezes with the countdown while you're reading it. -->
-    <span class="absolute bottom-0 left-0 h-[3px] bg-sun-400 toast-timer" :class="paused ? 'toast-timer-paused' : ''"
+    <span class="absolute bottom-0 left-0 h-[3px] toast-timer" :class="[tone.dot, paused ? 'toast-timer-paused' : '']"
       :style="{ animationDuration: ${DISMISS_MS} + 'ms' }" aria-hidden="true"></span>
   </div>
   `,

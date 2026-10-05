@@ -44,7 +44,7 @@ if ($action === 'send' && $method === 'POST') {
         fail('Message cannot be empty.');
     }
 
-    $stmt = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
+    $stmt = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'message', 'message', ?)");
     $stmt->execute([$appId, $user['id'], $body]);
 
     respond(['ok' => true], 201);
