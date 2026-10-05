@@ -1,8 +1,11 @@
-import { register } from '../store/auth.js?v=117';
-import { apiGet } from '../api/client.js?v=117';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import { register, googleSignupProfile, googleRegister, googleCancel, homePathFor } from '../store/auth.js?v=128';
+import { apiGet } from '../api/client.js?v=128';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=128';
+import GoogleButton from './GoogleButton.js?v=128';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
+// Signing up with Google: the email is Google's (already verified) and there is no password
+const GOOGLE_STEPS = ['About you', 'Address', 'Confirm'];
 
 function yearsAgo(years) {
   const d = new Date();
@@ -12,11 +15,11 @@ function yearsAgo(years) {
 
 export default {
   name: 'Register',
-  components: { AuthLayout },
+  components: { AuthLayout, GoogleButton },
   data() {
     return {
-      steps: STEPS,
       step: 0,
+      google: null, // { email, first_name, last_name } while finishing a Google sign-up
       form: {
         first_name: '', middle_name: '', last_name: '', birthdate: '',
         contact_method: 'email', email: '', phone: '',
@@ -37,6 +40,9 @@ export default {
     };
   },
   computed: {
+    steps() {
+      return this.google ? GOOGLE_STEPS : STEPS;
+    },
     passwordsMatch() {
       return this.form.confirm_password !== '' && this.form.password === this.form.confirm_password;
     },
@@ -58,7 +64,14 @@ export default {
       return this.barangays.find((b) => b.name.toLowerCase() === typed) || null;
     },
   },
+  watch: {
+    // The Google button on this page lands back here with ?google=1
+    '$route.query.google'(value) {
+      if (value) this.loadGoogleSignup();
+    },
+  },
   async mounted() {
+    if (this.$route.query.google) this.loadGoogleSignup();
     try {
       const [loc, brgy] = await Promise.all([
         apiGet('locations.php?action=provinces'),
@@ -73,6 +86,35 @@ export default {
     }
   },
   methods: {
+    async loadGoogleSignup() {
+      let profile = null;
+      try {
+        profile = await googleSignupProfile();
+      } catch (e) {
+        profile = null;
+      }
+      if (!profile) {
+        // Expired or never started: carry on with the normal sign-up
+        this.google = null;
+        if (this.$route.query.google) this.$router.replace('/register');
+        return;
+      }
+      this.google = profile;
+      this.step = 0;
+      this.error = '';
+      this.form.contact_method = 'email';
+      this.form.email = profile.email;
+      this.form.first_name ||= profile.first_name;
+      this.form.last_name ||= profile.last_name;
+    },
+    async leaveGoogleSignup() {
+      try { await googleCancel(); } catch (e) { /* the session forgets it on its own */ }
+      this.google = null;
+      this.step = 0;
+      this.error = '';
+      this.form.email = '';
+      this.$router.replace('/register');
+    },
     async loadCities(provinceCode) {
       if (!provinceCode) { this.cities = []; return; }
       this.loadingCities = true;
@@ -108,7 +150,9 @@ export default {
         if (this.inHomeCity && !this.matchedBarangay) return 'Please choose your barangay from the list.';
         if (!/^\d{4}$/.test(f.postal_code.trim())) return 'Postal / ZIP code must be 4 digits.';
       }
-      if (this.step === 2) {
+      if (this.step === 2 && this.google) {
+        if (!f.privacy_consent) return 'Please agree to the Data Privacy notice to continue.';
+      } else if (this.step === 2) {
         if (!this.passwordStrongEnough) return 'Password must be at least 8 characters and include an uppercase letter, a number, and a special character.';
         if (this.form.password !== this.form.confirm_password) return 'Passwords do not match.';
         if (!f.privacy_consent) return 'Please agree to the Data Privacy notice to continue.';
@@ -129,10 +173,22 @@ export default {
       this.loading = true;
       try {
         const { confirm_password, ...payload } = this.form;
+        if (this.google) {
+          // Google already verified the email, so there is no code to enter
+          const { password, contact_method, email, phone, ...profile } = payload;
+          const user = await googleRegister(profile);
+          this.$router.push(homePathFor(user));
+          return;
+        }
         await register(payload);
         this.$router.push('/verify');
       } catch (e) {
         this.error = e.message;
+        if (this.google && e.status === 401) {
+          this.google = null;
+          this.$router.replace('/register');
+          return;
+        }
         // Send the user back to the step that holds the problem field
         if (/email|mobile/i.test(e.message)) this.step = 1;
         else if (/name|birth|18/i.test(e.message)) this.step = 0;
@@ -145,6 +201,10 @@ export default {
   template: `
   <AuthLayout :loading="loading" loading-kind="register" eyebrow="Create your account" headline="Start with a free account — browse permits and track everything in one place.">
     <h1 class="text-3xl font-bold tracking-tight text-slate-900 mb-3">Create an account</h1>
+    <p v-if="google" class="text-sm text-slate-500 leading-relaxed -mt-1 mb-4">
+      A few more details to finish signing up with Google as <strong class="text-slate-700">{{ google.email }}</strong>.
+      <button type="button" @click="leaveGoogleSignup" class="text-[#1f7a3a] font-semibold hover:underline">Use email or mobile instead</button>
+    </p>
 
     <div class="mb-5" aria-live="polite">
       <div class="flex items-center justify-between text-xs font-semibold mb-1.5">
@@ -181,7 +241,15 @@ export default {
 
       <!-- Step 2: Contact & address -->
       <template v-if="step === 1">
-        <div>
+        <div v-if="google">
+          <span :class="labelClass">Email</span>
+          <div class="flex items-center gap-2 rounded-xl bg-[#f3f9e3] px-4 py-3 text-sm text-slate-700">
+            <svg class="w-4 h-4 shrink-0 text-[#1f7a3a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span class="truncate">{{ google.email }}</span>
+            <span class="ml-auto text-xs text-slate-500 shrink-0">Verified by Google</span>
+          </div>
+        </div>
+        <div v-else>
           <div class="flex items-center justify-between mb-1.5">
             <label class="text-[15px] font-medium text-slate-900" :for="form.contact_method === 'email' ? 'r-email' : 'r-phone'">
               {{ form.contact_method === 'email' ? 'Email' : 'Mobile number' }}
@@ -243,7 +311,13 @@ export default {
       </template>
 
       <!-- Step 3: Password & consent -->
-      <template v-if="step === 2">
+      <template v-if="step === 2 && google">
+        <p class="text-sm text-slate-600 leading-relaxed">
+          You'll sign in with your Google account, so there's no password to set. You can add one later from
+          Change password if you'd also like to sign in with your email.
+        </p>
+      </template>
+      <template v-if="step === 2 && !google">
         <div>
           <label :class="labelClass" for="r-pw">Password</label>
           <div class="relative">
@@ -264,6 +338,8 @@ export default {
             {{ passwordMismatch ? '✕ Passwords don\\'t match' : passwordsMatch ? '✓ Passwords match' : '' }}
           </p>
         </div>
+      </template>
+      <template v-if="step === 2">
         <label class="flex items-start gap-3 rounded-xl bg-[#f3f9e3] p-3 cursor-pointer">
           <input v-model="form.privacy_consent" type="checkbox" class="mt-0.5 w-4 h-4 accent-[#1f7a3a] shrink-0" />
           <span class="text-xs text-slate-600 leading-relaxed">
@@ -282,6 +358,8 @@ export default {
         </button>
       </div>
     </form>
+
+    <GoogleButton v-if="!google && step === 0" text="signup_with" divider="or sign up with" @busy="loading = $event" />
 
     <p class="text-sm text-slate-500 mt-5 text-center">
       Already have an account?
