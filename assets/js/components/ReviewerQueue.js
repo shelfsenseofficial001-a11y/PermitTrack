@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=117';
-import StaffShell from './StaffShell.js?v=117';
-import { formatDate, permitIconClass, permitLabel } from '../util.js?v=117';
-import { authState } from '../store/auth.js?v=117';
-import Loader from './Loader.js?v=117';
+import { apiGet } from '../api/client.js?v=128';
+import StaffShell from './StaffShell.js?v=128';
+import { formatDate, permitIconClass, permitLabel } from '../util.js?v=128';
+import { authState } from '../store/auth.js?v=128';
+import Loader from './Loader.js?v=128';
 
 const TABS = [
   { key: 'new', label: 'New' },
@@ -98,8 +98,12 @@ export default {
         <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight">My Review Queue</h1>
         <p class="text-white/85 text-sm mt-2">{{ totalCount }} open application(s) · {{ scopeLabel }}</p>
       </div>
-      <span class="inline-flex items-center gap-2 bg-ink-700 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg">
-        <svg class="w-4 h-4 text-sun-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <!-- Says which side of the app this is; it is not a link anywhere. It used to be a solid
+           dark pill with a drop shadow in this corner — the same styling the applicant Dashboard
+           gives its real "New Application" button in the same corner of the same header, so staff
+           kept clicking it. A translucent badge with no elevation reads as a label instead. -->
+      <span class="inline-flex items-center gap-1.5 rounded-full bg-ink-900/60 ring-1 ring-inset ring-white/20 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white cursor-default select-none">
+        <svg class="w-3.5 h-3.5 text-sun-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         Staff Portal
       </span>
     </div>
