@@ -175,6 +175,10 @@ if ($action === 'detail' && $method === 'GET') {
     if ($user['role'] === 'applicant' && (int)$app['applicant_id'] !== (int)$user['id']) {
         fail('Forbidden', 403);
     }
+    // Staff see a permit once it reaches their office, not before — see staff_can_access_application().
+    if ($user['role'] !== 'applicant' && !staff_can_access_application($user, $id)) {
+        fail('This application has not reached your office yet.', 403);
+    }
 
     $applicantStmt = db()->prepare(
         'SELECT full_name, email, phone, resident_status, address_line, barangay, city, postal_code FROM users WHERE id = ?'
@@ -199,7 +203,29 @@ if ($action === 'detail' && $method === 'GET') {
 
     $docsStmt = db()->prepare('SELECT * FROM application_documents WHERE application_id = ? ORDER BY id');
     $docsStmt->execute([$id]);
-    $app['documents'] = $docsStmt->fetchAll();
+    $documents = $docsStmt->fetchAll();
+
+    // Say which office rules on each document. documents.php enforces this; the reviewer screen
+    // reads it so it can offer Approve/Reject only where they would actually be accepted, rather
+    // than showing every reviewer buttons that answer 403. Null for pre-pipeline applications,
+    // which stay open to any staff account.
+    foreach ($documents as &$doc) {
+        $ownerDept = document_owner_department($id, $doc['office_code'] ?: 'BARANGAY');
+        $doc['owner_department_id'] = $ownerDept ? (int)$ownerDept['id'] : null;
+        $doc['owner_department_name'] = $ownerDept['name'] ?? null;
+        $doc['owner_step_status'] = $ownerDept['status'] ?? null;
+    }
+    unset($doc);
+
+    // Where the permit is sitting, so the reviewer screen can work out which stage a document is at
+    // for this viewer: the barangay's intake pass, or the owning office's decision. Mirrors the
+    // $stage rule in documents.php.
+    $currentStep = current_pipeline_step($id);
+    $app['current_department_id'] = $currentStep ? (int)$currentStep['department_id'] : null;
+    $app['intake_department_id'] = $currentStep && $currentStep['office_code'] === 'BARANGAY'
+        ? (int)$currentStep['department_id']
+        : null;
+    $app['documents'] = $documents;
 
     // Empty array = this application predates the pipeline (filed via the old 'create' action).
     $app['pipeline'] = pipeline_progress_for($id);
@@ -238,7 +264,7 @@ if ($action === 'update' && $method === 'POST') {
         ->execute([$address !== '' ? $address : 'N/A', $description !== '' ? $description : null, $app['id']]);
 
     db()->prepare(
-        "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'edited', ?)"
     )->execute([$app['id'], $user['id'], 'Applicant updated the application details.']);
 
     respond(['ok' => true]);
@@ -266,7 +292,7 @@ if ($action === 'withdraw' && $method === 'POST') {
         $pdo->prepare("UPDATE application_pipeline_progress SET status = 'skipped' WHERE application_id = ? AND status IN ('current','pending')")
             ->execute([$app['id']]);
         $pdo->prepare(
-            "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+            "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'withdrawn', ?)"
         )->execute([$app['id'], $user['id'], 'Applicant withdrew this application.']);
         $pdo->commit();
     } catch (Throwable $e) {
@@ -474,7 +500,7 @@ if ($action === 'create_v2' && $method === 'POST') {
         }
 
         $activityStmt = $pdo->prepare(
-            "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+            "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'submitted', ?)"
         );
         $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
 
@@ -583,7 +609,7 @@ if ($action === 'create' && $method === 'POST') {
     }
 
     $activityStmt = $pdo->prepare(
-        "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'submitted', ?)"
     );
     $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
 

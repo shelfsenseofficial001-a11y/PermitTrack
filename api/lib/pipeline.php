@@ -261,3 +261,71 @@ function advance_pipeline(int $applicationId, int $decidedBy, string $decision, 
     }
     return 'Approved';
 }
+
+/**
+ * Which department holds this office for this application, read from the route the application was
+ * given at submission. That snapshot is the only place the applicant's barangay is recorded, and it
+ * is what the reviewer queue matches on, so the document check reads the same source.
+ * Returns null when the application predates the pipeline.
+ *
+ * Lives here rather than in documents.php because the reviewer screen needs the same answer to
+ * decide which documents to offer buttons for — one rule, read from one place.
+ */
+function document_owner_department(int $applicationId, string $officeCode): ?array
+{
+    $s = db()->prepare(
+        "SELECT d.id, d.name, p.status FROM application_pipeline_progress p
+           JOIN departments d ON d.id = p.department_id
+          WHERE p.application_id = ?
+            AND (CASE WHEN d.barangay_id IS NOT NULL THEN 'BARANGAY' ELSE d.code END) = ?
+          LIMIT 1"
+    );
+    $s->execute([$applicationId, $officeCode]);
+    $row = $s->fetch();
+    return $row ?: null;
+}
+
+/** The step an application is sitting on right now, or null (pre-pipeline, or already finished). */
+function current_pipeline_step(int $applicationId): ?array
+{
+    $s = db()->prepare(
+        "SELECT id, office_code, department_id, step_label
+           FROM application_pipeline_progress
+          WHERE application_id = ? AND status = 'current' LIMIT 1"
+    );
+    $s->execute([$applicationId]);
+    return $s->fetch() ?: null;
+}
+
+/**
+ * Whether a staff account may open this application at all — its details and its files.
+ *
+ * An office sees a permit when it reaches them, and afterwards; never before. Until then the
+ * paperwork belongs to the barangay doing intake, and there is no reason the Assessor's clerk
+ * should be able to pull up an ID scan on a permit three offices away. Admins are exempt so a
+ * stuck permit can still be looked at.
+ *
+ * Applications with no route rows predate the pipeline and stay open, as do staff accounts with
+ * no department (the all-queues accounts) — neither has an office to check against.
+ */
+function staff_can_access_application(array $user, int $applicationId): bool
+{
+    if ($user['role'] === 'admin') {
+        return true;
+    }
+    $deptId = (int)($user['department_id'] ?? 0);
+    if ($deptId === 0) {
+        return true;
+    }
+    $total = db()->prepare('SELECT COUNT(*) FROM application_pipeline_progress WHERE application_id = ?');
+    $total->execute([$applicationId]);
+    if ((int)$total->fetchColumn() === 0) {
+        return true;
+    }
+    $mine = db()->prepare(
+        "SELECT COUNT(*) FROM application_pipeline_progress
+          WHERE application_id = ? AND department_id = ? AND status IN ('current', 'approved', 'rejected')"
+    );
+    $mine->execute([$applicationId, $deptId]);
+    return (int)$mine->fetchColumn() > 0;
+}

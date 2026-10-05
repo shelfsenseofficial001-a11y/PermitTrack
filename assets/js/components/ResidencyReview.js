@@ -1,12 +1,13 @@
-import { apiGet, apiPost } from '../api/client.js?v=117';
-import StaffShell from './StaffShell.js?v=117';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
+import { apiGet, apiPost } from '../api/client.js?v=128';
+import StaffShell from './StaffShell.js?v=128';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=128';
+import Loader from './Loader.js?v=128';
+import MaskedValue from './MaskedValue.js?v=128';
 
 export default {
   name: 'ResidencyReview',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { StaffShell, Loader },
+  components: { StaffShell, Loader, MaskedValue },
   data() {
     return {
       loading: true,
@@ -131,7 +132,7 @@ export default {
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Name</dt><dd class="font-semibold text-slate-800">{{ applicant.full_name }}</dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Address declared</dt>
                 <dd class="font-semibold text-slate-800">{{ request.address_line }}, Brgy. {{ request.barangay }}, {{ request.city }} {{ request.postal_code }}</dd></div>
-              <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Date of birth</dt><dd class="font-semibold text-slate-800">{{ applicant.birthdate ? formatDate(applicant.birthdate) : '—' }}</dd></div>
+              <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Date of birth</dt><dd><MaskedValue :value="applicant.birthdate ? formatDate(applicant.birthdate) : ''" label="date of birth" /></dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Email</dt><dd class="font-semibold text-slate-800 break-all">{{ applicant.email || '—' }} <span v-if="applicant.email_verified_at" class="text-brand-700">✓</span></dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Mobile</dt><dd class="font-semibold text-slate-800">{{ applicant.phone || '—' }} <span v-if="applicant.phone_verified_at" class="text-brand-700">✓</span></dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Account created</dt><dd class="font-semibold text-slate-800">{{ formatDate(applicant.created_at) }}</dd></div>
