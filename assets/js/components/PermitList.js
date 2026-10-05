@@ -1,9 +1,9 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=115';
-import StatusStepper from './StatusStepper.js?v=115';
-import PipelineStepper from './PipelineStepper.js?v=115';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError } from '../util.js?v=115';
-import Loader from './Loader.js?v=115';
-import BaseModal from './BaseModal.js?v=115';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=117';
+import StatusStepper from './StatusStepper.js?v=117';
+import PipelineStepper from './PipelineStepper.js?v=117';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=117';
+import Loader from './Loader.js?v=117';
+import BaseModal from './BaseModal.js?v=117';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php and the new-application form.
 const MAX_UPLOAD_MB = 5;
@@ -79,6 +79,7 @@ export default {
     },
   },
   methods: {
+    permitLabel,
     permitNumber,
     permitIconClass,
     formatDate,
@@ -254,7 +255,7 @@ export default {
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
         </div>
         <div class="min-w-0 flex-1">
-          <div class="font-bold truncate" :class="app.status === 'Withdrawn' ? 'text-slate-500' : 'text-ink-700'">{{ app.permit_type }} Permit</div>
+          <div class="font-bold truncate" :class="app.status === 'Withdrawn' ? 'text-slate-500' : 'text-ink-700'">{{ permitLabel(app.permit_type) }}</div>
           <!-- personal and barangay permits have no address; they store 'N/A', which is noise here -->
           <div class="text-sm text-slate-500 truncate">
             <template v-if="app.property_address && app.property_address !== 'N/A'">{{ app.property_address }} &middot; </template>Permit #{{ permitNumber(app) }}

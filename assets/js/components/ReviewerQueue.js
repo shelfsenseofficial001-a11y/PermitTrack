@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=115';
-import StaffShell from './StaffShell.js?v=115';
-import { formatDate, permitIconClass } from '../util.js?v=115';
-import { authState } from '../store/auth.js?v=115';
-import Loader from './Loader.js?v=115';
+import { apiGet } from '../api/client.js?v=117';
+import StaffShell from './StaffShell.js?v=117';
+import { formatDate, permitIconClass, permitLabel } from '../util.js?v=117';
+import { authState } from '../store/auth.js?v=117';
+import Loader from './Loader.js?v=117';
 
 const TABS = [
   { key: 'new', label: 'New' },
@@ -57,6 +57,7 @@ export default {
     await this.refresh();
   },
   methods: {
+    permitLabel,
     formatDate,
     permitIconClass,
     tabIconClass(key) {
@@ -140,7 +141,7 @@ export default {
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </div>
           <div class="min-w-0">
-            <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ app.permit_type || app.permit_type_name }} Permit</div>
+            <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ permitLabel(app.permit_type || app.permit_type_name) }}</div>
             <div class="text-sm text-slate-500 mt-0.5">
               Submitted {{ formatDate(app.created_at) }} &middot; {{ app.days_in_queue }} day(s) in queue
               <template v-if="isPipelineStaff"> &middot; {{ app.step_label }}</template>
