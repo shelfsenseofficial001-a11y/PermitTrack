@@ -227,11 +227,14 @@ if ($action === 'save' && $method === 'POST') {
 // View a business document inline — its owner or staff only
 if ($action === 'file' && $method === 'GET') {
     $user = require_auth();
-    $stmt = db()->prepare('SELECT d.*, b.user_id FROM business_documents d JOIN businesses b ON b.id = d.business_id WHERE d.id = ?');
+    $stmt = db()->prepare('SELECT d.*, b.user_id, b.barangay_id FROM business_documents d JOIN businesses b ON b.id = d.business_id WHERE d.id = ?');
     $stmt->execute([(int)($_GET['id'] ?? 0)]);
     $doc = $stmt->fetch();
     $isStaff = in_array($user['role'], ['staff', 'admin'], true);
     if (!$doc || (!$isStaff && (int)$doc['user_id'] !== (int)$user['id'])) {
+        fail('File not found.', 404);
+    }
+    if ($isStaff && !in_barangay_scope(barangay_scope($user), $doc['barangay_id'])) {
         fail('File not found.', 404);
     }
     send_private_file($doc['file_path'], $doc['mime_type'], $doc['original_filename']);
@@ -240,8 +243,10 @@ if ($action === 'file' && $method === 'GET') {
 // ---------- City Staff / Admin ----------
 
 if ($action === 'counts' && $method === 'GET') {
-    require_role('staff');
-    $rows = db()->query("SELECT status, COUNT(*) c FROM businesses WHERE status <> 'draft' GROUP BY status")->fetchAll();
+    $scope = barangay_scope(require_role('staff'));
+    $cs = db()->prepare("SELECT status, COUNT(*) c FROM businesses WHERE status <> 'draft' AND (? IS NULL OR barangay_id = ?) GROUP BY status");
+    $cs->execute([$scope, $scope]);
+    $rows = $cs->fetchAll();
     $counts = ['pending' => 0, 'approved' => 0, 'rejected' => 0];
     foreach ($rows as $r) {
         $counts[$r['status']] = (int)$r['c'];
@@ -258,9 +263,10 @@ if ($action === 'queue' && $method === 'GET') {
                 b.submitted_at, b.reviewed_at, u.full_name AS owner_name, r.full_name AS reviewer_name,
                 DATEDIFF(NOW(), b.submitted_at) AS days_waiting
          FROM businesses b JOIN users u ON u.id = b.user_id LEFT JOIN users r ON r.id = b.reviewed_by
-         WHERE b.status = ? ORDER BY $order"
+         WHERE b.status = ? AND (? IS NULL OR b.barangay_id = ?) ORDER BY $order"
     );
-    $stmt->execute([$status]);
+    $scope = barangay_scope(require_role('staff'));
+    $stmt->execute([$status, $scope, $scope]);
     $rows = array_map(function (array $r) {
         $r['ownership_label'] = OWNERSHIP_TYPES[$r['ownership_type']]['label'] ?? null;
         return $r;
@@ -269,10 +275,13 @@ if ($action === 'queue' && $method === 'GET') {
 }
 
 if ($action === 'detail' && $method === 'GET') {
-    require_role('staff');
+    $scope = barangay_scope(require_role('staff'));
     $b = business_record((int)($_GET['id'] ?? 0));
     if (!$b || $b['status'] === 'draft') {
         fail('Business not found.', 404);
+    }
+    if (!in_barangay_scope($scope, $b['barangay_id'])) {
+        fail('This business is in another barangay.', 403);
     }
     $u = db()->prepare('SELECT id, full_name, birthdate, email, phone, email_verified_at, phone_verified_at, resident_status, created_at FROM users WHERE id = ?');
     $u->execute([$b['user_id']]);
@@ -298,6 +307,9 @@ if ($action === 'decide' && $method === 'POST') {
     $b = business_record((int)($in['id'] ?? 0));
     if (!$b || $b['status'] === 'draft') {
         fail('Business not found.', 404);
+    }
+    if (!in_barangay_scope(barangay_scope($staff), $b['barangay_id'])) {
+        fail('This business is in another barangay, so you cannot decide it.', 403);
     }
     if ($b['status'] !== 'pending') {
         fail('This business has already been ' . $b['status'] . '.', 409);
