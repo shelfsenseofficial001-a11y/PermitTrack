@@ -1,8 +1,8 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=115';
-import StaffShell from './StaffShell.js?v=115';
-import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass } from '../util.js?v=115';
-import Loader from './Loader.js?v=115';
-import { authState } from '../store/auth.js?v=115';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=117';
+import StaffShell from './StaffShell.js?v=117';
+import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass , permitLabel} from '../util.js?v=117';
+import Loader from './Loader.js?v=117';
+import { authState } from '../store/auth.js?v=117';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
@@ -48,6 +48,7 @@ export default {
     await this.refresh();
   },
   methods: {
+    permitLabel,
     permitNumber,
     formatDate,
     formatDateTime,
@@ -120,7 +121,7 @@ export default {
 
       <div class="pt-gradient-wide rounded-3xl px-6 py-7 sm:px-8 mt-3 shadow-[0_24px_60px_-28px_rgba(31,122,58,0.7)]">
         <p class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1.5">Permit #{{ permitNumber(app) }}</p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ app.applicant.full_name }} &mdash; {{ permitTypeLabel }} Permit</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ app.applicant.full_name }} &mdash; {{ permitLabel(permitTypeLabel) }}</h1>
         <div class="text-sm text-white/85 mt-1">Submitted {{ formatDateTime(app.created_at) }}</div>
       </div>
 

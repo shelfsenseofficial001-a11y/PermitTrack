@@ -129,7 +129,9 @@ if ($action === 'read_all' && $method === 'POST') {
 // A headline for the event, so the bell reads as news rather than as a log line.
 function notification_title(array $row): string
 {
-    $permit = trim((string)$row['permit_type']) !== '' ? $row['permit_type'] . ' permit' : 'application';
+    // Permit names already end in "Permit" ("Demolition Permit"); only add the word when it is missing.
+    $name = trim((string)$row['permit_type']);
+    $permit = $name === '' ? 'application' : (preg_match('/\bpermit$/i', $name) ? $name : $name . ' permit');
 
     if ($row['type'] !== 'status_change') {
         $who = $row['sender_name'] ?: 'City Staff';

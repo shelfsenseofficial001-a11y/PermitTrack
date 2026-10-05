@@ -83,7 +83,7 @@ export default {
           <circle cx="40" cy="40" r="36" fill="none" stroke="#dcefd3" stroke-width="4" />
           <circle cx="40" cy="40" r="36" fill="none" stroke="#1f7a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="60 166" class="pt-ring-spin" />
         </svg>
-        <img src="assets/images/PermitTrackIcon.png?v=115" alt="" class="w-10 h-10 object-contain" />
+        <img src="assets/images/PermitTrackIcon.png?v=117" alt="" class="w-10 h-10 object-contain" />
       </span>
       <span class="text-center px-6">
         <transition name="swap" mode="out-in"><span :key="message" class="block text-sm font-semibold text-ink-700">{{ message }}</span></transition>
@@ -100,7 +100,7 @@ export default {
         <circle cx="32" cy="32" r="28" fill="none" stroke="#dcefd3" stroke-width="4" />
         <circle cx="32" cy="32" r="28" fill="none" stroke="#1f7a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="46 130" class="pt-ring-spin" />
       </svg>
-      <img src="assets/images/PermitTrackIcon.png?v=115" alt="" class="w-8 h-8 object-contain" />
+      <img src="assets/images/PermitTrackIcon.png?v=117" alt="" class="w-8 h-8 object-contain" />
     </span>
     <transition name="swap" mode="out-in"><p :key="message" class="text-sm font-semibold text-ink-700">{{ message }}</p></transition>
   </div>

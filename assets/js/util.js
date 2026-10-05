@@ -82,3 +82,11 @@ export function uploadTypeError(file) {
   }
   return 'Only a scan, photo or PDF can be uploaded (' + UPLOAD_TYPES_LABEL + ').';
 }
+
+// Permit names already end in "Permit" (e.g. "Demolition Permit"). Add the word only when it is
+// missing, so a headline never reads "Demolition Permit Permit".
+export function permitLabel(name) {
+  const n = (name || '').trim();
+  if (!n) return '';
+  return /\bpermit$/i.test(n) ? n : n + ' Permit';
+}

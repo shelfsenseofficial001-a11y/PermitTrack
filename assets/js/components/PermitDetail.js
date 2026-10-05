@@ -1,10 +1,10 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=115';
-import AppShell from './AppShell.js?v=115';
-import StatusStepper from './StatusStepper.js?v=115';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError } from '../util.js?v=115';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=115';
-import Loader from './Loader.js?v=115';
-import BaseModal from './BaseModal.js?v=115';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=117';
+import AppShell from './AppShell.js?v=117';
+import StatusStepper from './StatusStepper.js?v=117';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=117';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=117';
+import Loader from './Loader.js?v=117';
+import BaseModal from './BaseModal.js?v=117';
 
 export default {
   name: 'PermitDetail',
@@ -55,6 +55,7 @@ export default {
     },
   },
   methods: {
+    permitLabel,
     toggleReviewerHints,
     permitNumber,
     permitIconClass,
@@ -186,7 +187,7 @@ export default {
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </div>
           <div>
-            <h1 class="text-xl font-bold text-ink-700">{{ app.permit_type || app.permit_type_name }} Permit</h1>
+            <h1 class="text-xl font-bold text-ink-700">{{ permitLabel(app.permit_type || app.permit_type_name) }}</h1>
             <div class="text-sm text-slate-500">{{ app.property_address }} &middot; Permit #{{ permitNumber(app) }}</div>
           </div>
         </div>
