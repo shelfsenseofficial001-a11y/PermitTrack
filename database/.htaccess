@@ -1,0 +1,4 @@
+# The schema and migrations sit under the document root but are never served: they
+# describe every table, and schema.sql carries the demo staff account's hash. Denied
+# here the same way uploads/ and storage/ deny themselves.
+Require all denied
