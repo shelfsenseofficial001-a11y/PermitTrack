@@ -8,11 +8,12 @@ return [
     // Email verification codes
     'mail' => [
         'driver' => 'log', // 'log' (write to storage/outbox.log) or 'smtp'
-        // Example for Gmail (needs an App Password, not your normal password):
+        // Real SMTP, with the server certificate verified. Use a provider app password, not your login.
+        // Gmail: host smtp.gmail.com, port 587, encryption tls (needs 2-Step Verification + an App Password).
         // 'driver' => 'smtp',
         // 'host' => 'smtp.gmail.com',
         // 'port' => 587,
-        // 'encryption' => 'tls',     // 'tls' (port 587), 'ssl' (port 465) or 'none'
+        // 'encryption' => 'tls',     // 'tls' (port 587), 'ssl' (port 465). 'none' is refused whenever a username is set
         // 'username' => 'you@gmail.com',
         // 'password' => 'your-app-password',
         // 'from_email' => 'you@gmail.com',
