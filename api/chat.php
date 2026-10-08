@@ -84,4 +84,17 @@ if ($action === 'ask' && $method === 'POST') {
     ]);
 }
 
+// The same answers Gibs gives, as a list you can search and read without a conversation — the
+// "Search for help" box in the chat launcher. Public, like the FAQ on the landing page; editing
+// an entry on the Admin page changes it here and in Gibs at once.
+if ($action === 'faqs' && $method === 'GET') {
+    respond(['faqs' => array_map(fn($f) => [
+        'id' => (int)$f['id'],
+        'category' => $f['category'],
+        'question' => $f['question'],
+        'answer' => $f['answer'],
+        'link' => $f['link_path'] ? ['path' => $f['link_path'], 'label' => $f['link_label'] ?: 'Open'] : null,
+    ], chat_active_faqs())]);
+}
+
 fail('Unknown action.', 404);

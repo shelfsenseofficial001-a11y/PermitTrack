@@ -15,7 +15,7 @@ A permit application & review system for residents/businesses and city staff, bu
    or import the files in phpMyAdmin, in filename order. Migrations are safe to run more
    than once, so re-running the whole set is the way to bring an existing database up to date.
 
-   <details><summary>The 28 migrations, in order</summary>
+   <details><summary>The 31 migrations, in order</summary>
 
    ```
    001_user_levels.sql
@@ -46,6 +46,9 @@ A permit application & review system for residents/businesses and city staff, bu
    025_application_barangay.sql
    026_address_psgc.sql
    027_chatbot_business_scope.sql
+   028_verification_barangay_scope.sql
+   029_rename_burol_main.sql
+   030_conversations.sql
    ```
    Two files share the `008` prefix; filename order (`permit_pipeline` before
    `withdraw_applications`) is the correct order.
@@ -88,6 +91,23 @@ password actually opens — so a real person's account never appears in it, and 
 dead end. Both the picker and that password live behind `testing.demo_accounts` in
 `api/config.php`; set it to `false` in `config.local.php` on any install with real accounts on it
 and the tab, the endpoint and the password all go away.
+
+## Help and messages
+
+Every signed-in resident has a chat button in the bottom-right corner; on the landing page it pops
+in once the FAQ is on screen. It opens one panel with three tabs — **Home**, **Messages** and
+**Help** — and writing to someone starts by choosing who:
+
+- **Gibs**, the FAQ assistant, for an instant answer (`api/chat.php`). The Help tab reads the same
+  FAQ entries, so editing one on the Admin page changes both.
+- **City staff**, by picking the permit the question is about. It goes to the office that *issues*
+  that permit — the office of its last pipeline step — or to the resident's own barangay
+  secretariat when that step is the barangay (`api/conversations.php`, migration 030).
+
+Staff answer from **Messages** in the Staff Portal, which lists only their own office's threads
+(admins see every office's) and badges the ones waiting on a reply. A reply reaches the resident
+in the chat panel and by email or SMS. Signed out, the panel is help only: messaging asks you to
+sign in.
 
 ## Structure
 

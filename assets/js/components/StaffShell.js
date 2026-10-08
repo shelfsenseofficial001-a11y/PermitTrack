@@ -2,10 +2,13 @@ import { authState } from '../store/auth.js?v=118';
 import { apiGet } from '../api/client.js?v=118';
 import { openChangePassword, askSignOut } from '../store/ui.js?v=118';
 
+// How often the Messages badge checks for new questions from applicants
+const MESSAGES_POLL_MS = 30000;
+
 export default {
   name: 'StaffShell',
   data() {
-    return { authState, pendingResidency: 0, pendingBusinesses: 0, menuOpen: false };
+    return { authState, pendingResidency: 0, pendingBusinesses: 0, unreadMessages: 0, menuOpen: false };
   },
   computed: {
     initials() {
@@ -24,6 +27,7 @@ export default {
         { key: 'queue', to: '/reviewer', label: 'My Queue', active: p.startsWith('/reviewer') },
         { key: 'residents', to: '/staff/residency', label: 'Residents', badge: this.pendingResidency, active: p.startsWith('/staff/residency') },
         { key: 'businesses', to: '/staff/businesses', label: 'Businesses', badge: this.pendingBusinesses, active: p.startsWith('/staff/businesses') },
+        { key: 'messages', to: '/staff/messages', label: 'Messages', badge: this.unreadMessages, active: p.startsWith('/staff/messages') },
       ];
       if (this.isAdmin) tabs.push({ key: 'admin', to: '/admin', label: 'Admin', active: p.startsWith('/admin') });
       return tabs;
@@ -32,6 +36,7 @@ export default {
   beforeUnmount() {
     document.removeEventListener('click', this.onDocClick);
     document.removeEventListener('keydown', this.onKey);
+    clearInterval(this.messagesPoll);
   },
   async mounted() {
     this.onDocClick = (e) => {
@@ -48,8 +53,19 @@ export default {
     ]);
     this.pendingResidency = residency.pending;
     this.pendingBusinesses = business.pending;
+
+    // Questions from applicants keep arriving while a page is open, so this one is watched
+    this.refreshMessages();
+    this.messagesPoll = setInterval(() => {
+      if (document.visibilityState === 'visible') this.refreshMessages();
+    }, MESSAGES_POLL_MS);
   },
   methods: {
+    async refreshMessages() {
+      try {
+        this.unreadMessages = (await apiGet('conversations.php?action=unread')).unread;
+      } catch (e) { /* the badge keeps its last value */ }
+    },
     openChangePassword,
     // Asks first; the sign-out itself (and its veil) runs from app.js, shared by every menu
     doLogout() {
@@ -81,6 +97,10 @@ export default {
             <router-link to="/staff/businesses" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" title="Business Verifications">
               Businesses
               <span v-if="pendingBusinesses" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="pendingBusinesses + ' waiting'">{{ pendingBusinesses }}</span>
+            </router-link>
+            <router-link to="/staff/messages" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" title="Messages from applicants">
+              Messages
+              <span v-if="unreadMessages" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="unreadMessages + ' unread'">{{ unreadMessages }}</span>
             </router-link>
           </nav>
         </div>
@@ -126,7 +146,7 @@ export default {
     <!-- Bottom tab tray on phones; the header carries these links from md up -->
     <nav aria-label="Main"
       class="md:hidden fixed inset-x-0 bottom-0 z-40 bg-ink-700/95 backdrop-blur-md border-t border-white/10 shadow-[0_-12px_30px_-18px_rgba(7,24,14,0.6)] pb-[env(safe-area-inset-bottom)]">
-      <div class="grid h-16" :class="trayTabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3'">
+      <div class="grid h-16" :class="trayTabs.length === 5 ? 'grid-cols-5' : 'grid-cols-4'">
         <router-link v-for="t in trayTabs" :key="t.key" :to="t.to" :aria-current="t.active ? 'page' : null"
           class="group flex flex-col items-center justify-center gap-1 focus:outline-none"
           :class="t.active ? 'text-sun-300' : 'text-ink-300 hover:text-white active:text-white'">
@@ -138,6 +158,8 @@ export default {
             <svg v-else-if="t.key === 'residents'" class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
             <!-- Businesses -->
             <svg v-else-if="t.key === 'businesses'" class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg>
+            <!-- Messages -->
+            <svg v-else-if="t.key === 'messages'" class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.4 7.55L3 21l1.45-5.6A8.5 8.5 0 1 1 21 12z"/></svg>
             <!-- Admin -->
             <svg v-else class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
             <span v-if="t.badge" class="absolute top-0 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-sun-400 text-ink-700 text-[10px] font-bold flex items-center justify-center ring-2 ring-ink-700"

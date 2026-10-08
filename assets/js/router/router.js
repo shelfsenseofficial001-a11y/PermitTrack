@@ -6,6 +6,7 @@ import Login from '../components/Login.js?v=118';
 import Register from '../components/Register.js?v=118';
 import Verify from '../components/Verify.js?v=118';
 import StaffLogin from '../components/StaffLogin.js?v=118';
+import StaffMessages from '../components/StaffMessages.js?v=118';
 import Dashboard from '../components/Dashboard.js?v=118';
 import MyPermits from '../components/MyPermits.js?v=118';
 import Notifications from '../components/Notifications.js?v=118';
@@ -46,6 +47,7 @@ const routes = [
   { path: '/staff/residency/:id', component: ResidencyReview, meta: { role: 'staff' } },
   { path: '/staff/businesses', component: BusinessQueue, meta: { role: 'staff' } },
   { path: '/staff/businesses/:id', component: BusinessReview, meta: { role: 'staff' } },
+  { path: '/staff/messages/:id?', component: StaffMessages, meta: { role: 'staff' } },
   { path: '/admin/:tab?', component: Admin, meta: { role: 'admin' } },
   { path: '/account', component: Profile },
   // Changing a password is a dialog now; old links and bookmarks are handled in the guard below

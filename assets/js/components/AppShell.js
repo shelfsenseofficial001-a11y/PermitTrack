@@ -1,6 +1,6 @@
 import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=118';
 import { apiGet, apiPost } from '../api/client.js?v=118';
-import ChatWidget from './ChatWidget.js?v=118';
+import ChatLauncher from './ChatLauncher.js?v=118';
 import AddAccountModal from './AddAccountModal.js?v=118';
 import BaseModal from './BaseModal.js?v=118';
 import { formatDateTime } from '../util.js?v=118';
@@ -16,7 +16,7 @@ const MAX_TOASTS = 3;
 
 export default {
   name: 'AppShell',
-  components: { ChatWidget, AddAccountModal, BaseModal, Loader, NotificationToasts },
+  components: { ChatLauncher, AddAccountModal, BaseModal, Loader, NotificationToasts },
   props: {
     // For a page with its own sticky action bar along the bottom: lifts the Ask button above it
     liftChat: { type: Boolean, default: false },
@@ -418,7 +418,7 @@ export default {
 
     <NotificationToasts v-if="isApplicant" :items="toasts" @open="openToast" @close="dismissToast" />
 
-    <ChatWidget v-if="authState.user && authState.user.role === 'applicant'" :lift-for-bar="liftChat" />
+    <ChatLauncher v-if="authState.user && authState.user.role === 'applicant'" :lift-for-bar="liftChat" />
     <transition name="modal">
       <AddAccountModal v-if="addingAccount" @close="addingAccount = false" />
     </transition>
