@@ -34,9 +34,9 @@ export default {
     },
   },
   template: `
-  <transition appear enter-from-class="opacity-0" enter-active-class="transition-opacity duration-200 ease-out motion-reduce:transition-none">
+  <transition appear enter-from-class="opacity-0" enter-active-class="transition-opacity duration-300 ease-out motion-reduce:transition-none">
     <div class="font-inter fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-ink-900/55 backdrop-blur-[3px]" @click.self="dismiss">
-      <transition appear enter-from-class="opacity-0 translate-y-3 scale-[0.97]" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none">
+      <transition appear enter-from-class="opacity-0 translate-y-8 scale-[0.88]" enter-active-class="transition duration-500 ease-[cubic-bezier(.34,1.45,.64,1)] motion-reduce:transition-none">
         <div class="relative w-full max-w-[440px] max-h-[calc(100vh-2rem)] flex flex-col rounded-3xl bg-white overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
           role="dialog" aria-modal="true" :aria-labelledby="titleId">
 

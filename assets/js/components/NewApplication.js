@@ -572,7 +572,7 @@ export default {
           <!-- Keyed by step, so each step mounts fresh and plays its CSS entrance (demo-in). Not a
                Vue <transition>: out-in waits on animation frames, and a tab that isn't painting
                would be left with an empty step. -->
-          <div :key="step" class="demo-in px-5 sm:px-7 pt-5 pb-6">
+          <div :key="step" class="pt-tab-in px-5 sm:px-7 pt-5 pb-6">
 
             <!-- ============ 1 · CHOOSE ============ -->
             <div v-if="step === 'choose'" class="space-y-4">

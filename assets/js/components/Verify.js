@@ -1,4 +1,5 @@
 import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=118';
+import { enterSignedIn } from '../store/ui.js?v=118';
 import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
 
 export default {
@@ -62,7 +63,12 @@ export default {
       this.loading = true;
       try {
         const user = await verifyCode(this.code);
-        this.$router.push(homePathFor(user));
+        const first = (user && (user.first_name || String(user.full_name || '').trim().split(/\s+/)[0])) || '';
+        await enterSignedIn(this.$router, homePathFor(user), user, {
+          from: this.$refs.submitBtn,
+          greeting: first ? `Welcome to PermitTrack, ${first}` : 'Welcome to PermitTrack',
+          line: 'Setting up your dashboard…',
+        });
       } catch (e) {
         this.error = e.message;
         this.code = '';
@@ -110,7 +116,7 @@ export default {
         <p v-if="error" class="text-sm text-red-600" role="alert">{{ error }}</p>
         <p v-if="notice" class="text-sm text-[#1f7a3a]" aria-live="polite">{{ notice }}</p>
 
-        <button type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Checking…' : 'Verify' }}</button>
+        <button ref="submitBtn" type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Checking…' : 'Verify' }}</button>
       </form>
 
       <p class="text-sm text-slate-500 mt-5 text-center">

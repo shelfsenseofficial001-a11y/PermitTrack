@@ -1,4 +1,5 @@
 import { login, homePathFor } from '../store/auth.js?v=118';
+import { enterSignedIn } from '../store/ui.js?v=118';
 import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
 import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=118';
 
@@ -29,7 +30,7 @@ export default {
       this.loading = true;
       try {
         const user = await login(this.form.email, this.form.password, true);
-        this.$router.push(homePathFor(user));
+        await enterSignedIn(this.$router, homePathFor(user), user, { from: this.$refs.submitBtn, line: 'Opening your queue…' });
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -69,7 +70,7 @@ export default {
       <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
 
       <div class="pt-1">
-        <button type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Please wait…' : 'Sign in as Staff' }}</button>
+        <button ref="submitBtn" type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Please wait…' : 'Sign in as Staff' }}</button>
       </div>
     </form>
 

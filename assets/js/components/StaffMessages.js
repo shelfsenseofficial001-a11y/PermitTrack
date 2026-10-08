@@ -191,7 +191,7 @@ export default {
         <div v-else-if="!shown.length" class="bg-white rounded-2xl border border-dashed border-brand-200 p-10 text-center text-sm text-slate-500">
           {{ filter === 'awaiting' ? 'Nobody is waiting on a reply.' : 'Nothing here.' }}
         </div>
-        <div v-else class="bg-white rounded-2xl ring-1 ring-brand-100 overflow-hidden divide-y divide-slate-100">
+        <div v-else :key="'list-' + filter" class="pt-stagger bg-white rounded-2xl ring-1 ring-brand-100 overflow-hidden divide-y divide-slate-100">
           <button v-for="c in shown" :key="c.id" type="button" @click="select(c)"
             class="w-full flex items-start gap-3 px-4 py-3.5 text-left transition"
             :class="c.id === selectedId ? 'bg-brand-50' : 'hover:bg-brand-50/50'">
@@ -221,7 +221,7 @@ export default {
           <p class="mt-1 text-sm text-slate-500">The applicant sees your reply in their chat, and gets an email or SMS about it.</p>
         </div>
 
-        <section v-else class="bg-white rounded-2xl ring-1 ring-brand-100 overflow-hidden flex flex-col h-[min(42rem,calc(100vh-12rem))]">
+        <section v-else :key="'thread-' + selectedId" class="pt-rise-in bg-white rounded-2xl ring-1 ring-brand-100 overflow-hidden flex flex-col h-[min(42rem,calc(100vh-12rem))]">
           <Loader v-if="threadLoading" kind="generic" label="Opening the conversation…" />
           <template v-else-if="thread">
             <header class="shrink-0 flex items-center gap-3 px-4 sm:px-5 py-3.5 border-b border-slate-100">
@@ -242,14 +242,14 @@ export default {
             </header>
 
             <div ref="log" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 sm:px-5 py-5 bg-meadow/40" aria-live="polite">
-              <div class="space-y-3">
+              <transition-group name="list" tag="div" class="relative space-y-3">
                 <div v-for="m in messages" :key="m.id" :class="m.from_office ? 'flex flex-col items-end' : 'flex flex-col items-start'">
                   <span class="px-1 mb-0.5 text-[11px] font-semibold text-slate-500">{{ m.mine ? 'You' : m.sender_name }}</span>
                   <div class="max-w-[80%] px-3.5 py-2 text-sm whitespace-pre-line break-words"
                     :class="m.from_office ? 'rounded-2xl rounded-br-md bg-brand-600 text-white' : 'rounded-2xl rounded-bl-md bg-white ring-1 ring-brand-100 text-slate-700 shadow-[0_6px_16px_-12px_rgba(16,48,29,0.35)]'">{{ m.body }}</div>
                   <span class="px-1 mt-0.5 text-[10px] text-slate-400" :title="formatDateTime(m.created_at)">{{ timeAgo(m.created_at) }}</span>
                 </div>
-              </div>
+              </transition-group>
             </div>
 
             <form @submit.prevent="sendReply" class="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
