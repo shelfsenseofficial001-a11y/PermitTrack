@@ -103,8 +103,7 @@ function start_registration_verification(array $data, string $channel, string $d
         'expires_in_minutes' => CODE_TTL_MINUTES,
         'resend_after_seconds' => CODE_RESEND_SECONDS,
     ];
-    $driver = app_config()[$channel === 'email' ? 'mail' : 'sms']['driver'] ?? 'log';
-    if ($driver === 'log') {
+    if (show_test_code($channel)) {
         $result['dev_code'] = $code;
     }
     return $result;

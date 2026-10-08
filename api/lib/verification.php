@@ -18,8 +18,21 @@ function mask_destination(string $channel, string $destination): string
 }
 
 /**
- * Sends a fresh 6-digit code and returns what the UI needs to show.
- * With the 'log' driver the code is also returned as dev_code so it can be tested locally.
+ * Test mode: hand the code back to the page (shown in a "Test mode" box) when nothing is really
+ * sent ('log' driver), or when testing.show_codes / VERIFICATION_TEST_MODE=true is set, so
+ * accounts can still get past verification while email/SMS delivery is being set up.
+ * Never turn it on for a live site: anyone could sign in to any unverified account.
+ */
+function show_test_code(string $channel): bool
+{
+    $cfg = app_config();
+    $driver = $cfg[$channel === 'email' ? 'mail' : 'sms']['driver'] ?? 'log';
+    return $driver === 'log' || !empty($cfg['testing']['show_codes']);
+}
+
+/**
+ * Sends a fresh 6-digit code and returns what the UI needs to show, including the code
+ * itself as dev_code when show_test_code() allows it.
  */
 function issue_verification_code(int $userId, string $channel, string $destination, bool $isResend = false): array
 {
@@ -84,8 +97,7 @@ function issue_verification_code(int $userId, string $channel, string $destinati
         'expires_in_minutes' => CODE_TTL_MINUTES,
         'resend_after_seconds' => CODE_RESEND_SECONDS,
     ];
-    $driver = app_config()[$channel === 'email' ? 'mail' : 'sms']['driver'] ?? 'log';
-    if ($driver === 'log') {
+    if (show_test_code($channel)) {
         $result['dev_code'] = $code;
     }
     return $result;

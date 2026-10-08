@@ -126,7 +126,7 @@ export default {
 
       <!-- Only shown while email/SMS use the local 'log' driver (no real sending configured) -->
       <div v-if="v.dev_code" class="mt-6 rounded-xl border border-dashed border-sun-400 bg-sun-50 p-3 text-xs text-sun-700">
-        <strong>Test mode:</strong> email/SMS sending isn't set up yet, so the code is shown here:
+        <strong>Test mode:</strong> your code is shown here so you can continue without waiting for the email or text:
         <button type="button" class="font-mono font-bold underline ml-1" @click="code = v.dev_code; submit()">{{ v.dev_code }}</button>
       </div>
     </template>

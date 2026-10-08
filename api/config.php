@@ -114,11 +114,15 @@ function app_config(): array
             // email addresses, so any install with real accounts on it sets this false in
             // config.local.php — that one flag takes them out of the API response. It never
             // discloses credentials; the tester signs in with a password they already hold.
-            'testing' => ['reviewer_hints' => true],
+            'testing' => ['reviewer_hints' => true, 'show_codes' => false],
         ];
         $local = is_file(__DIR__ . '/config.local.php') ? require __DIR__ . '/config.local.php' : [];
         $config = array_replace_recursive($defaults, is_array($local) ? $local : []);
 
+        $testMode = getenv('VERIFICATION_TEST_MODE');
+        if ($testMode !== false) {
+            $config['testing']['show_codes'] = filter_var($testMode, FILTER_VALIDATE_BOOLEAN);
+        }
         $mailDriver = getenv('MAIL_DRIVER');
         if ($mailDriver !== false) {
             $config['mail'] = [
