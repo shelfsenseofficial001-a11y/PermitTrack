@@ -447,4 +447,92 @@ if ($action === 'me' && $method === 'GET') {
     respond(['user' => current_user()]);
 }
 
+// The account picker on the sign-in pages: who a tester can sign in as, grouped by level.
+// Public on purpose — it sits on the sign-in pages, before anyone is signed in — and gated by
+// testing.demo_accounts, which an install with real accounts on it turns off. See config.php.
+if ($action === 'demo_accounts' && $method === 'GET') {
+    $testing = app_config()['testing'] ?? [];
+    if (empty($testing['demo_accounts'])) {
+        respond(['enabled' => false, 'password' => '', 'groups' => []]);
+    }
+    $password = (string)($testing['demo_password'] ?? '');
+
+    $rows = db()->query(
+        "SELECT u.id, u.role, u.account_type, u.email, u.full_name, u.password_hash, u.barangay,
+                d.name AS department_name, d.barangay_id AS dept_barangay_id,
+                (SELECT b.business_name FROM businesses b
+                  WHERE b.user_id = u.id AND b.status = 'approved'
+                  ORDER BY b.id LIMIT 1) AS business_name
+           FROM users u
+           LEFT JOIN departments d ON d.id = u.department_id
+          WHERE u.is_active = 1 AND u.email IS NOT NULL
+          ORDER BY u.id"
+    )->fetchAll();
+
+    // Only the accounts this one password actually opens, so nothing in the list is a dead end —
+    // a real person's account with their own password drops out here. bcrypt is deliberately
+    // slow, so check once per distinct hash (a seeded install has a handful), not once per row.
+    $verdict = [];
+    $usable = [];
+    foreach ($rows as $row) {
+        $hash = $row['password_hash'];
+        if (!array_key_exists($hash, $verdict)) {
+            $verdict[$hash] = $password !== '' && password_verify($password, $hash);
+        }
+        if ($verdict[$hash]) {
+            $usable[] = $row;
+        }
+    }
+
+    // portal = which sign-in page takes this account; the API refuses the other one outright.
+    $groups = [
+        'unregistered' => ['label' => 'Normal users', 'portal' => 'resident',
+            'note' => 'Signed up and verified, nothing approved yet — can browse permits and requirements.'],
+        'resident' => ['label' => 'Residents', 'portal' => 'resident',
+            'note' => 'Residency approved — can file personal and construction permits.'],
+        'business' => ['label' => 'Business owners', 'portal' => 'resident',
+            'note' => 'At least one approved business — can file that business’s permits.'],
+        'office' => ['label' => 'City staff — offices', 'portal' => 'staff',
+            'note' => 'One reviewer per office. Each sees only the steps routed to that office.'],
+        'barangay' => ['label' => 'Barangay secretariats', 'portal' => 'staff',
+            'note' => 'Barangay-level clearances — the first step of most pipelines.'],
+        'admin' => ['label' => 'Admins', 'portal' => 'staff',
+            'note' => 'Everything staff can do, across every office, plus the Admin page.'],
+    ];
+    foreach ($groups as $key => $group) {
+        $groups[$key]['key'] = $key;
+        $groups[$key]['accounts'] = [];
+    }
+
+    foreach ($usable as $row) {
+        if ($row['role'] === 'admin') {
+            $key = 'admin';
+            $detail = $row['department_name'] ?: 'All offices';
+        } elseif ($row['role'] === 'staff') {
+            $key = $row['dept_barangay_id'] !== null ? 'barangay' : 'office';
+            $detail = $row['department_name'] ?: 'No office assigned';
+        } elseif ($row['account_type'] === 'business') {
+            $key = 'business';
+            $detail = $row['business_name'] ?: '';
+        } elseif ($row['account_type'] === 'resident') {
+            $key = 'resident';
+            $detail = $row['barangay'] ? 'Barangay ' . $row['barangay'] : '';
+        } else {
+            $key = 'unregistered';
+            $detail = $row['barangay'] ? 'Barangay ' . $row['barangay'] : '';
+        }
+        $groups[$key]['accounts'][] = [
+            'email' => $row['email'],
+            'name' => $row['full_name'],
+            'detail' => $detail,
+        ];
+    }
+
+    respond([
+        'enabled' => true,
+        'password' => $password,
+        'groups' => array_values(array_filter($groups, fn($g) => $g['accounts'] !== [])),
+    ]);
+}
+
 fail('Unknown action.', 404);

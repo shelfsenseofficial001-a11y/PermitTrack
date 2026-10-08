@@ -58,6 +58,28 @@ export function timeAgo(value) {
   return formatDate(value);
 }
 
+// Sign-up and sign-in check the same two things, so the rules live here rather than in each
+// form. The server checks again on its side — normalize_ph_mobile() in api/config.php is what
+// actually decides a number is usable; these only catch the mistake before the round trip.
+export const isValidEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value).trim());
+export const isValidPhMobile = (value) => /^(\+?63|0)?9\d{9}$/.test(String(value).replace(/[\s-]/g, ''));
+
+/**
+ * The sign-in box takes either an email or a mobile number, so the error has to name the one the
+ * person was clearly reaching for — telling someone who typed "asasasas" that it is not a valid
+ * mobile number is no help. Digits and the punctuation a number carries mean they meant a number;
+ * anything else means they meant an email. Returns '' when the value is fine (or still empty).
+ */
+export function identifierError(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const meantAsPhone = /^[\d+][\d\s()-]*$/.test(trimmed);
+  if (meantAsPhone) {
+    return isValidPhMobile(trimmed) ? '' : 'Invalid mobile number. Use a format like 0917 123 4567.';
+  }
+  return isValidEmail(trimmed) ? '' : 'Invalid email address.';
+}
+
 // Every "Back" link in the app shares one look: a white pill with a solid green arrow badge,
 // clearly visible on both the white auth card and the meadow page background.
 export const backButtonClass = 'group inline-flex items-center gap-2.5 pl-1.5 pr-4 py-1.5 rounded-full bg-white ring-1 ring-brand-200 shadow-[0_6px_16px_-8px_rgba(16,48,29,0.35)] text-sm font-semibold text-ink-700 hover:ring-brand-400 hover:text-brand-700 hover:shadow-[0_10px_22px_-10px_rgba(16,48,29,0.45)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/60 transition';
