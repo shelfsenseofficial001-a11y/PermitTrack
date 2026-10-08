@@ -1,9 +1,9 @@
-import { register } from '../store/auth.js?v=117';
-import { apiGet } from '../api/client.js?v=117';
+import { register } from '../store/auth.js?v=118';
+import { apiGet } from '../api/client.js?v=118';
 
 const CONTACT_CHECK_DEBOUNCE_MS = 500;
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
-import BarangaySelect from './BarangaySelect.js?v=117';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
+import BarangaySelect from './BarangaySelect.js?v=118';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
