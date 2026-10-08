@@ -66,13 +66,44 @@ function is_strong_password(string $password): bool
 }
 
 /**
+ * Reads a .env file (simple KEY=VALUE lines, '#' comments, optional quotes) into
+ * getenv()/$_ENV without requiring a dotenv package. Missing file is not an error.
+ */
+function load_env_file(string $path): void
+{
+    if (!is_file($path)) {
+        return;
+    }
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) {
+            continue;
+        }
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value);
+        if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'") && $value[-1] === $value[0]) {
+            $value = substr($value, 1, -1);
+        }
+        if ($key !== '' && getenv($key) === false) {
+            putenv("$key=$value");
+            $_ENV[$key] = $value;
+        }
+    }
+}
+
+/**
  * Settings that differ per install (SMTP, SMS provider, municipality name).
- * Copy config.local.example.php to config.local.php and fill it in.
+ * Preferred source is .env (copy .env.example to .env and fill it in); api/config.local.php
+ * is still supported for settings .env doesn't cover and overrides defaults, but a value also
+ * set in .env is taken from .env.
  */
 function app_config(): array
 {
     static $config = null;
     if ($config === null) {
+        load_env_file(dirname(__DIR__) . '/.env');
+
         $defaults = [
             'municipality' => 'City of Dasmariñas',
             'mail' => ['driver' => 'log'],
@@ -86,6 +117,33 @@ function app_config(): array
         ];
         $local = is_file(__DIR__ . '/config.local.php') ? require __DIR__ . '/config.local.php' : [];
         $config = array_replace_recursive($defaults, is_array($local) ? $local : []);
+
+        $mailDriver = getenv('MAIL_DRIVER');
+        if ($mailDriver !== false) {
+            $config['mail'] = [
+                'driver' => $mailDriver,
+                'host' => getenv('SMTP_HOST') ?: null,
+                'port' => getenv('SMTP_PORT') ?: null,
+                'encryption' => getenv('SMTP_ENCRYPTION') ?: null,
+                'username' => getenv('SMTP_USERNAME') ?: null,
+                'password' => getenv('SMTP_PASSWORD') ?: null,
+                'from_email' => getenv('SMTP_FROM_EMAIL') ?: null,
+                'from_name' => getenv('SMTP_FROM_NAME') ?: null,
+            ];
+        }
+        $smsDriver = getenv('SMS_DRIVER');
+        if ($smsDriver !== false) {
+            $config['sms'] = [
+                'driver' => $smsDriver,
+                'api_key' => getenv('SEMAPHORE_API_KEY') ?: null,
+                'sender_name' => getenv('SEMAPHORE_SENDER_NAME') ?: null,
+                'account_sid' => getenv('TWILIO_ACCOUNT_SID') ?: null,
+                'auth_token' => getenv('TWILIO_AUTH_TOKEN') ?: null,
+                'from' => getenv('TWILIO_FROM') ?: null,
+                'api_token' => getenv('PHILSMS_API_TOKEN') ?: null,
+                'sender_id' => getenv('PHILSMS_SENDER_ID') ?: null,
+            ];
+        }
     }
     return $config;
 }
