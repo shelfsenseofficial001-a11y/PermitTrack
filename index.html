@@ -303,29 +303,43 @@
   .pt-logo .pt-logo-float, .pt-logo .pt-logo-page, .pt-logo .pt-logo-rise {
     transform-box: fill-box; transform-origin: 50% 50%;
   }
-  .pt-logo-animated .pt-logo-float { animation: pt-logo-float 2.4s cubic-bezier(.45,0,.25,1) infinite; }
-  .pt-logo-animated .pt-logo-rise  { animation: pt-logo-rise  2.4s cubic-bezier(.45,0,.25,1) infinite; }
-  .pt-logo-animated .pt-logo-page  { animation: pt-logo-page  2.4s cubic-bezier(.45,0,.25,1) infinite; }
+  .pt-logo-animated .pt-logo-float { animation: pt-logo-float 1.9s cubic-bezier(.34,1.3,.5,1) infinite; }
+  .pt-logo-animated .pt-logo-rise  { animation: pt-logo-rise  1.9s cubic-bezier(.34,1.3,.5,1) infinite; }
+  .pt-logo-animated .pt-logo-page  { animation: pt-logo-page  1.9s cubic-bezier(.34,1.3,.5,1) infinite; }
   /* Lengths here are viewBox units, not screen pixels: the mark is 64 units wide and usually
-     drawn at 32-40px, so a value of 4 reads as about 2px. Hence the large-looking numbers. */
+     drawn at 32-40px, so a value of 8 reads as about 4px.
+
+     The loop is a launch. The mark crouches, the arrow tears away up and to the right and swings
+     back, the page recoils the other way and rocks, and the two settle together through a couple
+     of diminishing bounces. Squash on the way down, stretch on the way up — the whole point is
+     that it is unmistakably moving, not breathing. */
   @keyframes pt-logo-float {
-    0%, 100% { transform: translateY(0) scale(1); }
-    28%      { transform: translateY(-4.5px) scale(1.07); }
-    52%      { transform: translateY(2px) scale(.95); }
-    74%      { transform: translateY(-1.5px) scale(1.02); }
-    90%      { transform: translateY(.4px) scale(.995); }
+    0%      { transform: translateY(0) scale(1, 1); }
+    12%     { transform: translateY(3px) scale(1.12, .86); }   /* crouch */
+    34%     { transform: translateY(-9px) scale(.9, 1.16); }   /* launch */
+    52%     { transform: translateY(2.5px) scale(1.1, .9); }   /* land */
+    68%     { transform: translateY(-3.5px) scale(.96, 1.06); }
+    82%     { transform: translateY(1px) scale(1.04, .97); }
+    92%     { transform: translateY(-1px) scale(.99, 1.01); }
+    100%    { transform: translateY(0) scale(1, 1); }
   }
   @keyframes pt-logo-rise {
-    0%, 100% { transform: translate(0, 0) rotate(0deg); }
-    28%      { transform: translate(4px, -6px) rotate(9deg); }
-    52%      { transform: translate(-1.4px, 2px) rotate(-4deg); }
-    76%      { transform: translate(.8px, -.9px) rotate(1.8deg); }
+    0%      { transform: translate(0, 0) rotate(0deg); }
+    12%     { transform: translate(-2px, 2px) rotate(-7deg); }
+    34%     { transform: translate(10px, -13px) rotate(26deg); }
+    52%     { transform: translate(-3.5px, 4px) rotate(-11deg); }
+    68%     { transform: translate(3px, -3.5px) rotate(8deg); }
+    82%     { transform: translate(-1.2px, 1.4px) rotate(-3deg); }
+    100%    { transform: translate(0, 0) rotate(0deg); }
   }
   @keyframes pt-logo-page {
-    0%, 100% { transform: translate(0, 0) rotate(0deg); }
-    28%      { transform: translate(-2px, 2.4px) rotate(-6.5deg); }
-    56%      { transform: translate(1px, -1.1px) rotate(3deg); }
-    80%      { transform: translate(-.3px, .3px) rotate(-1deg); }
+    0%      { transform: translate(0, 0) rotate(0deg); }
+    12%     { transform: translate(1px, 1px) rotate(4deg); }
+    34%     { transform: translate(-5px, 5.5px) rotate(-15deg); }
+    52%     { transform: translate(2.5px, -2px) rotate(7deg); }
+    68%     { transform: translate(-1.8px, 1.6px) rotate(-5deg); }
+    82%     { transform: translate(.8px, -.7px) rotate(2deg); }
+    100%    { transform: translate(0, 0) rotate(0deg); }
   }
   @media (prefers-reduced-motion: reduce) {
     .pt-logo-animated .pt-logo-float,
