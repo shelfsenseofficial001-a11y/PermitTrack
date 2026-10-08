@@ -347,6 +347,26 @@
     .pt-logo-animated .pt-logo-page { animation: none; }
   }
 
+  /* The chat launcher (ChatLauncher.js): the greeting's hand waves a few times and rests, and a
+     new-message badge lands with a bounce so it's noticed from the corner of the eye. */
+  .pt-wave { animation: pt-wave 2.6s ease-in-out 0.4s 2; }
+  @keyframes pt-wave {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    10%, 30%      { transform: rotate(16deg); }
+    20%           { transform: rotate(-8deg); }
+    40%           { transform: rotate(-4deg); }
+    50%           { transform: rotate(10deg); }
+  }
+  .pt-chat-head {
+    background-color: #10301d;
+    background-image:
+      radial-gradient(120% 90% at 100% 0%, rgba(247,207,27,.32) 0%, rgba(247,207,27,0) 55%),
+      radial-gradient(90% 80% at 0% 100%, rgba(55,146,60,.55) 0%, rgba(55,146,60,0) 62%);
+  }
+  .pt-badge-pop { animation: pt-badge-pop .5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes pt-badge-pop { from { transform: scale(0); } to { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .pt-wave, .pt-badge-pop { animation: none; } }
+
   /* Landing page: sections rise into place as they scroll into view */
   .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
   .reveal.is-visible { opacity: 1; transform: none; }

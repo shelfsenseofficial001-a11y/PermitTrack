@@ -1,5 +1,5 @@
 import { permitIconClass } from '../util.js?v=118';
-import ChatWidget from './ChatWidget.js?v=118';
+import ChatLauncher from './ChatLauncher.js?v=118';
 import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=118';
 import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=118';
 
@@ -131,7 +131,7 @@ const FAQS = [
 
 export default {
   name: 'Landing',
-  components: { ChatWidget },
+  components: { ChatLauncher },
   data() {
     return {
       stage: 0,
@@ -148,6 +148,9 @@ export default {
       statCounts: [0, 0, 0],
       scrolled: false,
       showFloatingTop: false,
+      // The chat button stays out of the way of the pitch and arrives with the FAQ — the point
+      // where a visitor has questions. Once it has arrived it stays.
+      faqSeen: false,
       menuOpen: false,
       // One list for the desktop nav, the mobile menu and the footer
       navLinks: [
@@ -339,6 +342,10 @@ export default {
       this.scrolled = window.scrollY > 8;
       // The floating "Back to top" appears once the hero is behind you and stays, footer included
       this.showFloatingTop = window.scrollY > window.innerHeight * 0.9;
+      // Reaching the FAQ, or jumping past it (the footer, a #link), both count as having seen it.
+      if (!this.faqSeen && this.$refs.faq && this.$refs.faq.getBoundingClientRect().top < window.innerHeight * 0.85) {
+        this.faqSeen = true;
+      }
     };
     window.addEventListener('scroll', this.onScroll, { passive: true });
     this.onScroll();
@@ -1460,7 +1467,7 @@ export default {
     </section>
 
     <!-- ============ FAQ ============ -->
-    <section id="faq" class="scroll-mt-16 py-14 sm:py-20">
+    <section id="faq" ref="faq" class="scroll-mt-16 py-14 sm:py-20">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-[1fr_1.5fr] gap-10 lg:gap-16">
         <div class="reveal">
           <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">FAQ</span>
@@ -1566,7 +1573,7 @@ export default {
       </button>
     </transition>
 
-    <ChatWidget :lift-for-fab="showFloatingTop && !menuOpen" />
+    <ChatLauncher :visible="faqSeen" :lift-for-fab="showFloatingTop && !menuOpen" />
   </div>
   `,
 };
