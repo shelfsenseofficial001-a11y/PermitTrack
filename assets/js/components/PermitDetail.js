@@ -1,10 +1,10 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=117';
-import AppShell from './AppShell.js?v=117';
-import StatusStepper from './StatusStepper.js?v=117';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=117';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=117';
-import Loader from './Loader.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=118';
+import AppShell from './AppShell.js?v=118';
+import StatusStepper from './StatusStepper.js?v=118';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=118';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=118';
+import Loader from './Loader.js?v=118';
+import BaseModal from './BaseModal.js?v=118';
 
 export default {
   name: 'PermitDetail',

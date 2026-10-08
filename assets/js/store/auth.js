@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import { apiGet, apiPost } from '../api/client.js?v=117';
-import { beginTransition, carryTransitionThroughReload } from './ui.js?v=117';
+import { apiGet, apiPost } from '../api/client.js?v=118';
+import { beginTransition, carryTransitionThroughReload } from './ui.js?v=118';
 
 export const authState = reactive({
   user: null,

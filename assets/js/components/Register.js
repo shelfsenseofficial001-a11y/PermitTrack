@@ -1,6 +1,7 @@
-import { register } from '../store/auth.js?v=117';
-import { apiGet } from '../api/client.js?v=117';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import { register } from '../store/auth.js?v=118';
+import { apiGet } from '../api/client.js?v=118';
+import { isValidEmail, isValidPhMobile } from '../util.js?v=118';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
@@ -101,8 +102,8 @@ export default {
         if (f.birthdate < this.minBirthdate) return 'Please enter a valid date of birth (age must be 80 or below).';
       }
       if (this.step === 1) {
-        if (f.contact_method === 'email' && !/^\S+@\S+\.\S+$/.test(f.email.trim())) return 'Please enter a valid email address.';
-        if (f.contact_method === 'phone' && !/^(\+?63|0)?9\d{9}$/.test(f.phone.replace(/[\s-]/g, ''))) return 'Please enter a valid mobile number, e.g. 0917 123 4567.';
+        if (f.contact_method === 'email' && !isValidEmail(f.email)) return 'Please enter a valid email address.';
+        if (f.contact_method === 'phone' && !isValidPhMobile(f.phone)) return 'Please enter a valid mobile number, e.g. 0917 123 4567.';
         if (!f.address_line.trim()) return 'Please enter your house number and street.';
         if (!f.province_code || !f.city_code) return 'Please choose your province and city or municipality.';
         if (this.inHomeCity && !this.matchedBarangay) return 'Please choose your barangay from the list.';

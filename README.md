@@ -77,8 +77,17 @@ Resident and Business Owner are labels on the same account — one person can be
 ## Accounts
 
 - **Residents / businesses**: sign up from the login screen.
-- **City Staff** (demo): `staff@hotmail.com` / `Password123!` — sign in at `#/staff/login`
-- **Admin** (demo): `admin@hotmail.com` / `Password123!` — sign in at `#/staff/login`
+- **Everything already seeded**: both sign-in screens carry a **Demo** tab on the right edge of the
+  card. It lists the accounts this install can be signed in as — normal users, residents, business
+  owners, the city offices, the 75 barangay secretariats and the admin — and fills the form with
+  whichever one you pick. Picking a staff account from the resident screen (or the other way round)
+  moves you to the right page with the form already filled, since the API refuses the wrong one.
+
+The picker reads `auth.php?action=demo_accounts`, which only lists accounts that the shared demo
+password actually opens — so a real person's account never appears in it, and nothing listed is a
+dead end. Both the picker and that password live behind `testing.demo_accounts` in
+`api/config.php`; set it to `false` in `config.local.php` on any install with real accounts on it
+and the tab, the endpoint and the password all go away.
 
 ## Structure
 

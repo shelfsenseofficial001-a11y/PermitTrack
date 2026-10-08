@@ -1,9 +1,9 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=117';
-import StatusStepper from './StatusStepper.js?v=117';
-import PipelineStepper from './PipelineStepper.js?v=117';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=118';
+import StatusStepper from './StatusStepper.js?v=118';
+import PipelineStepper from './PipelineStepper.js?v=118';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=118';
+import Loader from './Loader.js?v=118';
+import BaseModal from './BaseModal.js?v=118';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php and the new-application form.
 const MAX_UPLOAD_MB = 5;

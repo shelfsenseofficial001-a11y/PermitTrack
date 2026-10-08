@@ -1,20 +1,45 @@
-import { login, homePathFor } from '../store/auth.js?v=117';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import { login, homePathFor } from '../store/auth.js?v=118';
+import { identifierError } from '../util.js?v=118';
+import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
+import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=118';
 
 export default {
   name: 'Login',
-  components: { AuthLayout },
+  components: { AuthLayout, DemoAccounts },
   data() {
     return {
       form: { identifier: '', password: '' },
       showPassword: false,
       error: '',
+      // Held back until the field is left alone once, so the message doesn't fire at someone
+      // halfway through typing their address. After that it follows every keystroke.
+      identifierTouched: false,
       loading: false,
-      inputClass, labelClass, primaryButtonClass,
+      inputClass, inputErrorClass, labelClass, primaryButtonClass,
     };
   },
+  computed: {
+    identifierProblem() {
+      return identifierError(this.form.identifier);
+    },
+    showIdentifierProblem() {
+      return this.identifierTouched && !!this.identifierProblem;
+    },
+  },
+  mounted() {
+    const carried = takeDemoPrefill();
+    if (carried) this.fillDemo(carried);
+  },
   methods: {
+    fillDemo({ identifier, password }) {
+      this.form.identifier = identifier;
+      this.form.password = password;
+      this.error = '';
+      this.identifierTouched = false;
+    },
     async submit() {
+      this.identifierTouched = true;
+      if (this.identifierProblem) return;
       this.error = '';
       this.loading = true;
       try {
@@ -29,6 +54,8 @@ export default {
   },
   template: `
   <AuthLayout :loading="loading" loading-kind="login">
+    <template #edge><DemoAccounts portal="resident" @fill="fillDemo" /></template>
+    <template #default>
     <span class="inline-flex items-center text-xs font-semibold uppercase tracking-wider leading-none text-[#1f7a3a] bg-[#f3f9e3] rounded-full px-3 py-1.5 mb-3">Residents &amp; Businesses</span>
 
     <h1 class="text-3xl font-bold tracking-tight text-slate-900 mb-2">Welcome back</h1>
@@ -38,7 +65,12 @@ export default {
       <div>
         <label :class="labelClass" for="login-id">Email or mobile number</label>
         <input id="login-id" v-model="form.identifier" type="text" required autocomplete="username"
-          placeholder="you@email.com or 0917 123 4567" :class="inputClass" />
+          @blur="identifierTouched = true"
+          :aria-invalid="showIdentifierProblem ? 'true' : 'false'"
+          :aria-describedby="showIdentifierProblem ? 'login-id-error' : null"
+          placeholder="you@email.com or 0917 123 4567"
+          :class="showIdentifierProblem ? inputErrorClass : inputClass" />
+        <p v-if="showIdentifierProblem" id="login-id-error" class="mt-1.5 text-sm text-red-600">{{ identifierProblem }}</p>
       </div>
       <div>
         <label :class="labelClass" for="login-pw">Password</label>
@@ -79,6 +111,7 @@ export default {
       City staff?
       <router-link to="/staff/login" class="font-semibold text-slate-500 hover:text-[#1f7a3a] hover:underline">Sign in to the Staff Portal →</router-link>
     </p>
+    </template>
   </AuthLayout>
   `,
 };

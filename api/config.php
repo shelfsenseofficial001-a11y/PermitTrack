@@ -82,7 +82,14 @@ function app_config(): array
             // email addresses, so any install with real accounts on it sets this false in
             // config.local.php — that one flag takes them out of the API response. It never
             // discloses credentials; the tester signs in with a password they already hold.
-            'testing' => ['reviewer_hints' => true],
+            //
+            // demo_accounts is the same trade-off on the sign-in pages: the account picker lists
+            // who you can sign in as, one level at a time. It goes further than reviewer_hints —
+            // the seeded accounts all share demo_password, and the picker fills it in — so an
+            // install with real accounts on it sets demo_accounts to false and the picker, the
+            // password and the whole endpoint go with it. The picker only ever lists accounts
+            // this password actually opens, so a real person's account never appears in it.
+            'testing' => ['reviewer_hints' => true, 'demo_accounts' => true, 'demo_password' => 'Test1234!'],
         ];
         $local = is_file(__DIR__ . '/config.local.php') ? require __DIR__ . '/config.local.php' : [];
         $config = array_replace_recursive($defaults, is_array($local) ? $local : []);
