@@ -296,6 +296,43 @@
   @keyframes pt-ring-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .pt-ring-spin { animation: none; opacity: .55; } }
 
+  /* Loading: the mark itself does the waiting. The whole thing floats, the arrow pulls away from
+     the page and settles back, and the page leans after it — a permit getting under way, looping.
+     Every keyframe ends where it began, so the loop never snaps back. */
+  .pt-logo { overflow: visible; }
+  .pt-logo .pt-logo-float, .pt-logo .pt-logo-page, .pt-logo .pt-logo-rise {
+    transform-box: fill-box; transform-origin: 50% 50%;
+  }
+  .pt-logo-animated .pt-logo-float { animation: pt-logo-float 2.4s cubic-bezier(.45,0,.25,1) infinite; }
+  .pt-logo-animated .pt-logo-rise  { animation: pt-logo-rise  2.4s cubic-bezier(.45,0,.25,1) infinite; }
+  .pt-logo-animated .pt-logo-page  { animation: pt-logo-page  2.4s cubic-bezier(.45,0,.25,1) infinite; }
+  /* Lengths here are viewBox units, not screen pixels: the mark is 64 units wide and usually
+     drawn at 32-40px, so a value of 4 reads as about 2px. Hence the large-looking numbers. */
+  @keyframes pt-logo-float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    28%      { transform: translateY(-4.5px) scale(1.07); }
+    52%      { transform: translateY(2px) scale(.95); }
+    74%      { transform: translateY(-1.5px) scale(1.02); }
+    90%      { transform: translateY(.4px) scale(.995); }
+  }
+  @keyframes pt-logo-rise {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    28%      { transform: translate(4px, -6px) rotate(9deg); }
+    52%      { transform: translate(-1.4px, 2px) rotate(-4deg); }
+    76%      { transform: translate(.8px, -.9px) rotate(1.8deg); }
+  }
+  @keyframes pt-logo-page {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    28%      { transform: translate(-2px, 2.4px) rotate(-6.5deg); }
+    56%      { transform: translate(1px, -1.1px) rotate(3deg); }
+    80%      { transform: translate(-.3px, .3px) rotate(-1deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pt-logo-animated .pt-logo-float,
+    .pt-logo-animated .pt-logo-rise,
+    .pt-logo-animated .pt-logo-page { animation: none; }
+  }
+
   /* Landing page: sections rise into place as they scroll into view */
   .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
   .reveal.is-visible { opacity: 1; transform: none; }
