@@ -5,6 +5,7 @@ import { uiState, beginTransition, endTransition } from './store/ui.js?v=118';
 import ChangePasswordModal from './components/ChangePasswordModal.js?v=118';
 import CookieBanner from './components/CookieBanner.js?v=118';
 import BaseModal from './components/BaseModal.js?v=118';
+import LogoMark from './components/LogoMark.js?v=118';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -15,7 +16,7 @@ const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion:
 const PAGE_MS = reduced ? { enter: 1, leave: 1 } : { enter: 240, leave: 120 };
 
 const App = {
-  components: { ChangePasswordModal, CookieBanner, BaseModal },
+  components: { ChangePasswordModal, CookieBanner, BaseModal, LogoMark },
   data() {
     return { authState, uiState, pageMs: PAGE_MS, signOutError: '' };
   },
@@ -104,10 +105,7 @@ const App = {
       <div v-if="uiState.transition" role="status" aria-live="polite"
         class="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 backdrop-blur-md">
         <div class="flex items-center gap-3 text-white">
-          <svg class="w-7 h-7 animate-spin [animation-duration:1.2s]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>
-          </svg>
+          <LogoMark animated color="currentColor" class="w-9 h-9 shrink-0" />
           <span class="text-xl font-bold tracking-tight">{{ uiState.transition === 'signout' ? 'Signing out…' : 'Switching accounts…' }}</span>
         </div>
       </div>

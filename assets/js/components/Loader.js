@@ -1,5 +1,6 @@
 // The one loading indicator used everywhere, so waiting always looks like PermitTrack:
-// the mark inside a sweeping brand-green arc, with a line of copy that fits what is loading.
+// the mark itself, animated, inside a sweeping brand-green arc, with a line of copy that fits
+// what is loading. Nothing in the app spins a generic circle any more.
 //
 //   variant="overlay"  covers a card while a form is submitting (the sign-in screens)
 //   variant="panel"    stands in for page content that hasn't arrived yet
@@ -26,8 +27,11 @@ const MESSAGES = {
   generic: ['Loading…'],
 };
 
+import LogoMark from './LogoMark.js?v=118';
+
 export default {
   name: 'Loader',
+  components: { LogoMark },
   props: {
     variant: { type: String, default: 'panel' }, // overlay | panel | inline
     kind: { type: String, default: 'generic' },
@@ -83,7 +87,7 @@ export default {
           <circle cx="40" cy="40" r="36" fill="none" stroke="#dcefd3" stroke-width="4" />
           <circle cx="40" cy="40" r="36" fill="none" stroke="#1f7a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="60 166" class="pt-ring-spin" />
         </svg>
-        <img src="assets/images/PermitTrackIcon.png?v=118" alt="" class="w-10 h-10 object-contain" />
+        <LogoMark animated class="w-10 h-10" />
       </span>
       <span class="text-center px-6">
         <transition name="swap" mode="out-in"><span :key="message" class="block text-sm font-semibold text-ink-700">{{ message }}</span></transition>
@@ -100,17 +104,14 @@ export default {
         <circle cx="32" cy="32" r="28" fill="none" stroke="#dcefd3" stroke-width="4" />
         <circle cx="32" cy="32" r="28" fill="none" stroke="#1f7a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="46 130" class="pt-ring-spin" />
       </svg>
-      <img src="assets/images/PermitTrackIcon.png?v=118" alt="" class="w-8 h-8 object-contain" />
+      <LogoMark animated class="w-8 h-8" />
     </span>
     <transition name="swap" mode="out-in"><p :key="message" class="text-sm font-semibold text-ink-700">{{ message }}</p></transition>
   </div>
 
   <!-- inline: a quiet row inside a menu or an already-open panel -->
   <div v-else class="flex items-center gap-2.5 px-1 py-2" role="status" aria-live="polite">
-    <svg class="w-4 h-4 -rotate-90 shrink-0" viewBox="0 0 20 20" aria-hidden="true">
-      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-25" />
-      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="13 37" class="pt-ring-spin" />
-    </svg>
+    <LogoMark animated color="currentColor" class="w-5 h-5 shrink-0" />
     <span class="text-xs font-medium">{{ message }}</span>
   </div>
   `,
