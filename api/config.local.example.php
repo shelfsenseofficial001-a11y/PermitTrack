@@ -22,11 +22,16 @@ return [
 
     // SMS verification codes
     'sms' => [
-        'driver' => 'log', // 'log', 'semaphore' or 'twilio'
+        'driver' => 'log', // 'log', 'semaphore', 'twilio' or 'philsms'
         // Semaphore (Philippines) — https://semaphore.co
         // 'driver' => 'semaphore',
         // 'api_key' => 'your-semaphore-api-key',
         // 'sender_name' => 'PERMITTRACK', // must be approved by Semaphore; leave empty for the default
+        //
+        // PhilSMS (Philippines) — https://dashboard.philsms.com
+        // 'driver' => 'philsms',
+        // 'api_token' => 'your-philsms-api-token',
+        // 'sender_id' => 'PhilSMS', // must be approved by PhilSMS; defaults to 'PhilSMS'
         //
         // Twilio
         // 'driver' => 'twilio',
