@@ -363,7 +363,7 @@ export default {
         :class="liftForBar ? 'md:bottom-[10.5rem]' : (liftForFab ? 'md:bottom-[9.75rem]' : 'md:bottom-24')">
 
         <!-- ======================= HOME ======================= -->
-        <div v-if="tab === 'home'" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft bg-meadow/40">
+        <div v-if="tab === 'home'" class="pt-tab-in flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft bg-meadow/40">
           <!-- A dark header, not the sign-in gradient: that one runs from lime to forest green, so
                no single text colour stays readable across it at every width. -->
           <div class="pt-chat-head relative px-6 pt-6 pb-16 text-white">
@@ -381,7 +381,7 @@ export default {
             </h2>
           </div>
 
-          <div class="px-4 -mt-10 pb-5 space-y-3 relative">
+          <div class="pt-stagger px-4 -mt-10 pb-5 space-y-3 relative">
             <!-- Write to a person -->
             <button v-if="signedIn" type="button" @click="newMessage"
               class="w-full flex items-center gap-3 text-left bg-white rounded-2xl ring-1 ring-ink-100 px-4 py-3.5 shadow-[0_10px_28px_-16px_rgba(16,48,29,0.45)] hover:ring-brand-400 transition group">
@@ -448,7 +448,7 @@ export default {
         </div>
 
         <!-- ======================= MESSAGES ======================= -->
-        <div v-else-if="tab === 'messages'" class="flex-1 min-h-0 flex flex-col bg-white">
+        <div v-else-if="tab === 'messages'" class="pt-tab-in flex-1 min-h-0 flex flex-col bg-white">
           <header class="shrink-0 flex items-center gap-2 px-4 py-3.5 border-b border-slate-100">
             <button v-if="view !== 'list'" type="button" @click="view === 'compose' ? (view = 'permit') : (view === 'permit' ? (view = 'who') : backToList())"
               aria-label="Back" class="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition">
@@ -487,7 +487,7 @@ export default {
 
           <!-- list -->
           <template v-else-if="view === 'list'">
-            <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft">
+            <div class="pt-stagger flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft">
               <p v-if="listLoading" class="px-5 py-6 text-sm text-slate-500">Loading your messages…</p>
               <div v-else-if="!conversations.length" class="h-full grid place-items-center px-8 text-center">
                 <div>
@@ -524,7 +524,7 @@ export default {
           </template>
 
           <!-- step 1: who -->
-          <div v-else-if="view === 'who'" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-meadow/40">
+          <div v-else-if="view === 'who'" class="pt-stagger flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-meadow/40">
             <button type="button" @click="askGibs"
               class="w-full flex items-start gap-3 text-left bg-white rounded-2xl ring-1 ring-ink-100 p-4 hover:ring-brand-400 hover:shadow-[0_10px_24px_-14px_rgba(16,48,29,0.5)] transition">
               <img src="assets/images/gibsIcon.png" alt="" width="44" height="44" class="w-11 h-11 shrink-0 rounded-xl ring-1 ring-black/10 [image-rendering:pixelated]" />
@@ -554,7 +554,7 @@ export default {
                   class="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
               </div>
             </div>
-            <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 pb-4">
+            <div class="pt-tab-in flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 pb-4">
               <p v-if="optionsLoading" class="py-6 text-sm text-slate-500">Loading permits…</p>
               <p v-else-if="!permitGroups.length" class="py-6 text-sm text-slate-500">No permit matches “{{ permitQuery }}”.</p>
               <div v-for="g in permitGroups" :key="g.key" class="mt-3 first:mt-1">
@@ -576,7 +576,7 @@ export default {
           </template>
 
           <!-- step 3: write it -->
-          <form v-else-if="view === 'compose'" @submit.prevent="start" class="flex-1 min-h-0 flex flex-col">
+          <form v-else-if="view === 'compose'" @submit.prevent="start" class="pt-tab-in flex-1 min-h-0 flex flex-col">
             <div class="flex-1 min-h-0 overflow-y-auto p-4 bg-meadow/40">
               <div class="rounded-2xl bg-white ring-1 ring-ink-100 p-3.5 text-xs text-slate-500 leading-relaxed">
                 <span class="font-semibold text-ink-700">{{ chosen.office }}</span> issues the {{ chosen.name }}, so your message goes to them.
@@ -601,16 +601,16 @@ export default {
 
           <!-- a thread -->
           <template v-else-if="view === 'thread'">
-            <div ref="threadLog" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 py-4 bg-meadow/40" aria-live="polite">
+            <div ref="threadLog" class="pt-tab-in flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 py-4 bg-meadow/40" aria-live="polite">
               <div v-if="threadLoading" class="py-10 grid place-items-center"><LogoMark animated class="w-9 h-9" /></div>
-              <div v-else class="space-y-2.5">
+              <transition-group v-else name="list" tag="div" class="relative space-y-2.5">
                 <div v-for="m in messages" :key="m.id" :class="m.mine ? 'flex flex-col items-end' : 'flex flex-col items-start'">
                   <span v-if="!m.mine" class="px-1 mb-0.5 text-[11px] font-semibold text-slate-500">{{ m.sender_name }}</span>
                   <div class="max-w-[85%] px-3.5 py-2 text-sm whitespace-pre-line break-words"
                     :class="m.mine ? 'rounded-2xl rounded-br-md bg-brand-600 text-white' : 'rounded-2xl rounded-bl-md bg-white ring-1 ring-brand-100 text-slate-700 shadow-[0_6px_16px_-12px_rgba(16,48,29,0.35)]'">{{ m.body }}</div>
                   <span class="px-1 mt-0.5 text-[10px] text-slate-400">{{ timeAgo(m.created_at) }}</span>
                 </div>
-              </div>
+              </transition-group>
             </div>
             <form @submit.prevent="sendReply" class="shrink-0 border-t border-slate-100 bg-white p-3">
               <p v-if="error" class="mb-2 text-sm text-red-600" role="alert">{{ error }}</p>
@@ -631,7 +631,7 @@ export default {
         </div>
 
         <!-- ======================= HELP ======================= -->
-        <div v-else class="flex-1 min-h-0 flex flex-col bg-white">
+        <div v-else class="pt-tab-in flex-1 min-h-0 flex flex-col bg-white">
           <header class="shrink-0 flex items-center gap-2 px-4 py-3.5 border-b border-slate-100">
             <button v-if="article" type="button" @click="article = null" aria-label="Back to help" class="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
@@ -642,7 +642,7 @@ export default {
             </button>
           </header>
 
-          <div v-if="article" class="flex-1 min-h-0 overflow-y-auto px-5 py-5">
+          <div v-if="article" :key="article.id" class="pt-tab-in flex-1 min-h-0 overflow-y-auto px-5 py-5">
             <span class="text-[11px] font-bold uppercase tracking-wider text-brand-700">{{ article.category }}</span>
             <h3 class="mt-1 text-lg font-bold leading-snug text-ink-700">{{ article.question }}</h3>
             <div class="mt-3 space-y-2.5 text-sm leading-relaxed text-slate-600">
@@ -673,7 +673,7 @@ export default {
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
               </button>
             </div>
-            <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 pb-4">
+            <div class="pt-stagger flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 pb-4">
               <p v-if="!faqsLoaded" class="py-6 text-sm text-slate-500">Loading help articles…</p>
               <p v-else-if="!helpResults.length" class="py-6 text-sm text-slate-500">Nothing matches “{{ helpQuery }}”. Try Gibs — he understands plain questions.</p>
               <div v-for="g in helpGroups" :key="g.category" class="mt-3 first:mt-1">

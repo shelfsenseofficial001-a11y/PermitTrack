@@ -130,11 +130,11 @@ export default {
 
     <Loader v-if="loading" kind="queue" />
 
-    <div v-else-if="!apps.length" class="bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center text-slate-500">
+    <div v-else-if="!apps.length" :key="'empty-' + activeTab" class="pt-tab-in bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center text-slate-500">
       Nothing in this queue right now.
     </div>
 
-    <div v-else class="space-y-3">
+    <div v-else :key="'list-' + activeTab" class="pt-stagger space-y-3">
       <div v-for="app in apps" :key="app.id" class="bg-white rounded-2xl border border-brand-100 hover:border-brand-300 hover:shadow-sm transition p-4 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" :class="permitIconClass(app.permit_type || app.permit_type_name)">
