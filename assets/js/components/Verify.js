@@ -1,6 +1,6 @@
-import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=118';
-import { enterSignedIn } from '../store/ui.js?v=118';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
+import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=119';
+import { enterSignedIn } from '../store/ui.js?v=119';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
 
 export default {
   name: 'Verify',

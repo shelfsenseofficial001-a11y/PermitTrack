@@ -1,7 +1,7 @@
-import { register } from '../store/auth.js?v=118';
-import { apiGet } from '../api/client.js?v=118';
-import { isValidEmail, isValidPhMobile } from '../util.js?v=118';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
+import { register } from '../store/auth.js?v=119';
+import { apiGet } from '../api/client.js?v=119';
+import { isValidEmail, isValidPhMobile } from '../util.js?v=119';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 

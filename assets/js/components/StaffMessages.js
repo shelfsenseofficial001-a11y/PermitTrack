@@ -1,13 +1,14 @@
-import { apiGet, apiPost } from '../api/client.js?v=118';
-import { authState } from '../store/auth.js?v=118';
-import { timeAgo, formatDateTime } from '../util.js?v=118';
-import StaffShell from './StaffShell.js?v=118';
-import Loader from './Loader.js?v=118';
-import LogoMark from './LogoMark.js?v=118';
+import { apiGet, apiPost } from '../api/client.js?v=119';
+import { authState } from '../store/auth.js?v=119';
+import { timeAgo, formatDateTime } from '../util.js?v=119';
+import StaffShell from './StaffShell.js?v=119';
+import Loader from './Loader.js?v=119';
+import LogoMark from './LogoMark.js?v=119';
 
-// The office's inbox: questions applicants sent to this office from the chat launcher, before or
-// outside an application (api/conversations.php routes each one to the office that issues the
-// permit it's about). Admins see every office's.
+// The office's inbox, in two kinds (api/conversations.php): questions applicants sent from the chat
+// launcher, routed to the office that issues the permit they're about; and the threads of
+// applications that pass through this office, once someone has written in one — those show the
+// application's status lines between the messages. Admins see every office's.
 //
 // Two panes from lg up — the list beside the open thread — and one at a time below that, where
 // /staff/messages is the list and /staff/messages/:id is a thread.
@@ -169,7 +170,7 @@ export default {
       <p class="text-sm font-medium text-white/85 mb-2">{{ isAdmin ? 'Every office' : ((authState.user && authState.user.department_name) || 'No office assigned — ask an admin to add you to one') }}</p>
       <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight">Messages</h1>
       <p class="text-white/85 text-sm mt-2">
-        Questions applicants sent about a permit your office issues — before they've filed, or outside an application.
+        Questions about a permit your office issues, and messages on applications that pass through your office.
         <template v-if="counts.awaiting"> {{ counts.awaiting }} waiting on a reply.</template>
       </p>
     </div>
@@ -204,7 +205,7 @@ export default {
                 <span class="text-sm truncate" :class="c.unread ? 'font-bold text-ink-700' : 'font-semibold text-ink-700'">{{ c.applicant_name }}</span>
                 <span class="shrink-0 text-[11px] text-slate-400">{{ timeAgo(c.last_message_at) }}</span>
               </span>
-              <span class="block text-[11px] text-brand-700 font-semibold truncate">{{ c.subject }}<span v-if="isAdmin" class="font-normal text-slate-400"> · {{ c.office_name }}</span></span>
+              <span class="block text-[11px] text-brand-700 font-semibold truncate">{{ c.subject }}<span v-if="c.application_id" class="font-normal text-slate-400"> · Application #{{ c.application_id }}</span><span v-if="isAdmin" class="font-normal text-slate-400"> · {{ c.office_name }}</span></span>
               <span class="block mt-0.5 text-xs truncate" :class="c.unread ? 'text-ink-700 font-semibold' : 'text-slate-500'">{{ c.last_message }}</span>
             </span>
           </button>
@@ -231,8 +232,13 @@ export default {
               <div class="w-10 h-10 shrink-0 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs font-bold">{{ initials(thread.applicant_name) }}</div>
               <div class="min-w-0 flex-1">
                 <h2 class="text-sm font-bold text-ink-700 truncate">{{ thread.applicant_name }}</h2>
-                <p class="text-xs text-slate-500 truncate">About the {{ thread.subject }}<template v-if="isAdmin"> · sent to {{ thread.office_name }}</template></p>
+                <p class="text-xs text-slate-500 truncate">
+                  <template v-if="thread.application_id">Application #{{ thread.application_id }} · {{ thread.subject }} · {{ thread.application_status }}</template>
+                  <template v-else>About the {{ thread.subject }}<template v-if="isAdmin"> · sent to {{ thread.office_name }}</template></template>
+                </p>
               </div>
+              <router-link v-if="thread.application_id" :to="'/reviewer/applications/' + thread.application_id"
+                class="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl bg-brand-50 ring-1 ring-brand-100 text-brand-700 hover:bg-brand-100 transition">Open application</router-link>
               <span v-if="thread.status === 'closed'" class="shrink-0 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">Closed</span>
               <button v-else type="button" @click="closeThread" :disabled="closing"
                 class="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl ring-1 ring-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition"
@@ -243,11 +249,16 @@ export default {
 
             <div ref="log" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 sm:px-5 py-5 bg-meadow/40" aria-live="polite">
               <transition-group name="list" tag="div" class="relative space-y-3">
-                <div v-for="m in messages" :key="m.id" :class="m.from_office ? 'flex flex-col items-end' : 'flex flex-col items-start'">
+                <div v-for="m in messages" :key="m.id" :class="m.kind === 'event' ? 'flex justify-center py-0.5' : (m.from_office ? 'flex flex-col items-end' : 'flex flex-col items-start')">
+                  <p v-if="m.kind === 'event'" class="max-w-[90%] text-center text-[11px] leading-snug text-slate-500 bg-white/80 ring-1 ring-ink-100 rounded-xl px-3 py-1.5" :title="formatDateTime(m.created_at)">
+                    {{ m.body }} <span class="text-slate-400">· {{ timeAgo(m.created_at) }}</span>
+                  </p>
+                  <template v-else>
                   <span class="px-1 mb-0.5 text-[11px] font-semibold text-slate-500">{{ m.mine ? 'You' : m.sender_name }}</span>
                   <div class="max-w-[80%] px-3.5 py-2 text-sm whitespace-pre-line break-words"
                     :class="m.from_office ? 'rounded-2xl rounded-br-md bg-brand-600 text-white' : 'rounded-2xl rounded-bl-md bg-white ring-1 ring-brand-100 text-slate-700 shadow-[0_6px_16px_-12px_rgba(16,48,29,0.35)]'">{{ m.body }}</div>
                   <span class="px-1 mt-0.5 text-[10px] text-slate-400" :title="formatDateTime(m.created_at)">{{ timeAgo(m.created_at) }}</span>
+                  </template>
                 </div>
               </transition-group>
             </div>
