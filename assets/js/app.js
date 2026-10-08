@@ -1,10 +1,10 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=117';
-import { authState, logout, signOutPathFor } from './store/auth.js?v=117';
-import { uiState, beginTransition, endTransition } from './store/ui.js?v=117';
-import ChangePasswordModal from './components/ChangePasswordModal.js?v=117';
-import CookieBanner from './components/CookieBanner.js?v=117';
-import BaseModal from './components/BaseModal.js?v=117';
+import { router } from './router/router.js?v=118';
+import { authState, logout, signOutPathFor } from './store/auth.js?v=118';
+import { uiState, beginTransition, endTransition } from './store/ui.js?v=118';
+import ChangePasswordModal from './components/ChangePasswordModal.js?v=118';
+import CookieBanner from './components/CookieBanner.js?v=118';
+import BaseModal from './components/BaseModal.js?v=118';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

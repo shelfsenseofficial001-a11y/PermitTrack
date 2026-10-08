@@ -13,11 +13,12 @@ export default {
   },
   emits: ['update:modelValue'],
   data() {
-    return { query: this.modelValue, open: false, highlighted: -1 };
+    return { query: this.modelValue, open: false, highlighted: -1, typing: false };
   },
   computed: {
     filtered() {
-      const q = this.query.trim().toLowerCase();
+      // Opening the list shows every barangay; it only narrows once the user starts typing.
+      const q = this.typing ? this.query.trim().toLowerCase() : '';
       const list = !q ? this.options : this.options.filter((b) => b.name.toLowerCase().includes(q));
       return list.slice(0, 200);
     },
@@ -30,10 +31,16 @@ export default {
   methods: {
     openList() {
       this.open = true;
+      this.typing = false;
       this.highlighted = this.filtered.findIndex((b) => b.name === this.modelValue);
+      this.$nextTick(() => {
+        const el = this.$el.querySelector('[data-selected="true"]');
+        if (el) el.scrollIntoView({ block: 'nearest' });
+      });
     },
     onInput() {
       this.open = true;
+      this.typing = true;
       this.highlighted = -1;
       this.$emit('update:modelValue', this.query);
     },
@@ -63,7 +70,7 @@ export default {
     <input :id="inputId" v-model="query" type="text" autocomplete="off" :placeholder="placeholder"
       class="w-full rounded-xl border bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-[#1f7a3a]/15 focus:border-[#1f7a3a] outline-none transition pr-9"
       :class="invalid ? 'border-red-300' : 'border-slate-300'"
-      role="combobox" aria-expanded="open" aria-autocomplete="list"
+      role="combobox" :aria-expanded="open" aria-autocomplete="list"
       @focus="openList" @input="onInput" @blur="onBlur"
       @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)"
       @keydown.enter.prevent="chooseHighlighted" @keydown.esc="open = false" />
@@ -74,7 +81,7 @@ export default {
     </button>
     <ul v-if="open && filtered.length" class="absolute z-20 mt-1.5 w-full max-h-60 overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-[0_12px_30px_-10px_rgba(15,23,42,0.25)]">
       <li v-for="(b, i) in filtered" :key="b.id">
-        <button type="button" @mousedown.prevent="choose(b.name)"
+        <button type="button" @mousedown.prevent="choose(b.name)" :data-selected="b.name === modelValue"
           class="w-full text-left px-3.5 py-2 text-sm transition"
           :class="i === highlighted || b.name === modelValue ? 'bg-[#f3f9e3] text-[#1f7a3a] font-semibold' : 'text-slate-700 hover:bg-slate-50'">
           {{ b.name }}
