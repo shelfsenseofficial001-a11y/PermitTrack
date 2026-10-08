@@ -206,7 +206,10 @@ export default {
               Discard
             </button>
           </template>
-          <span class="text-xs font-bold px-3 py-1.5 rounded-full" :class="app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
+          <span class="text-xs font-bold px-3 py-1.5 rounded-full"
+            :class="app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
+              : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600'
+              : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
         </div>
       </div>
 

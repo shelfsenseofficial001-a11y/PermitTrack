@@ -3,6 +3,7 @@ import AppShell from './AppShell.js?v=117';
 import { loadCurrentUser } from '../store/auth.js?v=117';
 import { formatDate, backButtonClass, backIconClass } from '../util.js?v=117';
 import Loader from './Loader.js?v=117';
+import BarangaySelect from './BarangaySelect.js?v=117';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
@@ -18,7 +19,7 @@ function emptyForm() {
 export default {
   name: 'BusinessForm',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell, Loader },
+  components: { AppShell, Loader, BarangaySelect },
   data() {
     return {
       loading: true,
@@ -226,11 +227,7 @@ export default {
                    barangay secretariat reviews every permit the business later files. -->
               <div class="sm:col-span-2">
                 <label :class="labelClass" for="b-brgy">Barangay</label>
-                <input id="b-brgy" v-model="form.barangay" list="b-barangay-list" type="text"
-                  placeholder="Start typing to search…" autocomplete="off" :class="inputClass" />
-                <datalist id="b-barangay-list">
-                  <option v-for="b in options.barangays" :key="b.id" :value="b.name" />
-                </datalist>
+                <BarangaySelect input-id="b-brgy" v-model="form.barangay" :options="options.barangays" />
                 <p class="text-xs text-slate-400 mt-1">
                   All {{ options.barangays.length }} barangays of Dasmariñas. The city is assumed —
                   PermitTrack does not cover anywhere else.

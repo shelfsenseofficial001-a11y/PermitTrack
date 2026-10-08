@@ -5,6 +5,7 @@ import { inputClass } from './AuthLayout.js?v=117';
 import { authState, loadCurrentUser } from '../store/auth.js?v=117';
 import { formatDate, timeAgo } from '../util.js?v=117';
 import { openChangePassword } from '../store/ui.js?v=117';
+import BarangaySelect from './BarangaySelect.js?v=117';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'province_code', 'city_code', 'postal_code'];
 
@@ -22,7 +23,7 @@ const REQUIRED = ['first_name', 'last_name', 'birthdate', 'address_line', 'provi
 
 export default {
   name: 'Profile',
-  components: { AppShell, BaseModal },
+  components: { AppShell, BaseModal, BarangaySelect },
   data() {
     return {
       form: {},
@@ -316,12 +317,8 @@ export default {
                      secretariat, so it is matched against the 75 rather than typed freely. -->
                 <div v-if="inHomeCity">
                   <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
-                  <input id="p-brgy" v-model="form.barangay" list="p-brgy-list" autocomplete="off"
-                    placeholder="Start typing to search…"
-                    :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '']" />
-                  <datalist id="p-brgy-list">
-                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
-                  </datalist>
+                  <BarangaySelect input-id="p-brgy" v-model="form.barangay" :options="barangays"
+                    :invalid="!!form.barangay && !matchedBarangay" />
                   <p v-if="form.barangay && !matchedBarangay" class="text-xs text-red-600 mt-1">
                     Not one of the {{ barangays.length }} barangays of Dasmariñas.
                   </p>

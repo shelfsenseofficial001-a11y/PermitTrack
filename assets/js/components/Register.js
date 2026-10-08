@@ -1,6 +1,9 @@
 import { register } from '../store/auth.js?v=117';
 import { apiGet } from '../api/client.js?v=117';
+
+const CONTACT_CHECK_DEBOUNCE_MS = 500;
 import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import BarangaySelect from './BarangaySelect.js?v=117';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 
@@ -12,7 +15,7 @@ function yearsAgo(years) {
 
 export default {
   name: 'Register',
-  components: { AuthLayout },
+  components: { AuthLayout, BarangaySelect },
   data() {
     return {
       steps: STEPS,
@@ -33,10 +36,21 @@ export default {
       barangays: [],      // the 75 of Dasmariñas, used only when the chosen city is this one
       homeCityCode: '',
       loadingCities: false,
+      // Live "is this email/mobile already registered" check, debounced as the applicant types.
+      contactCheck: { checking: false, taken: false, checkedValue: '' },
+      contactCheckTimer: null,
       inputClass, labelClass, primaryButtonClass,
     };
   },
   computed: {
+    contactValue() {
+      return this.form.contact_method === 'email' ? this.form.email.trim() : this.form.phone.trim();
+    },
+    contactFormatValid() {
+      return this.form.contact_method === 'email'
+        ? /^\S+@\S+\.\S+$/.test(this.form.email.trim())
+        : /^(\+?63|0)?9\d{9}$/.test(this.form.phone.replace(/[\s-]/g, ''));
+    },
     passwordsMatch() {
       return this.form.confirm_password !== '' && this.form.password === this.form.confirm_password;
     },
@@ -91,6 +105,32 @@ export default {
     onCityChange() {
       if (!this.inHomeCity) this.form.barangay = '';
     },
+    // Debounced so it doesn't fire a request on every keystroke; only runs once the value looks
+    // like a real email/mobile number, and never re-checks a value already checked.
+    scheduleContactCheck() {
+      clearTimeout(this.contactCheckTimer);
+      this.contactCheck.taken = false;
+      if (!this.contactFormatValid) {
+        this.contactCheck.checking = false;
+        return;
+      }
+      this.contactCheck.checking = true;
+      this.contactCheckTimer = setTimeout(() => this.checkContactAvailability(), CONTACT_CHECK_DEBOUNCE_MS);
+    },
+    async checkContactAvailability() {
+      const value = this.contactValue;
+      const params = this.form.contact_method === 'email' ? { email: value } : { phone: value };
+      try {
+        const res = await apiGet('auth.php?action=check_contact&' + new URLSearchParams(params));
+        if (this.contactValue !== value) return; // typed on while the request was in flight
+        this.contactCheck.taken = res.available === false;
+        this.contactCheck.checkedValue = value;
+      } catch (e) {
+        // Stay quiet — the final submit re-checks this server-side regardless.
+      } finally {
+        if (this.contactValue === value) this.contactCheck.checking = false;
+      }
+    },
     // Client-side checks per step; the server re-validates everything.
     stepError() {
       const f = this.form;
@@ -103,6 +143,11 @@ export default {
       if (this.step === 1) {
         if (f.contact_method === 'email' && !/^\S+@\S+\.\S+$/.test(f.email.trim())) return 'Please enter a valid email address.';
         if (f.contact_method === 'phone' && !/^(\+?63|0)?9\d{9}$/.test(f.phone.replace(/[\s-]/g, ''))) return 'Please enter a valid mobile number, e.g. 0917 123 4567.';
+        if (this.contactCheck.taken && this.contactCheck.checkedValue === this.contactValue) {
+          return f.contact_method === 'email'
+            ? 'An account with that email already exists. Please log in instead.'
+            : 'An account with that mobile number already exists. Please log in instead.';
+        }
         if (!f.address_line.trim()) return 'Please enter your house number and street.';
         if (!f.province_code || !f.city_code) return 'Please choose your province and city or municipality.';
         if (this.inHomeCity && !this.matchedBarangay) return 'Please choose your barangay from the list.';
@@ -187,14 +232,24 @@ export default {
               {{ form.contact_method === 'email' ? 'Email' : 'Mobile number' }}
             </label>
             <div class="flex rounded-full bg-[#f3f9e3] p-0.5 text-xs font-semibold" role="radiogroup" aria-label="Sign up with">
-              <button type="button" role="radio" :aria-checked="form.contact_method === 'email'" @click="form.contact_method = 'email'"
+              <button type="button" role="radio" :aria-checked="form.contact_method === 'email'" @click="form.contact_method = 'email'; scheduleContactCheck()"
                 class="px-3 py-1 rounded-full transition" :class="form.contact_method === 'email' ? 'bg-white shadow text-[#1f7a3a]' : 'text-slate-500'">Email</button>
-              <button type="button" role="radio" :aria-checked="form.contact_method === 'phone'" @click="form.contact_method = 'phone'"
+              <button type="button" role="radio" :aria-checked="form.contact_method === 'phone'" @click="form.contact_method = 'phone'; scheduleContactCheck()"
                 class="px-3 py-1 rounded-full transition" :class="form.contact_method === 'phone' ? 'bg-white shadow text-[#1f7a3a]' : 'text-slate-500'">Mobile</button>
             </div>
           </div>
-          <input v-if="form.contact_method === 'email'" id="r-email" v-model="form.email" type="email" autocomplete="email" placeholder="you@email.com" :class="inputClass" />
-          <input v-else id="r-phone" v-model="form.phone" type="tel" autocomplete="tel" placeholder="0917 123 4567" :class="inputClass" />
+          <input v-if="form.contact_method === 'email'" id="r-email" v-model="form.email" @input="scheduleContactCheck" type="email" autocomplete="email"
+            placeholder="you@email.com" :class="[inputClass, form.email && !contactFormatValid ? '!border-red-300' : '']" />
+          <input v-else id="r-phone" v-model="form.phone" @input="scheduleContactCheck" type="tel" autocomplete="tel"
+            placeholder="0917 123 4567" :class="[inputClass, form.phone && !contactFormatValid ? '!border-red-300' : '']" />
+          <p v-if="form.contact_method === 'email' ? form.email && !contactFormatValid : form.phone && !contactFormatValid" class="text-xs text-red-600 mt-1.5">
+            {{ form.contact_method === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid mobile number, e.g. 0917 123 4567.' }}
+          </p>
+          <p v-else-if="contactCheck.checking" class="text-xs text-slate-400 mt-1.5">Checking…</p>
+          <p v-else-if="contactCheck.taken && contactCheck.checkedValue === contactValue" class="text-xs text-red-600 mt-1.5">
+            An account with that {{ form.contact_method === 'email' ? 'email' : 'mobile number' }} already exists.
+            <router-link to="/login" class="underline font-semibold">Log in instead</router-link>.
+          </p>
         </div>
         <div>
           <label :class="labelClass" for="r-street">House no. / Street</label>
@@ -226,12 +281,8 @@ export default {
         <!-- Only for Dasmariñas: this is the link that routes a permit to a barangay secretariat. -->
         <div v-if="inHomeCity">
           <label :class="labelClass" for="r-brgy">Barangay</label>
-          <input id="r-brgy" v-model="form.barangay" list="r-brgy-list" type="text" autocomplete="off"
-            placeholder="Start typing to search…"
-            :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '']" />
-          <datalist id="r-brgy-list">
-            <option v-for="b in barangays" :key="b.id" :value="b.name" />
-          </datalist>
+          <BarangaySelect input-id="r-brgy" v-model="form.barangay" :options="barangays"
+            :invalid="!!form.barangay && !matchedBarangay" />
           <p v-if="form.barangay && !matchedBarangay" class="text-xs text-red-600 mt-1">
             Not one of the {{ barangays.length }} barangays of Dasmariñas.
           </p>
