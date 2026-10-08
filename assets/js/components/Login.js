@@ -1,8 +1,8 @@
-import { login, homePathFor } from '../store/auth.js?v=118';
-import { enterSignedIn } from '../store/ui.js?v=118';
-import { identifierError } from '../util.js?v=118';
-import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
-import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=118';
+import { login, homePathFor } from '../store/auth.js?v=119';
+import { enterSignedIn } from '../store/ui.js?v=119';
+import { identifierError } from '../util.js?v=119';
+import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
+import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=119';
 
 export default {
   name: 'Login',

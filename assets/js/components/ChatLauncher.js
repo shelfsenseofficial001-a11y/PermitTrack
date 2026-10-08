@@ -1,15 +1,17 @@
-import { apiGet, apiPost } from '../api/client.js?v=118';
-import { authState } from '../store/auth.js?v=118';
-import { timeAgo } from '../util.js?v=118';
-import ChatWidget from './ChatWidget.js?v=118';
-import GibsPeek from './GibsPeek.js?v=118';
-import LogoMark from './LogoMark.js?v=118';
+import { apiGet, apiPost } from '../api/client.js?v=119';
+import { authState } from '../store/auth.js?v=119';
+import { uiState } from '../store/ui.js?v=119';
+import { timeAgo } from '../util.js?v=119';
+import ChatWidget from './ChatWidget.js?v=119';
+import GibsPeek from './GibsPeek.js?v=119';
+import LogoMark from './LogoMark.js?v=119';
 
 /**
  * The one chat button in the corner. It opens a panel with three tabs:
  *
  *   Home      a greeting, the ways to get help, your latest conversation, and a help search
- *   Messages  your conversations with City offices, and starting a new one
+ *   Messages  your conversations with City offices, and starting a new one. Every application
+ *             you've filed has its thread here too: its status updates and its messages, in order
  *   Help      the FAQ, readable and searchable, plus Gibs for anything it doesn't cover
  *
  * Writing to a person means choosing who first: Gibs for an instant answer, or City staff —
@@ -43,6 +45,7 @@ export default {
   data() {
     return {
       authState,
+      uiState,
       open: false,
       tab: 'home',            // home | messages | help
       // Messages tab: list | who | permit | compose | thread
@@ -124,6 +127,9 @@ export default {
       }
     },
     signedIn: { immediate: true, handler(on) { on ? this.startUnreadPoll() : this.stopUnreadPoll(); } },
+    'uiState.chatThreadRequest'(req) {
+      if (req && this.signedIn) this.openApplication(req.applicationId);
+    },
   },
   mounted() {
     this.onKey = (e) => {
@@ -251,6 +257,27 @@ export default {
         if (document.visibilityState === 'visible' && this.view === 'thread' && this.thread) this.fetchThread(this.thread.id, true);
       }, THREAD_POLL_MS);
       this.$nextTick(() => this.$refs.reply && this.$refs.reply.focus());
+    },
+    // A permit page's "Open in Messages": find (or make) that application's thread and open it.
+    async openApplication(applicationId) {
+      this.open = true;
+      this.tab = 'messages';
+      this.view = 'thread';
+      this.thread = null;
+      this.messages = [];
+      this.threadLoading = true;
+      try {
+        const res = await apiGet('conversations.php?action=for_application&application_id=' + applicationId);
+        if (!this.listLoaded) this.loadList();
+        await this.openThread(res.id);
+      } catch (e) {
+        this.threadLoading = false;
+        this.view = 'list';
+        this.error = e.message;
+      }
+    },
+    openApplicationPage() {
+      if (this.thread && this.thread.application_id) this.go('/applications/' + this.thread.application_id);
     },
     async fetchThread(id, quiet = false) {
       try {
@@ -463,7 +490,7 @@ export default {
                 <template v-else-if="thread">{{ thread.office_name }}</template>
               </h2>
               <p v-if="view === 'compose' && chosen" class="text-[11px] text-slate-400 truncate">About: {{ chosen.name }}</p>
-              <p v-if="view === 'thread' && thread" class="text-[11px] text-slate-400 truncate">About: {{ thread.subject }}<span v-if="thread.status === 'closed'"> · closed</span></p>
+              <p v-if="view === 'thread' && thread" class="text-[11px] text-slate-400 truncate"><template v-if="thread.application_id">Application #{{ thread.application_id }} · </template>About: {{ thread.subject }}<span v-if="thread.status === 'closed'"> · closed</span></p>
             </div>
             <button type="button" @click="close" aria-label="Close" class="p-2 -mr-1 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -488,6 +515,7 @@ export default {
           <!-- list -->
           <template v-else-if="view === 'list'">
             <div class="pt-stagger flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft">
+              <p v-if="error" class="mx-4 mt-3 rounded-xl bg-red-50 ring-1 ring-red-100 px-3 py-2 text-sm text-red-700" role="alert">{{ error }}</p>
               <p v-if="listLoading" class="px-5 py-6 text-sm text-slate-500">Loading your messages…</p>
               <div v-else-if="!conversations.length" class="h-full grid place-items-center px-8 text-center">
                 <div>
@@ -500,8 +528,10 @@ export default {
               </div>
               <button v-for="c in conversations" :key="c.id" type="button" @click="openThread(c.id)"
                 class="w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-slate-100 hover:bg-brand-50/60 transition">
-                <span class="relative shrink-0 w-10 h-10 rounded-full bg-brand-100 text-brand-700 grid place-items-center">
-                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17"/><path d="M15 9h4a1 1 0 0 1 1 1v11"/><path d="M2 21h20"/></svg>
+                <span class="relative shrink-0 w-10 h-10 rounded-full grid place-items-center"
+                  :class="c.application_id ? 'bg-sun-100 text-sun-700' : 'bg-brand-100 text-brand-700'">
+                  <svg v-if="c.application_id" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+                  <svg v-else class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17"/><path d="M15 9h4a1 1 0 0 1 1 1v11"/><path d="M2 21h20"/></svg>
                   <span v-if="c.unread" class="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-sun-400 ring-2 ring-white"></span>
                 </span>
                 <span class="min-w-0 flex-1">
@@ -509,7 +539,7 @@ export default {
                     <span class="text-sm truncate" :class="c.unread ? 'font-bold text-ink-700' : 'font-semibold text-ink-700'">{{ c.subject }}</span>
                     <span class="shrink-0 text-[11px] text-slate-400">{{ timeAgo(c.last_message_at) }}</span>
                   </span>
-                  <span class="block text-[11px] text-slate-400 truncate">{{ c.office_name }}<span v-if="c.status === 'closed'"> · closed</span></span>
+                  <span class="block text-[11px] text-slate-400 truncate"><template v-if="c.application_id">Application #{{ c.application_id }} · {{ c.application_status }} · </template>{{ c.office_name }}<span v-if="c.status === 'closed'"> · closed</span></span>
                   <span class="block mt-0.5 text-xs truncate" :class="c.unread ? 'text-ink-700 font-semibold' : 'text-slate-500'">{{ c.last_message }}</span>
                 </span>
               </button>
@@ -603,14 +633,31 @@ export default {
           <template v-else-if="view === 'thread'">
             <div ref="threadLog" class="pt-tab-in flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 py-4 bg-meadow/40" aria-live="polite">
               <div v-if="threadLoading" class="py-10 grid place-items-center"><LogoMark animated class="w-9 h-9" /></div>
-              <transition-group v-else name="list" tag="div" class="relative space-y-2.5">
-                <div v-for="m in messages" :key="m.id" :class="m.mine ? 'flex flex-col items-end' : 'flex flex-col items-start'">
+              <template v-else>
+              <div v-if="thread && thread.application_id" class="pt-rise-in mb-4 flex items-center gap-3 rounded-2xl bg-white ring-1 ring-ink-100 p-3 shadow-[0_8px_20px_-16px_rgba(16,48,29,0.5)]">
+                <span class="shrink-0 w-9 h-9 rounded-xl bg-sun-100 text-sun-700 grid place-items-center">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-bold text-ink-700 truncate">{{ thread.subject }}</span>
+                  <span class="block text-[11px] text-slate-500 truncate">Application #{{ thread.application_id }} · {{ thread.application_status }}</span>
+                </span>
+                <button type="button" @click="openApplicationPage" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 ring-1 ring-brand-100 hover:bg-brand-100 transition">View</button>
+              </div>
+              <transition-group name="list" tag="div" class="relative space-y-2.5">
+                <div v-for="m in messages" :key="m.id" :class="m.kind === 'event' ? 'flex justify-center py-0.5' : (m.mine ? 'flex flex-col items-end' : 'flex flex-col items-start')">
+                  <p v-if="m.kind === 'event'" class="max-w-[92%] text-center text-[11px] leading-snug text-slate-500 bg-white/80 ring-1 ring-ink-100 rounded-xl px-3 py-1.5">
+                    {{ m.body }} <span class="text-slate-400">· {{ timeAgo(m.created_at) }}</span>
+                  </p>
+                  <template v-else>
                   <span v-if="!m.mine" class="px-1 mb-0.5 text-[11px] font-semibold text-slate-500">{{ m.sender_name }}</span>
                   <div class="max-w-[85%] px-3.5 py-2 text-sm whitespace-pre-line break-words"
                     :class="m.mine ? 'rounded-2xl rounded-br-md bg-brand-600 text-white' : 'rounded-2xl rounded-bl-md bg-white ring-1 ring-brand-100 text-slate-700 shadow-[0_6px_16px_-12px_rgba(16,48,29,0.35)]'">{{ m.body }}</div>
                   <span class="px-1 mt-0.5 text-[10px] text-slate-400">{{ timeAgo(m.created_at) }}</span>
+                  </template>
                 </div>
               </transition-group>
+              </template>
             </div>
             <form @submit.prevent="sendReply" class="shrink-0 border-t border-slate-100 bg-white p-3">
               <p v-if="error" class="mb-2 text-sm text-red-600" role="alert">{{ error }}</p>

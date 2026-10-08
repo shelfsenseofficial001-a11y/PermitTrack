@@ -15,7 +15,7 @@ A permit application & review system for residents/businesses and city staff, bu
    or import the files in phpMyAdmin, in filename order. Migrations are safe to run more
    than once, so re-running the whole set is the way to bring an existing database up to date.
 
-   <details><summary>The 31 migrations, in order</summary>
+   <details><summary>The 32 migrations, in order</summary>
 
    ```
    001_user_levels.sql
@@ -49,6 +49,7 @@ A permit application & review system for residents/businesses and city staff, bu
    028_verification_barangay_scope.sql
    029_rename_burol_main.sql
    030_conversations.sql
+   031_application_threads.sql
    ```
    Two files share the `008` prefix; filename order (`permit_pipeline` before
    `withdraw_applications`) is the correct order.
@@ -104,8 +105,15 @@ in once the FAQ is on screen. It opens one panel with three tabs — **Home**, *
   that permit — the office of its last pipeline step — or to the resident's own barangay
   secretariat when that step is the barangay (`api/conversations.php`, migration 030).
 
-Staff answer from **Messages** in the Staff Portal, which lists only their own office's threads
-(admins see every office's) and badges the ones waiting on a reply. A reply reaches the resident
+Every application also has its own thread in Messages: its status updates (submitted, a document
+sent back, a step approved) as small notes, and the messages about it as bubbles. The permit pages
+show the latest update and an **Open in Messages** button instead of a reply box, and a reviewer's
+decision note lands in the same thread (migration 031, `api/lib/threads.php`).
+
+Staff answer from **Messages** in the Staff Portal, which lists only their own office's threads —
+questions about permits it issues, and applications on its pipeline that someone has written in
+(admins see every office's) — and badges the ones waiting on a reply. **Message the applicant** on
+the review page opens that application's thread. A reply reaches the resident
 in the chat panel and by email or SMS. Signed out, the panel is help only: messaging asks you to
 sign in.
 
@@ -130,7 +138,7 @@ sign in.
 3. Resident upgrade: add the missing email/mobile, two proofs of residence, declaration; staff approve or reject with a reason
 4. Business upgrade: register one or more businesses with their documents; a rejected business can be fixed and resubmitted
 5. Browse permits (Normal Users) / new application form: file as yourself (Resident) or for a verified business
-6. Permit detail page: documents, activity log, messaging with the reviewer
+6. Permit detail page: documents, the latest update, and a link to the application's thread in Messages
 7. Staff Portal login (City Staff and Admin)
 8. Reviewer queue (New / In Progress / Awaiting Applicant) for city staff
 9. Review detail: approve/reject documents, change status, notify applicant

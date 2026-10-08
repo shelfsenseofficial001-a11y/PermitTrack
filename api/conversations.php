@@ -3,12 +3,19 @@ declare(strict_types=1);
 require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/support.php';    // notify_user()
 require_once __DIR__ . '/lib/pipeline.php';   // resolve_office_department()
+require_once __DIR__ . '/lib/threads.php';    // application threads
 
-// Conversations: an applicant asking the office that issues a permit, before or without an
-// application to attach the question to. Messages on a filed application stay in messages.php.
+// Conversations: an applicant and City Hall, in two kinds.
 //
-// Who sees a conversation: the applicant who started it, the staff of the office it was routed
-// to, and admins. Routing happens once, at the start (see conversation_office()).
+//   A question   started from the chat panel about a permit, before or without an application —
+//                routed once, at the start, to the office that issues it (conversation_office()).
+//   An application's thread   one per filed application (application_id set, migration 031). Its
+//                timeline is the application's own: status lines and messages, both read from
+//                application_activity. See api/lib/threads.php.
+//
+// Who sees one: the applicant, admins, and the staff of the office it was routed to — or, for an
+// application's thread, of any office on that application's pipeline. An office's inbox lists an
+// application's thread once someone has written in it.
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -43,8 +50,9 @@ function load_conversation(int $id, array $user): array
     $allowed = $conv && (
         $user['role'] === 'admin'
         || ($user['role'] === 'applicant' && (int)$conv['user_id'] === (int)$user['id'])
-        || ($user['role'] === 'staff' && $user['department_id'] !== null
-            && (int)$conv['department_id'] === (int)$user['department_id'])
+        || ($user['role'] === 'staff' && $user['department_id'] !== null && ($conv['application_id'] !== null
+            ? staff_on_application($user, (int)$conv['application_id'])
+            : (int)$conv['department_id'] === (int)$user['department_id']))
     );
     if (!$allowed) {
         fail('Conversation not found.', 404);
@@ -71,9 +79,19 @@ function clean_body(mixed $raw): string
 }
 
 /**
+ * Which threads an office's inbox holds: its questions, and the applications on its pipeline that
+ * someone has written in. Binds the department id twice.
+ */
+const STAFF_THREADS = '((c.application_id IS NULL AND c.department_id = ?)
+    OR (c.application_id IS NOT NULL AND c.last_sender_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM application_pipeline_progress pp WHERE pp.application_id = c.application_id AND pp.department_id = ?)))';
+const ADMIN_THREADS = '(c.application_id IS NULL OR c.last_sender_id IS NOT NULL)';
+
+/**
  * The SELECT for a conversation row as the list shows it, with "unread" worked out for the person
  * looking. It is their turn — the last message isn't theirs — and they haven't opened the thread
- * since it arrived.
+ * since it arrived. An application's thread also moves up the list when its status changes, and
+ * names the office working on it now rather than the one that issues it.
  */
 function conversation_select(bool $asApplicant): string
 {
@@ -81,17 +99,26 @@ function conversation_select(bool $asApplicant): string
         ? 'c.last_sender_id IS NOT NULL AND c.last_sender_id <> c.user_id AND (c.user_read_at IS NULL OR c.user_read_at < c.last_message_at)'
         : 'c.last_sender_id = c.user_id AND (c.staff_read_at IS NULL OR c.staff_read_at < c.last_message_at)';
     return "SELECT c.id, c.subject, c.status, c.permit_type_id, c.department_id, c.created_at,
-                   DATE_FORMAT(c.last_message_at, '%Y-%m-%d %H:%i:%s') AS last_message_at,
-                   pt.name AS permit_name, d.name AS office_name, d.code AS office_code,
+                   c.application_id, ap.status AS application_status,
+                   GREATEST(c.last_message_at, COALESCE((SELECT MAX(v.created_at) FROM application_activity v
+                     WHERE v.application_id = c.application_id), c.last_message_at)) AS sort_at,
+                   DATE_FORMAT(GREATEST(c.last_message_at, COALESCE((SELECT MAX(v.created_at) FROM application_activity v
+                     WHERE v.application_id = c.application_id), c.last_message_at)), '%Y-%m-%d %H:%i:%s') AS last_message_at,
+                   pt.name AS permit_name, d.code AS office_code,
+                   COALESCE((SELECT d2.name FROM application_pipeline_progress p JOIN departments d2 ON d2.id = p.department_id
+                     WHERE p.application_id = c.application_id AND p.status = 'current' ORDER BY p.step_order LIMIT 1), d.name) AS office_name,
                    u.full_name AS applicant_name,
-                   (SELECT m.body FROM conversation_messages m WHERE m.conversation_id = c.id
-                     ORDER BY m.id DESC LIMIT 1) AS last_message,
+                   IF(c.application_id IS NULL,
+                      (SELECT m.body FROM conversation_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1),
+                      (SELECT v.body FROM application_activity v WHERE v.application_id = c.application_id ORDER BY v.id DESC LIMIT 1)
+                   ) AS last_message,
                    ($unread) AS unread,
                    (c.last_sender_id = c.user_id AND c.status = 'open') AS awaiting_office
               FROM conversations c
               JOIN departments d ON d.id = c.department_id
               JOIN users u ON u.id = c.user_id
-              LEFT JOIN permit_types pt ON pt.id = c.permit_type_id";
+              LEFT JOIN permit_types pt ON pt.id = c.permit_type_id
+              LEFT JOIN applications ap ON ap.id = c.application_id";
 }
 
 function shape_row(array $row): array
@@ -101,6 +128,8 @@ function shape_row(array $row): array
     // The applicant spoke last and the thread is still open: the office owes a reply.
     $row['awaiting_office'] = (bool)(int)$row['awaiting_office'];
     $row['permit_type_id'] = $row['permit_type_id'] !== null ? (int)$row['permit_type_id'] : null;
+    $row['application_id'] = $row['application_id'] !== null ? (int)$row['application_id'] : null;
+    unset($row['sort_at']);
     return $row;
 }
 
@@ -166,16 +195,17 @@ if ($action === 'options' && $method === 'GET') {
 if ($action === 'list' && $method === 'GET') {
     $user = require_auth();
     if ($user['role'] === 'applicant') {
-        $stmt = db()->prepare(conversation_select(true) . ' WHERE c.user_id = ? ORDER BY c.last_message_at DESC');
+        ensure_application_threads('a.applicant_id = ?', [$user['id']]);
+        $stmt = db()->prepare(conversation_select(true) . ' WHERE c.user_id = ? ORDER BY sort_at DESC, c.id DESC');
         $stmt->execute([$user['id']]);
     } elseif ($user['role'] === 'admin') {
-        $stmt = db()->query(conversation_select(false) . ' ORDER BY c.last_message_at DESC LIMIT 200');
+        $stmt = db()->query(conversation_select(false) . ' WHERE ' . ADMIN_THREADS . ' ORDER BY sort_at DESC, c.id DESC LIMIT 200');
     } else {
         if ($user['department_id'] === null) {
             respond(['conversations' => []]);
         }
-        $stmt = db()->prepare(conversation_select(false) . ' WHERE c.department_id = ? ORDER BY c.last_message_at DESC');
-        $stmt->execute([$user['department_id']]);
+        $stmt = db()->prepare(conversation_select(false) . ' WHERE ' . STAFF_THREADS . ' ORDER BY sort_at DESC, c.id DESC');
+        $stmt->execute([$user['department_id'], $user['department_id']]);
     }
     respond(['conversations' => array_map('shape_row', $stmt->fetchAll())]);
 }
@@ -200,10 +230,10 @@ if ($action === 'unread' && $method === 'GET') {
             respond(['unread' => 0]);
         }
         $stmt = db()->prepare(
-            'SELECT COUNT(*) FROM conversations c WHERE c.department_id = ? AND c.last_sender_id = c.user_id
+            'SELECT COUNT(*) FROM conversations c WHERE ' . STAFF_THREADS . ' AND c.last_sender_id = c.user_id
                AND (c.staff_read_at IS NULL OR c.staff_read_at < c.last_message_at)'
         );
-        $stmt->execute([$user['department_id']]);
+        $stmt->execute([$user['department_id'], $user['department_id']]);
     }
     respond(['unread' => (int)$stmt->fetchColumn()]);
 }
@@ -221,15 +251,28 @@ if ($action === 'get' && $method === 'GET') {
     $stmt->execute([$conv['id']]);
     $row = shape_row($stmt->fetch());
 
-    $stmt = db()->prepare(
-        "SELECT m.id, m.body, m.sender_id, DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
-                u.full_name AS sender_name, u.role AS sender_role
-           FROM conversation_messages m LEFT JOIN users u ON u.id = m.sender_id
-          WHERE m.conversation_id = ? ORDER BY m.id ASC"
-    );
-    $stmt->execute([$conv['id']]);
+    // An application's thread is its timeline: status lines come through as events, between
+    // the messages, in the order they happened.
+    if ($conv['application_id'] !== null) {
+        $stmt = db()->prepare(
+            "SELECT v.id, v.body, v.sender_id, v.type, DATE_FORMAT(v.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    u.full_name AS sender_name, u.role AS sender_role
+               FROM application_activity v LEFT JOIN users u ON u.id = v.sender_id
+              WHERE v.application_id = ? ORDER BY v.id ASC"
+        );
+        $stmt->execute([$conv['application_id']]);
+    } else {
+        $stmt = db()->prepare(
+            "SELECT m.id, m.body, m.sender_id, 'message' AS type, DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    u.full_name AS sender_name, u.role AS sender_role
+               FROM conversation_messages m LEFT JOIN users u ON u.id = m.sender_id
+              WHERE m.conversation_id = ? ORDER BY m.id ASC"
+        );
+        $stmt->execute([$conv['id']]);
+    }
     $messages = array_map(fn($m) => [
         'id' => (int)$m['id'],
+        'kind' => $m['type'] === 'status_change' ? 'event' : 'message',
         'body' => $m['body'],
         'created_at' => $m['created_at'],
         'sender_name' => $m['sender_name'] ?? 'Deleted account',
@@ -250,7 +293,9 @@ if ($action === 'start' && $method === 'POST') {
 
     // A person asks a handful of things; a script asks hundreds. Each new thread lands in an
     // office's inbox, so the cap is on starting threads — replying in one is never limited.
-    $recent = db()->prepare('SELECT COUNT(*) FROM conversations WHERE user_id = ? AND created_at > NOW() - INTERVAL 1 HOUR');
+    $recent = db()->prepare(
+        'SELECT COUNT(*) FROM conversations WHERE user_id = ? AND application_id IS NULL AND created_at > NOW() - INTERVAL 1 HOUR'
+    );
     $recent->execute([$user['id']]);
     if ((int)$recent->fetchColumn() >= CONVERSATIONS_PER_HOUR) {
         fail('You have started a lot of conversations in the last hour. Please continue one of them, or try again later.', 429);
@@ -301,14 +346,18 @@ if ($action === 'send' && $method === 'POST') {
     $pdo = db();
     $pdo->beginTransaction();
     try {
-        $pdo->prepare('INSERT INTO conversation_messages (conversation_id, sender_id, body) VALUES (?, ?, ?)')
-            ->execute([$conv['id'], $user['id'], $body]);
-        // Sending is also reading: whoever writes has seen everything above it. A new message
-        // reopens a closed thread — the office closing it shouldn't stop the applicant replying.
-        $pdo->prepare(
-            "UPDATE conversations SET last_message_at = NOW(3), last_sender_id = ?, status = 'open', "
-            . ($applicantSide ? 'user_read_at' : 'staff_read_at') . ' = NOW(3) WHERE id = ?'
-        )->execute([$user['id'], $conv['id']]);
+        if ($conv['application_id'] !== null) {
+            post_application_message((int)$conv['application_id'], (int)$conv['user_id'], (int)$user['id'], $body);
+        } else {
+            $pdo->prepare('INSERT INTO conversation_messages (conversation_id, sender_id, body) VALUES (?, ?, ?)')
+                ->execute([$conv['id'], $user['id'], $body]);
+            // Sending is also reading: whoever writes has seen everything above it. A new message
+            // reopens a closed thread — the office closing it shouldn't stop the applicant replying.
+            $pdo->prepare(
+                "UPDATE conversations SET last_message_at = NOW(3), last_sender_id = ?, status = 'open', "
+                . ($applicantSide ? 'user_read_at' : 'staff_read_at') . ' = NOW(3) WHERE id = ?'
+            )->execute([$user['id'], $conv['id']]);
+        }
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
@@ -323,6 +372,26 @@ if ($action === 'send' && $method === 'POST') {
         );
     }
     respond(['ok' => true], 201);
+}
+
+// The thread for one application, for the permit pages and the review screen to open it by.
+if ($action === 'for_application' && $method === 'GET') {
+    $user = require_auth();
+    $appId = (int)($_GET['application_id'] ?? 0);
+    $stmt = db()->prepare('SELECT applicant_id FROM applications WHERE id = ?');
+    $stmt->execute([$appId]);
+    $applicantId = $stmt->fetchColumn();
+    $allowed = $applicantId !== false && ($user['role'] === 'applicant'
+        ? (int)$applicantId === (int)$user['id']
+        : staff_on_application($user, $appId));
+    if (!$allowed) {
+        fail('Application not found.', 404);
+    }
+    $id = application_thread_id($appId);
+    if ($id === null) {
+        fail('This application has no office to write to yet.', 409);
+    }
+    respond(['id' => $id]);
 }
 
 // The office marks a thread done; the applicant writing again reopens it (see send).

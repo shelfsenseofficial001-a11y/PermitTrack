@@ -3,6 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/support.php';
 require_once __DIR__ . '/lib/pipeline.php';
+require_once __DIR__ . '/lib/threads.php';
 
 /**
  * The office code a department answers to. Every barangay secretariat shares the code BARANGAY,
@@ -109,8 +110,8 @@ if ($action === 'decision' && $method === 'POST') {
     $activity->execute([$appId, $user['id'], 'Status updated to "' . $status . '" by ' . $user['full_name'] . '.']);
 
     if ($notes !== '') {
-        $note = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
-        $note->execute([$appId, $user['id'], $notes]);
+        // A note is a message to the applicant: it lands in the application's thread in Messages.
+        post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $notes);
     }
 
     $pdo->commit();
@@ -234,8 +235,7 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
         $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)");
         $activity->execute([$appId, $user['id'], $current['step_label'] . ' — ' . ucfirst($decision) . ' by ' . $user['full_name'] . '.']);
         if ($notes !== '') {
-            $note = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
-            $note->execute([$appId, $user['id'], $notes]);
+            post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $notes);
         }
 
         $pdo->commit();

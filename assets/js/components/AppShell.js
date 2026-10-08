@@ -1,12 +1,12 @@
-import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=118';
-import { apiGet, apiPost } from '../api/client.js?v=118';
-import ChatLauncher from './ChatLauncher.js?v=118';
-import AddAccountModal from './AddAccountModal.js?v=118';
-import BaseModal from './BaseModal.js?v=118';
-import { formatDateTime } from '../util.js?v=118';
-import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=118';
-import Loader from './Loader.js?v=118';
-import NotificationToasts from './NotificationToasts.js?v=118';
+import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=119';
+import { apiGet, apiPost } from '../api/client.js?v=119';
+import ChatLauncher from './ChatLauncher.js?v=119';
+import AddAccountModal from './AddAccountModal.js?v=119';
+import BaseModal from './BaseModal.js?v=119';
+import { formatDateTime } from '../util.js?v=119';
+import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=119';
+import Loader from './Loader.js?v=119';
+import NotificationToasts from './NotificationToasts.js?v=119';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -236,7 +236,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=118" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=119" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>

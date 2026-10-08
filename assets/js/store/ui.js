@@ -32,6 +32,9 @@ export const uiState = reactive({
   transitionLine: '',
   // The "Sign out?" confirmation, shared by every account menu
   confirmSignOut: false,
+  // A page asking the chat panel to open an application's thread (openApplicationThread()).
+  // A fresh object each time, so asking twice for the same one still opens it.
+  chatThreadRequest: null,
   // "Which account approves this step?" — a testing aid, shown on the pipeline. The API only
   // sends the accounts when the install allows it (app_config testing.reviewer_hints).
   reviewerHints: readHints(),
@@ -92,4 +95,9 @@ export function notificationsChanged() {
 export function toggleReviewerHints() {
   uiState.reviewerHints = !uiState.reviewerHints;
   try { localStorage.setItem(HINTS_KEY, uiState.reviewerHints ? "1" : "0"); } catch (e) { /* not worth failing over */ }
+}
+
+/** Opens the chat panel on an application's thread in Messages — where its messages live. */
+export function openApplicationThread(applicationId) {
+  uiState.chatThreadRequest = { applicationId: Number(applicationId) };
 }

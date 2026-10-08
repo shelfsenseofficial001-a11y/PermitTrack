@@ -1,8 +1,8 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=118';
-import StaffShell from './StaffShell.js?v=118';
-import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass , permitLabel} from '../util.js?v=118';
-import Loader from './Loader.js?v=118';
-import { authState } from '../store/auth.js?v=118';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=119';
+import StaffShell from './StaffShell.js?v=119';
+import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass , permitLabel} from '../util.js?v=119';
+import Loader from './Loader.js?v=119';
+import { authState } from '../store/auth.js?v=119';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
@@ -48,6 +48,16 @@ export default {
     await this.refresh();
   },
   methods: {
+    // The application's thread in Messages: where the applicant's messages about it arrive.
+    async openThread() {
+      this.error = '';
+      try {
+        const res = await apiGet('conversations.php?action=for_application&application_id=' + this.app.id);
+        this.$router.push('/staff/messages/' + res.id);
+      } catch (e) {
+        this.error = e.message;
+      }
+    },
     permitLabel,
     permitNumber,
     formatDate,
@@ -123,6 +133,11 @@ export default {
         <p class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1.5">Permit #{{ permitNumber(app) }}</p>
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">{{ app.applicant.full_name }} &mdash; {{ permitLabel(permitTypeLabel) }}</h1>
         <div class="text-sm text-white/85 mt-1">Submitted {{ formatDateTime(app.created_at) }}</div>
+        <button v-if="isPipelineApp" type="button" @click="openThread"
+          class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-ink-700 bg-white/95 hover:bg-white px-4 py-2 rounded-xl shadow-sm transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.4 7.55L3 21l1.45-5.6A8.5 8.5 0 1 1 21 12z"/></svg>
+          Message the applicant
+        </button>
       </div>
 
       <div class="grid lg:grid-cols-3 gap-6 mt-6">
