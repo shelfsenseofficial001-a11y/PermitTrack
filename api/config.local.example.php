@@ -39,4 +39,11 @@ return [
         // 'auth_token' => 'your-auth-token',
         // 'from' => '+15005550006',
     ],
+
+    // Sign in with Google. Create an OAuth client ID (type "Web application") at
+    // https://console.cloud.google.com/apis/credentials and add the site's origin under
+    // "Authorized JavaScript origins", e.g. http://localhost. Leave empty to hide the button.
+    'google' => [
+        'client_id' => '', // e.g. 1234567890-abc123.apps.googleusercontent.com
+    ],
 ];

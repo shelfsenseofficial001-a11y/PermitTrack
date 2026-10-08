@@ -70,6 +70,49 @@ export const ALLOWED_UPLOAD_EXT = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif',
 export const UPLOAD_ACCEPT = ALLOWED_UPLOAD_EXT.map((e) => '.' + e).join(',');
 export const UPLOAD_TYPES_LABEL = 'JPG, PNG, WEBP, HEIC or PDF';
 
+/**
+ * How a notification should look. The server decides the tone (see notification_presentation()
+ * in api/notifications.php); this turns it into the icon and colours.
+ *
+ * The point is that the bell reads as what it is at a glance: something you must act on is amber
+ * and carries a warning mark, a refusal is red, good news is green. Before this, every status
+ * change — including a document being sent back — arrived as the same green tick.
+ *
+ * `icon` names a path drawn by the <NotificationIcon> component, so the toast and the
+ * Notifications page cannot drift apart.
+ */
+// `dark` is the same tone on the bell's dark dropdown, where a solid light tile would glare.
+export const NOTIFICATION_TONES = {
+  action:   { wrap: 'bg-sun-100 text-sun-700',     dark: 'bg-sun-300/20 text-sun-300',     dot: 'bg-sun-400',   icon: 'alert' },
+  refused:  { wrap: 'bg-red-100 text-red-700',     dark: 'bg-red-400/20 text-red-300',     dot: 'bg-red-400',   icon: 'cross' },
+  good:     { wrap: 'bg-brand-100 text-brand-700', dark: 'bg-brand-500/20 text-brand-300', dot: 'bg-brand-500', icon: 'check' },
+  progress: { wrap: 'bg-slate-100 text-slate-500', dark: 'bg-white/10 text-ink-200',       dot: 'bg-slate-300', icon: 'arrow' },
+  neutral:  { wrap: 'bg-slate-100 text-slate-500', dark: 'bg-white/10 text-ink-200',       dot: 'bg-slate-300', icon: 'dot' },
+  message:  { wrap: 'bg-[#f3f9e3] text-brand-700', dark: 'bg-sun-300/20 text-sun-300',     dot: 'bg-brand-400', icon: 'chat' },
+};
+
+export function notificationTone(item) {
+  return NOTIFICATION_TONES[item && item.tone] || NOTIFICATION_TONES.progress;
+}
+
+// Why a reviewer sent a document back. Mirrors DOCUMENT_REJECT_REASONS in api/config.php —
+// the server is what validates the choice; this is the list the dropdown offers.
+export const DOCUMENT_REJECT_REASONS = [
+  { value: 'unreadable', label: 'Blurry or hard to read' },
+  { value: 'wont_open', label: "File won't open" },
+  { value: 'wrong_document', label: 'Wrong document' },
+  { value: 'incomplete', label: 'Incomplete — pages missing' },
+  { value: 'expired', label: 'Expired or out of date' },
+  { value: 'mismatch', label: "Details don't match the application" },
+  { value: 'other', label: 'Other (please explain)' },
+];
+
+/** The wording for a stored reason code, for screens that show a rejected document. */
+export function rejectReasonLabel(value) {
+  const found = DOCUMENT_REJECT_REASONS.find((r) => r.value === value);
+  return found ? found.label : '';
+}
+
 // Named so the message can say why, rather than just listing what is allowed
 const OFFICE_EXT = ['doc', 'docx', 'ppt', 'pptx', 'pptm', 'xls', 'xlsx', 'odt', 'odp', 'pages', 'key'];
 

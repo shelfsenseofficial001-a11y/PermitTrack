@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import { apiGet, apiPost } from '../api/client.js?v=118';
-import { beginTransition, carryTransitionThroughReload } from './ui.js?v=118';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import { beginTransition, carryTransitionThroughReload } from './ui.js?v=129';
 
 export const authState = reactive({
   user: null,
@@ -31,6 +31,33 @@ export async function login(identifier, password, asStaff) {
 export async function register(payload) {
   const { verification } = await apiPost('auth.php?action=register', payload);
   authState.verification = verification;
+}
+
+/**
+ * Sends the ID token from the Google button to the server. Returns the signed-in user, or null
+ * when this Google account has no account here yet and the sign-up form has to be finished.
+ */
+export async function googleSignIn(credential) {
+  const res = await apiPost('auth.php?action=google', { credential });
+  if (res.needs_profile) return null;
+  authState.user = res.user;
+  return res.user;
+}
+
+/** The Google sign-up waiting to be finished: { email, first_name, last_name }, or null. */
+export async function googleSignupProfile() {
+  const { profile } = await apiGet('auth.php?action=google_profile');
+  return profile;
+}
+
+export async function googleRegister(payload) {
+  const { user } = await apiPost('auth.php?action=google_register', payload);
+  authState.user = user;
+  return user;
+}
+
+export async function googleCancel() {
+  await apiPost('auth.php?action=google_cancel', {});
 }
 
 export async function verifyCode(code) {

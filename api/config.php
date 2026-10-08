@@ -108,6 +108,7 @@ function app_config(): array
             'municipality' => 'City of Dasmariñas',
             'mail' => ['driver' => 'log'],
             'sms' => ['driver' => 'log'],
+            'google' => ['client_id' => ''], // Sign in with Google stays hidden until this is set
             // Walking a permit through its offices by hand means knowing which account signs
             // off on each step. With this on, the pipeline names that account. It exposes staff
             // email addresses, so any install with real accounts on it sets this false in
@@ -151,7 +152,7 @@ function app_config(): array
 const USER_COLUMNS = 'id, role, account_type, email, phone, full_name, first_name, middle_name, last_name, birthdate,
     address_line, barangay, barangay_id, city, city_code, province, province_code, postal_code, email_verified_at, phone_verified_at, resident_status, onboarding_completed,
     (SELECT COUNT(*) FROM businesses b WHERE b.user_id = users.id AND b.status = \'approved\') AS approved_businesses,
-    department_id, is_active, must_change_password, last_login_at, created_at,
+    department_id, is_active, must_change_password, (password_hash <> \'\') AS has_password, last_login_at, created_at,
     (SELECT d.name FROM departments d WHERE d.id = users.department_id) AS department_name,
     (SELECT d.code FROM departments d WHERE d.id = users.department_id) AS department_code,
     (SELECT d.permit_types FROM departments d WHERE d.id = users.department_id AND d.is_active = 1) AS department_permit_types';
@@ -309,6 +310,25 @@ function upload_type_error(array $file): ?string
     }
     return null;
 }
+
+/**
+ * Why a reviewer sent a document back. The applicant has to know what to fix, and "see reviewer
+ * note" was not an answer — so the reason comes from this list rather than being typed, which also
+ * keeps it consistent between offices and translatable later.
+ *
+ * The key is what is stored; the text is only what is shown. 'other' is deliberately last and
+ * requires notes — picking it without saying anything would put us back where we started.
+ * Keep in step with DOCUMENT_REJECT_REASONS in assets/js/util.js.
+ */
+const DOCUMENT_REJECT_REASONS = [
+    'unreadable'     => 'Blurry or hard to read',
+    'wont_open'      => "File won't open",
+    'wrong_document' => 'Wrong document',
+    'incomplete'     => 'Incomplete — pages missing',
+    'expired'        => 'Expired or out of date',
+    'mismatch'       => "Details don't match the application",
+    'other'          => 'Other (please explain)',
+];
 
 function required_documents_for(string $permitType): array
 {
