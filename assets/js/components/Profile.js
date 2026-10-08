@@ -1,11 +1,11 @@
-import { apiGet, apiPost } from '../api/client.js?v=118';
-import BaseModal from './BaseModal.js?v=118';
-import AppShell from './AppShell.js?v=118';
-import { inputClass } from './AuthLayout.js?v=118';
-import { authState, loadCurrentUser } from '../store/auth.js?v=118';
-import { formatDate, timeAgo } from '../util.js?v=118';
-import { openChangePassword } from '../store/ui.js?v=118';
-import BarangaySelect from './BarangaySelect.js?v=118';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import AppShell from './AppShell.js?v=129';
+import SelectMenu from './SelectMenu.js?v=129';
+import { inputClass } from './AuthLayout.js?v=129';
+import { authState, loadCurrentUser } from '../store/auth.js?v=129';
+import { formatDate, timeAgo } from '../util.js?v=129';
+import { openChangePassword } from '../store/ui.js?v=129';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'province_code', 'city_code', 'postal_code'];
 
@@ -23,7 +23,7 @@ const REQUIRED = ['first_name', 'last_name', 'birthdate', 'address_line', 'provi
 
 export default {
   name: 'Profile',
-  components: { AppShell, BaseModal, BarangaySelect },
+  components: { AppShell, BaseModal, SelectMenu },
   data() {
     return {
       form: {},
@@ -316,9 +316,9 @@ export default {
                 <!-- Only inside Dasmariñas: this is the link that routes a permit to a barangay
                      secretariat, so it is matched against the 75 rather than typed freely. -->
                 <div v-if="inHomeCity">
-                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
-                  <BarangaySelect input-id="p-brgy" v-model="form.barangay" :options="barangays"
-                    :invalid="!!form.barangay && !matchedBarangay" />
+                  <label id="p-brgy-label" class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
+                  <SelectMenu id="p-brgy" :labelledby="'p-brgy-label'" v-model="form.barangay" placeholder="Choose a barangay…"
+            :options="barangays.map((b) => ({ value: b.name, label: b.name }))" />
                   <p v-if="form.barangay && !matchedBarangay" class="text-xs text-red-600 mt-1">
                     Not one of the {{ barangays.length }} barangays of Dasmariñas.
                   </p>

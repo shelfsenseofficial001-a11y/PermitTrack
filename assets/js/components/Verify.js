@@ -1,5 +1,5 @@
-import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=118';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=118';
+import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=129';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=129';
 
 export default {
   name: 'Verify',
