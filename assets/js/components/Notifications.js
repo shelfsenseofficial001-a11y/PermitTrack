@@ -182,8 +182,11 @@ export default {
         </div>
         <!-- Search -->
         <div class="relative">
-          <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input v-model="search" type="search" placeholder="Search notifications" aria-label="Search notifications"
+          <button type="button" @click="$refs.searchInput.focus()" aria-label="Search"
+            class="absolute left-0 top-0 h-full px-3 flex items-center text-slate-400 hover:text-brand-600 transition">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+          <input ref="searchInput" v-model="search" type="search" placeholder="Search notifications" aria-label="Search notifications"
             class="w-full sm:w-60 rounded-xl border border-brand-100 bg-white pl-10 pr-4 py-2 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
         </div>
       </div>

@@ -109,6 +109,28 @@ function start_registration_verification(array $data, string $channel, string $d
     return $result;
 }
 
+// Lets the sign-up form tell the applicant an email/mobile number is already taken (or not a
+// valid one) as they type, instead of only after they fill in the rest of the form and submit.
+// Same duplicate check the 'register' action re-runs server-side, just surfaced earlier.
+if ($action === 'check_contact' && $method === 'GET') {
+    $email = strtolower(trim((string)($_GET['email'] ?? '')));
+    if ($email !== '') {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            respond(['available' => null]);
+        }
+        $stmt = db()->prepare('SELECT 1 FROM users WHERE email = ?');
+        $stmt->execute([$email]);
+        respond(['available' => !$stmt->fetch()]);
+    }
+    $phone = normalize_ph_mobile((string)($_GET['phone'] ?? ''));
+    if ($phone === null) {
+        respond(['available' => null]);
+    }
+    $stmt = db()->prepare('SELECT 1 FROM users WHERE phone = ?');
+    $stmt->execute([$phone]);
+    respond(['available' => !$stmt->fetch()]);
+}
+
 // Normal User sign-up. Nothing is written to the database until the code is confirmed
 // (see the 'verify' action below) — a failed or abandoned sign-up leaves no trace.
 if ($action === 'register' && $method === 'POST') {
