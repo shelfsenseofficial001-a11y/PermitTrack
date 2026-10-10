@@ -1,12 +1,13 @@
-import { login, reloadAs } from '../store/auth.js?v=117';
-import { inputClass } from './AuthLayout.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
+import { login, reloadAs } from '../store/auth.js?v=129';
+import { inputClass } from './AuthLayout.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import DemoAccounts from './DemoAccounts.js?v=129';
 
 // "Add account": sign in to another account on top of the current page. The current account
 // stays signed in on this browser (see auth.php "accounts"), so the user can switch back.
 export default {
   name: 'AddAccountModal',
-  components: { BaseModal },
+  components: { BaseModal, DemoAccounts },
   emits: ['close'],
   data() {
     return {
@@ -41,6 +42,11 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    fillDemo({ identifier, password }) {
+      this.form.identifier = identifier;
+      this.form.password = password;
+      this.error = '';
     },
     signUp() {
       this.$emit('close');
@@ -81,6 +87,8 @@ export default {
         <svg class="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
         {{ error }}
       </div>
+
+      <DemoAccounts variant="inline" portal="resident" @fill="fillDemo" />
 
       <p class="text-sm text-slate-500">
         Don't have another account?

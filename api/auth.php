@@ -4,6 +4,7 @@ require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/psgc.php';
 require_once __DIR__ . '/lib/support.php';   // find_barangay()
 require __DIR__ . '/lib/verification.php';
+require __DIR__ . '/lib/google.php';
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -102,32 +103,40 @@ function start_registration_verification(array $data, string $channel, string $d
         'expires_in_minutes' => CODE_TTL_MINUTES,
         'resend_after_seconds' => CODE_RESEND_SECONDS,
     ];
-    $driver = app_config()[$channel === 'email' ? 'mail' : 'sms']['driver'] ?? 'log';
-    if ($driver === 'log') {
+    if (show_test_code($channel)) {
         $result['dev_code'] = $code;
     }
     return $result;
 }
 
-// Normal User sign-up. Nothing is written to the database until the code is confirmed
-// (see the 'verify' action below) — a failed or abandoned sign-up leaves no trace.
-if ($action === 'register' && $method === 'POST') {
-    $in = json_input();
+/** Signs an account in on this session (after a password, a code, or Google has vouched for it). */
+function sign_in(int $id): void
+{
+    unset($_SESSION['pending_user_id'], $_SESSION['pending_registration'], $_SESSION['google_signup']);
+    session_regenerate_id(true);
+    $_SESSION['user_id'] = $id;
+    db()->prepare('UPDATE users SET last_login_at = NOW() WHERE id = ?')->execute([$id]);
+    remember_account($id);
+}
+
+/**
+ * The person and address part of a sign-up — everything except how they will sign in. Shared by
+ * the email/mobile sign-up and the Google one, so both hold an account to the same rules.
+ * Returns the columns to store; fails with a message on the first problem.
+ */
+function registration_profile(array $in): array
+{
     $str = fn(string $key) => trim((string)($in[$key] ?? ''));
 
     $first = $str('first_name');
     $middle = $str('middle_name');
     $last = $str('last_name');
     $birthdate = $str('birthdate');
-    $contactMethod = $str('contact_method') === 'phone' ? 'phone' : 'email';
-    $email = strtolower($str('email'));
-    $phoneRaw = $str('phone');
     $addressLine = $str('address_line');
     $barangay = $str('barangay');
     $provinceCode = $str('province_code');
     $cityCode = $str('city_code');
     $postal = $str('postal_code');
-    $password = (string)($in['password'] ?? '');
     $consent = (bool)($in['privacy_consent'] ?? false);
 
     if ($first === '' || $last === '') {
@@ -143,19 +152,6 @@ if ($action === 'register' && $method === 'POST') {
     }
     if ($age > 80) {
         fail('Please enter a valid date of birth (age must be 80 or below).');
-    }
-
-    $phone = null;
-    if ($contactMethod === 'email') {
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            fail('Please enter a valid email address.');
-        }
-    } else {
-        $phone = normalize_ph_mobile($phoneRaw);
-        if (!$phone) {
-            fail('Please enter a valid mobile number, e.g. 0917 123 4567.');
-        }
-        $email = null;
     }
 
     if ($addressLine === '') {
@@ -194,11 +190,65 @@ if ($action === 'register' && $method === 'POST') {
     if (!preg_match('/^\d{4}$/', $postal)) {
         fail('Postal / ZIP code must be 4 digits.');
     }
-    if (!is_strong_password($password)) {
-        fail('Password must be at least 8 characters and include an uppercase letter, a number, and a special character.');
-    }
     if (!$consent) {
         fail('Please agree to the Data Privacy notice to continue.');
+    }
+
+    return [
+        'full_name' => trim(preg_replace('/\s+/', ' ', "$first $middle $last")),
+        'first_name' => $first, 'middle_name' => $middle ?: null, 'last_name' => $last,
+        'birthdate' => $birthdate, 'address_line' => $addressLine,
+        'barangay' => $barangay ?: null, 'barangay_id' => $barangayId,
+        'city' => $city, 'city_code' => $cityCode, 'province' => $province, 'province_code' => $provinceCode,
+        'postal_code' => $postal,
+    ];
+}
+
+// Lets the sign-up form say an email/mobile number is already taken as the applicant types,
+// instead of only after they finish the form. 'register' re-runs the same check server-side.
+if ($action === 'check_contact' && $method === 'GET') {
+    $email = strtolower(trim((string)($_GET['email'] ?? '')));
+    if ($email !== '') {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            respond(['available' => null]);
+        }
+        $stmt = db()->prepare('SELECT 1 FROM users WHERE email = ?');
+        $stmt->execute([$email]);
+        respond(['available' => !$stmt->fetch()]);
+    }
+    $phone = normalize_ph_mobile((string)($_GET['phone'] ?? ''));
+    if ($phone === null) {
+        respond(['available' => null]);
+    }
+    $stmt = db()->prepare('SELECT 1 FROM users WHERE phone = ?');
+    $stmt->execute([$phone]);
+    respond(['available' => !$stmt->fetch()]);
+}
+
+// Normal User sign-up. Nothing is written to the database until the code is confirmed
+// (see the 'verify' action below) — a failed or abandoned sign-up leaves no trace.
+if ($action === 'register' && $method === 'POST') {
+    $in = json_input();
+    $profile = registration_profile($in);
+
+    $contactMethod = trim((string)($in['contact_method'] ?? '')) === 'phone' ? 'phone' : 'email';
+    $email = strtolower(trim((string)($in['email'] ?? '')));
+    $password = (string)($in['password'] ?? '');
+
+    $phone = null;
+    if ($contactMethod === 'email') {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            fail('Please enter a valid email address.');
+        }
+    } else {
+        $phone = normalize_ph_mobile(trim((string)($in['phone'] ?? '')));
+        if (!$phone) {
+            fail('Please enter a valid mobile number, e.g. 0917 123 4567.');
+        }
+        $email = null;
+    }
+    if (!is_strong_password($password)) {
+        fail('Password must be at least 8 characters and include an uppercase letter, a number, and a special character.');
     }
 
     $dupe = db()->prepare('SELECT id FROM users WHERE (email IS NOT NULL AND email = ?) OR (phone IS NOT NULL AND phone = ?)');
@@ -207,15 +257,7 @@ if ($action === 'register' && $method === 'POST') {
         fail($email ? 'An account with that email already exists. Please log in instead.' : 'An account with that mobile number already exists. Please log in instead.');
     }
 
-    $fullName = trim(preg_replace('/\s+/', ' ', "$first $middle $last"));
-    $data = [
-        'email' => $email, 'phone' => $phone, 'password_hash' => password_hash($password, PASSWORD_BCRYPT),
-        'full_name' => $fullName, 'first_name' => $first, 'middle_name' => $middle ?: null, 'last_name' => $last,
-        'birthdate' => $birthdate, 'address_line' => $addressLine,
-        'barangay' => $barangay ?: null, 'barangay_id' => $barangayId,
-        'city' => $city, 'city_code' => $cityCode, 'province' => $province, 'province_code' => $provinceCode,
-        'postal_code' => $postal,
-    ];
+    $data = ['email' => $email, 'phone' => $phone, 'password_hash' => password_hash($password, PASSWORD_BCRYPT)] + $profile;
     $verifChannel = $contactMethod === 'phone' ? 'sms' : 'email';
     $destination = $contactMethod === 'phone' ? $phone : $email;
     respond(['verification' => start_registration_verification($data, $verifChannel, $destination)]);
@@ -235,6 +277,9 @@ if ($action === 'login' && $method === 'POST') {
     $stmt->execute([$phone ?? strtolower($identifier)]);
     $user = $stmt->fetch();
 
+    if ($user && $user['password_hash'] === '' && !empty($user['google_sub'])) {
+        fail('This account signs in with Google. Use the Google button below.', 401);
+    }
     if (!$user || !password_verify($password, $user['password_hash'])) {
         fail('Invalid email/mobile number or password.', 401);
     }
@@ -338,6 +383,133 @@ if ($action === 'resend' && $method === 'POST') {
     respond(['verification' => start_verification(pending_user(), true)]);
 }
 
+// The OAuth client id the browser needs to show the Google button. Public by design; null hides it.
+if ($action === 'google_config' && $method === 'GET') {
+    respond(['client_id' => google_client_id() ?: null]);
+}
+
+/**
+ * Sign in with Google. The browser posts the ID token Google gave it; it is verified here.
+ * An account already linked to this Google account, or holding the same Google-verified email,
+ * is signed in (and linked). Otherwise nothing is created yet: Google only tells us a name and an
+ * email, and an account here also needs a birthdate, an address and consent, so the person is
+ * sent to finish signing up (see 'google_register').
+ */
+if ($action === 'google' && $method === 'POST') {
+    if (google_client_id() === '') {
+        fail('Google sign-in is not set up on this server.', 503);
+    }
+    try {
+        $claims = google_verify_id_token((string)(json_input()['credential'] ?? ''));
+    } catch (Throwable $e) {
+        error_log('Google sign-in: ' . $e->getMessage());
+        fail("We couldn't reach Google right now. Please try again in a moment.", 502);
+    }
+    if (!$claims) {
+        fail('Google sign-in could not be verified. Please try again.', 401);
+    }
+    $sub = (string)$claims['sub'];
+    $email = strtolower((string)$claims['email']);
+
+    $stmt = db()->prepare('SELECT * FROM users WHERE google_sub = ?');
+    $stmt->execute([$sub]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        $stmt = db()->prepare('SELECT * FROM users WHERE email = ?');
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+        if ($user && !empty($user['google_sub'])) {
+            fail('This email is already linked to a different Google account.', 409);
+        }
+    }
+
+    if ($user) {
+        if (in_array($user['role'], ['staff', 'admin'], true)) {
+            fail('This is a City Staff account. Please sign in on the Staff Portal page.', 403);
+        }
+        if (!(int)$user['is_active']) {
+            fail('This account has been deactivated. Please contact the city office.', 403);
+        }
+        // Google has confirmed the address, so it counts as verified here too.
+        db()->prepare('UPDATE users SET google_sub = ?, email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')
+            ->execute([$sub, $user['id']]);
+        sign_in((int)$user['id']);
+        respond(['user' => current_user()]);
+    }
+
+    $_SESSION['google_signup'] = [
+        'sub' => $sub,
+        'email' => $email,
+        'first_name' => trim((string)($claims['given_name'] ?? '')),
+        'last_name' => trim((string)($claims['family_name'] ?? '')),
+        'expires_at' => time() + 30 * 60,
+    ];
+    respond(['needs_profile' => true], 202);
+}
+
+/** The Google sign-up waiting to be finished, for the sign-up form to fill in. Null when there is none. */
+function google_signup(): ?array
+{
+    $pending = $_SESSION['google_signup'] ?? null;
+    if ($pending && $pending['expires_at'] < time()) {
+        unset($_SESSION['google_signup']);
+        return null;
+    }
+    return $pending;
+}
+
+if ($action === 'google_profile' && $method === 'GET') {
+    $pending = google_signup();
+    respond(['profile' => $pending ? [
+        'email' => $pending['email'],
+        'first_name' => $pending['first_name'],
+        'last_name' => $pending['last_name'],
+    ] : null]);
+}
+
+if ($action === 'google_cancel' && $method === 'POST') {
+    unset($_SESSION['google_signup']);
+    respond(['ok' => true]);
+}
+
+// Finishes a Google sign-up. Google has already verified the email, so there is no code step
+// and no password: the account signs in with Google (a password can be added later).
+if ($action === 'google_register' && $method === 'POST') {
+    $pending = google_signup();
+    if (!$pending) {
+        fail('Your Google sign-up expired. Please continue with Google again.', 401);
+    }
+    $profile = registration_profile(json_input());
+
+    $dupe = db()->prepare('SELECT id FROM users WHERE email = ? OR google_sub = ?');
+    $dupe->execute([$pending['email'], $pending['sub']]);
+    if ($dupe->fetch()) {
+        unset($_SESSION['google_signup']);
+        fail('An account with that email already exists. Please log in instead.', 409);
+    }
+
+    try {
+        db()->prepare(
+            "INSERT INTO users (role, account_type, email, password_hash, google_sub, full_name, first_name, middle_name, last_name, birthdate,
+                                address_line, barangay, barangay_id, city, city_code, province, province_code, postal_code,
+                                privacy_consent_at, onboarding_completed, email_verified_at)
+             VALUES ('applicant', 'unregistered', ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1, NOW())"
+        )->execute([
+            $pending['email'], $pending['sub'], $profile['full_name'], $profile['first_name'], $profile['middle_name'], $profile['last_name'],
+            $profile['birthdate'], $profile['address_line'], $profile['barangay'], $profile['barangay_id'],
+            $profile['city'], $profile['city_code'], $profile['province'], $profile['province_code'], $profile['postal_code'],
+        ]);
+    } catch (PDOException $e) {
+        if ($e->getCode() === '23000') {
+            unset($_SESSION['google_signup']);
+            fail('That Google account was just used to sign up. Please log in instead.', 409);
+        }
+        throw $e;
+    }
+    sign_in((int)db()->lastInsertId());
+    respond(['user' => current_user()], 201);
+}
+
 // Change your own password (required after an Admin sets a temporary one)
 if ($action === 'change_password' && $method === 'POST') {
     $user = require_auth();
@@ -347,7 +519,9 @@ if ($action === 'change_password' && $method === 'POST') {
 
     $stmt = db()->prepare('SELECT password_hash FROM users WHERE id = ?');
     $stmt->execute([$user['id']]);
-    if (!password_verify($current, (string)$stmt->fetchColumn())) {
+    $hash = (string)$stmt->fetchColumn();
+    // An account made through Google has no password yet; its first one is set without a current one.
+    if ($hash !== '' && !password_verify($current, $hash)) {
         fail('Your current password is incorrect.', 422);
     }
     if (!is_strong_password($new)) {
@@ -445,6 +619,94 @@ if ($action === 'logout' && $method === 'POST') {
 
 if ($action === 'me' && $method === 'GET') {
     respond(['user' => current_user()]);
+}
+
+// The account picker on the sign-in pages: who a tester can sign in as, grouped by level.
+// Public on purpose — it sits on the sign-in pages, before anyone is signed in — and gated by
+// testing.demo_accounts, which an install with real accounts on it turns off. See config.php.
+if ($action === 'demo_accounts' && $method === 'GET') {
+    $testing = app_config()['testing'] ?? [];
+    if (empty($testing['demo_accounts'])) {
+        respond(['enabled' => false, 'password' => '', 'groups' => []]);
+    }
+    $password = (string)($testing['demo_password'] ?? '');
+
+    $rows = db()->query(
+        "SELECT u.id, u.role, u.account_type, u.email, u.full_name, u.password_hash, u.barangay,
+                d.name AS department_name, d.barangay_id AS dept_barangay_id,
+                (SELECT b.business_name FROM businesses b
+                  WHERE b.user_id = u.id AND b.status = 'approved'
+                  ORDER BY b.id LIMIT 1) AS business_name
+           FROM users u
+           LEFT JOIN departments d ON d.id = u.department_id
+          WHERE u.is_active = 1 AND u.email IS NOT NULL
+          ORDER BY u.id"
+    )->fetchAll();
+
+    // Only the accounts this one password actually opens, so nothing in the list is a dead end —
+    // a real person's account with their own password drops out here. bcrypt is deliberately
+    // slow, so check once per distinct hash (a seeded install has a handful), not once per row.
+    $verdict = [];
+    $usable = [];
+    foreach ($rows as $row) {
+        $hash = $row['password_hash'];
+        if (!array_key_exists($hash, $verdict)) {
+            $verdict[$hash] = $password !== '' && password_verify($password, $hash);
+        }
+        if ($verdict[$hash]) {
+            $usable[] = $row;
+        }
+    }
+
+    // portal = which sign-in page takes this account; the API refuses the other one outright.
+    $groups = [
+        'unregistered' => ['label' => 'Normal users', 'portal' => 'resident',
+            'note' => 'Signed up and verified, nothing approved yet — can browse permits and requirements.'],
+        'resident' => ['label' => 'Residents', 'portal' => 'resident',
+            'note' => 'Residency approved — can file personal and construction permits.'],
+        'business' => ['label' => 'Business owners', 'portal' => 'resident',
+            'note' => 'At least one approved business — can file that business’s permits.'],
+        'office' => ['label' => 'City staff — offices', 'portal' => 'staff',
+            'note' => 'One reviewer per office. Each sees only the steps routed to that office.'],
+        'barangay' => ['label' => 'Barangay secretariats', 'portal' => 'staff',
+            'note' => 'Barangay-level clearances — the first step of most pipelines.'],
+        'admin' => ['label' => 'Admins', 'portal' => 'staff',
+            'note' => 'Everything staff can do, across every office, plus the Admin page.'],
+    ];
+    foreach ($groups as $key => $group) {
+        $groups[$key]['key'] = $key;
+        $groups[$key]['accounts'] = [];
+    }
+
+    foreach ($usable as $row) {
+        if ($row['role'] === 'admin') {
+            $key = 'admin';
+            $detail = $row['department_name'] ?: 'All offices';
+        } elseif ($row['role'] === 'staff') {
+            $key = $row['dept_barangay_id'] !== null ? 'barangay' : 'office';
+            $detail = $row['department_name'] ?: 'No office assigned';
+        } elseif ($row['account_type'] === 'business') {
+            $key = 'business';
+            $detail = $row['business_name'] ?: '';
+        } elseif ($row['account_type'] === 'resident') {
+            $key = 'resident';
+            $detail = $row['barangay'] ? 'Barangay ' . $row['barangay'] : '';
+        } else {
+            $key = 'unregistered';
+            $detail = $row['barangay'] ? 'Barangay ' . $row['barangay'] : '';
+        }
+        $groups[$key]['accounts'][] = [
+            'email' => $row['email'],
+            'name' => $row['full_name'],
+            'detail' => $detail,
+        ];
+    }
+
+    respond([
+        'enabled' => true,
+        'password' => $password,
+        'groups' => array_values(array_filter($groups, fn($g) => $g['accounts'] !== [])),
+    ]);
 }
 
 fail('Unknown action.', 404);

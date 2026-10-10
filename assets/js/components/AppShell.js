@@ -1,12 +1,13 @@
-import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=117';
-import { apiGet, apiPost } from '../api/client.js?v=117';
-import ChatWidget from './ChatWidget.js?v=117';
-import AddAccountModal from './AddAccountModal.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
-import { formatDateTime } from '../util.js?v=117';
-import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=117';
-import Loader from './Loader.js?v=117';
-import NotificationToasts from './NotificationToasts.js?v=117';
+import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=129';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import ChatLauncher from './ChatLauncher.js?v=129';
+import AddAccountModal from './AddAccountModal.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import { formatDateTime } from '../util.js?v=129';
+import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=129';
+import Loader from './Loader.js?v=129';
+import NotificationToasts from './NotificationToasts.js?v=129';
+import NotificationIcon from './NotificationIcon.js?v=129';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -16,7 +17,7 @@ const MAX_TOASTS = 3;
 
 export default {
   name: 'AppShell',
-  components: { ChatWidget, AddAccountModal, BaseModal, Loader, NotificationToasts },
+  components: { ChatLauncher, AddAccountModal, BaseModal, Loader, NotificationToasts, NotificationIcon },
   props: {
     // For a page with its own sticky action bar along the bottom: lifts the Ask button above it
     liftChat: { type: Boolean, default: false },
@@ -236,7 +237,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=117" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=129" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
@@ -289,11 +290,7 @@ export default {
               <div v-else class="max-h-[min(24rem,calc(100dvh-14rem))] md:max-h-96 overflow-y-auto scroll-dark pr-0.5">
                 <button v-for="n in notifications" :key="n.id" type="button" role="menuitem" @click="openNotification(n)"
                   class="w-full text-left flex gap-3 px-3 py-2.5 rounded-xl hover:bg-white/10 transition">
-                  <span class="mt-0.5 w-7 h-7 rounded-full shrink-0 flex items-center justify-center"
-                    :class="n.kind === 'message' ? 'bg-sun-300/20 text-sun-300' : 'bg-brand-500/20 text-brand-300'">
-                    <svg v-if="n.kind === 'message'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>
-                    <svg v-else class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                  </span>
+                  <NotificationIcon :item="n" size="sm" dark class="mt-0.5" />
                   <span class="min-w-0 flex-1">
                     <span class="flex items-start gap-2">
                       <span class="block font-semibold text-white leading-snug flex-1">{{ n.title }}</span>
@@ -418,7 +415,7 @@ export default {
 
     <NotificationToasts v-if="isApplicant" :items="toasts" @open="openToast" @close="dismissToast" />
 
-    <ChatWidget v-if="authState.user && authState.user.role === 'applicant'" :lift-for-bar="liftChat" />
+    <ChatLauncher v-if="authState.user && authState.user.role === 'applicant'" :lift-for-bar="liftChat" />
     <transition name="modal">
       <AddAccountModal v-if="addingAccount" @close="addingAccount = false" />
     </transition>

@@ -1,8 +1,9 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=117';
-import AppShell from './AppShell.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
-import { authState } from '../store/auth.js?v=117';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=117';
+import { apiGet, apiPostForm } from '../api/client.js?v=129';
+import AppShell from './AppShell.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import SelectMenu from './SelectMenu.js?v=129';
+import { authState } from '../store/auth.js?v=129';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=129';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
 // these two have to move together.
@@ -29,7 +30,7 @@ const STEPS = [
 
 export default {
   name: 'NewApplication',
-  components: { AppShell, BaseModal },
+  components: { AppShell, BaseModal, SelectMenu },
   data() {
     return {
       // Which permits are being filed. One each in single mode, any number in multiple mode;
@@ -110,6 +111,9 @@ export default {
     },
     // The typed name matched against the table. Null until it is one of the 75 — the permit is
     // routed by this, so a near-miss has to fail rather than guess.
+    barangayOptions() {
+      return this.barangays.map((b) => ({ value: b.name, label: b.name }));
+    },
     matchedBarangay() {
       const typed = this.form.barangay.trim().toLowerCase();
       if (!typed) return null;
@@ -572,14 +576,16 @@ export default {
           <!-- Keyed by step, so each step mounts fresh and plays its CSS entrance (demo-in). Not a
                Vue <transition>: out-in waits on animation frames, and a tab that isn't painting
                would be left with an empty step. -->
-          <div :key="step" class="demo-in px-5 sm:px-7 pt-5 pb-6">
+          <div :key="step" class="pt-tab-in px-5 sm:px-7 pt-5 pb-6">
 
             <!-- ============ 1 · CHOOSE ============ -->
             <div v-if="step === 'choose'" class="space-y-4">
               <div class="flex flex-col sm:flex-row gap-2.5">
                 <label class="flex-1 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 focus-within:border-brand-600 focus-within:ring-4 focus-within:ring-brand-600/15 transition">
-                  <svg class="w-4 h-4 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input v-model="query" type="search" placeholder="Search permits — e.g. fence, business, clearance" aria-label="Search permits"
+                  <button type="button" @click="$refs.searchInput.focus()" aria-label="Search" class="shrink-0 p-1.5 -ml-1.5 text-slate-400 hover:text-brand-600 transition">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                  </button>
+                  <input ref="searchInput" v-model="query" type="search" placeholder="Search permits — e.g. fence, business, clearance" aria-label="Search permits"
                     class="flex-1 min-w-0 py-2.5 text-sm outline-none bg-transparent" />
                 </label>
                 <div class="shrink-0 inline-flex rounded-xl bg-slate-100 p-1 self-start sm:self-auto" role="group" aria-label="How many permits to file">
@@ -814,17 +820,13 @@ export default {
                     class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
                     :class="flashing === 'prop-address' ? 'ring-4 ring-sun-300' : ''" />
                 </div>
-                <!-- Typed against the barangays table, not free text: this is what sends the permit to
+                <!-- Picked from the barangays table, not free text: this is what sends the permit to
                      a barangay secretariat, and it is the property's barangay, not the applicant's. -->
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1" for="prop-brgy">Barangay</label>
-                  <input id="prop-brgy" v-model="form.barangay" list="prop-brgy-list" type="text"
-                    placeholder="Start typing to search…" autocomplete="off"
-                    class="w-full rounded-xl border bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
-                    :class="[form.barangay.trim() && !matchedBarangay ? 'border-red-300' : 'border-slate-300', flashing === 'prop-brgy' ? 'ring-4 ring-sun-300' : '']" />
-                  <datalist id="prop-brgy-list">
-                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
-                  </datalist>
+                  <label id="prop-brgy-label" class="block text-xs font-semibold text-slate-600 mb-1" for="prop-brgy">Barangay</label>
+                  <SelectMenu id="prop-brgy" labelledby="prop-brgy-label" v-model="form.barangay" :options="barangayOptions"
+                    placeholder="Choose a barangay…"
+                    :class="['rounded-xl', flashing === 'prop-brgy' ? 'ring-4 ring-sun-300' : '']" />
                   <p v-if="form.barangay.trim() && !matchedBarangay" class="text-xs text-red-600 mt-1">
                     Not one of the {{ barangays.length }} barangays of Dasmariñas — pick one from the list.
                   </p>

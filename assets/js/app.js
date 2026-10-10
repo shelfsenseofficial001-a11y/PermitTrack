@@ -1,10 +1,11 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=117';
-import { authState, logout, signOutPathFor } from './store/auth.js?v=117';
-import { uiState, beginTransition, endTransition } from './store/ui.js?v=117';
-import ChangePasswordModal from './components/ChangePasswordModal.js?v=117';
-import CookieBanner from './components/CookieBanner.js?v=117';
-import BaseModal from './components/BaseModal.js?v=117';
+import { router } from './router/router.js?v=129';
+import { authState, logout, signOutPathFor } from './store/auth.js?v=129';
+import { uiState, beginTransition, endTransition } from './store/ui.js?v=129';
+import ChangePasswordModal from './components/ChangePasswordModal.js?v=129';
+import CookieBanner from './components/CookieBanner.js?v=129';
+import BaseModal from './components/BaseModal.js?v=129';
+import LogoMark from './components/LogoMark.js?v=129';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -12,10 +13,12 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // transitionend. A hidden tab never paints, so transitionend would never fire there and the
 // next page would never be shown (mode="out-in" waits for the leave to finish).
 const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const PAGE_MS = reduced ? { enter: 1, leave: 1 } : { enter: 240, leave: 120 };
+// enter covers the whole staggered arrival in index.html — the last section starts .3s in and
+// takes .55s — or Vue would strip the classes mid-animation and the late sections would snap.
+const PAGE_MS = reduced ? { enter: 1, leave: 1 } : { enter: 850, leave: 160 };
 
 const App = {
-  components: { ChangePasswordModal, CookieBanner, BaseModal },
+  components: { ChangePasswordModal, CookieBanner, BaseModal, LogoMark },
   data() {
     return { authState, uiState, pageMs: PAGE_MS, signOutError: '' };
   },
@@ -47,6 +50,11 @@ const App = {
     },
   },
   computed: {
+    // Where the sign-in reveal opens from: the pressed button, or the middle of the screen
+    irisOrigin() {
+      const o = this.uiState.transitionOrigin;
+      return o ? { '--x': o.x + 'px', '--y': o.y + 'px' } : { '--x': '50%', '--y': '50%' };
+    },
     // A temporary password from an Admin must be replaced before anything else. Hosting
     // the dialog here, above every route and both shells, means no page can slip past it.
     forcedPasswordChange() {
@@ -99,15 +107,23 @@ const App = {
       </BaseModal>
     </transition>
 
+    <!-- Signing in: the whole screen opens out from the button that was pressed, the mark flies
+         with a welcome, then it lifts away to show the first page arriving (ui.js enterSignedIn) -->
+    <transition name="iris">
+      <div v-if="uiState.transition === 'signin'" role="status" aria-live="polite" :style="irisOrigin"
+        class="pt-iris fixed inset-0 z-[200] flex flex-col items-center justify-center px-6 text-center text-white">
+        <LogoMark animated class="pt-iris-mark w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_18px_30px_rgba(0,0,0,0.35)]" />
+        <p class="pt-iris-line mt-7 text-3xl sm:text-4xl font-extrabold tracking-tight">{{ uiState.transitionGreeting }}</p>
+        <p v-if="uiState.transitionLine" class="pt-iris-line2 mt-2 text-sm sm:text-base text-white/70">{{ uiState.transitionLine }}</p>
+      </div>
+    </transition>
+
     <!-- The veil over a sign-out or an account switch: the page blurs behind it -->
     <transition name="veil">
-      <div v-if="uiState.transition" role="status" aria-live="polite"
+      <div v-if="uiState.transition && uiState.transition !== 'signin'" role="status" aria-live="polite"
         class="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 backdrop-blur-md">
         <div class="flex items-center gap-3 text-white">
-          <svg class="w-7 h-7 animate-spin [animation-duration:1.2s]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>
-          </svg>
+          <LogoMark animated color="currentColor" class="w-9 h-9 shrink-0" />
           <span class="text-xl font-bold tracking-tight">{{ uiState.transition === 'signout' ? 'Signing out…' : 'Switching accounts…' }}</span>
         </div>
       </div>

@@ -1,25 +1,56 @@
-import { login, homePathFor } from '../store/auth.js?v=117';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import { login, homePathFor } from '../store/auth.js?v=129';
+import { enterSignedIn } from '../store/ui.js?v=129';
+import { identifierError } from '../util.js?v=129';
+import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=129';
+import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=129';
+import GoogleButton from './GoogleButton.js?v=129';
 
 export default {
   name: 'Login',
-  components: { AuthLayout },
+  components: { AuthLayout, DemoAccounts, GoogleButton },
   data() {
     return {
       form: { identifier: '', password: '' },
       showPassword: false,
       error: '',
+      // Held back until the field is left alone once, so the message doesn't fire at someone
+      // halfway through typing their address. After that it follows every keystroke.
+      identifierTouched: false,
       loading: false,
-      inputClass, labelClass, primaryButtonClass,
+      inputClass, inputErrorClass, labelClass, primaryButtonClass,
     };
   },
+  computed: {
+    identifierProblem() {
+      return identifierError(this.form.identifier);
+    },
+    showIdentifierProblem() {
+      return this.identifierTouched && !!this.identifierProblem;
+    },
+  },
+  mounted() {
+    const carried = takeDemoPrefill();
+    if (carried) this.fillDemo(carried);
+  },
   methods: {
+    fillDemo({ identifier, password }) {
+      this.form.identifier = identifier;
+      this.form.password = password;
+      this.error = '';
+      this.identifierTouched = false;
+    },
     async submit() {
+      this.identifierTouched = true;
+      if (this.identifierProblem) return;
       this.error = '';
       this.loading = true;
       try {
         const user = await login(this.form.identifier, this.form.password, false);
-        this.$router.push(user ? homePathFor(user) : '/verify');
+        if (user) {
+          await enterSignedIn(this.$router, homePathFor(user), user, { from: this.$refs.submitBtn, line: 'Taking you to your dashboard…' });
+        } else {
+          this.$router.push('/verify');
+        }
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -29,6 +60,8 @@ export default {
   },
   template: `
   <AuthLayout :loading="loading" loading-kind="login">
+    <template #edge><DemoAccounts portal="resident" @fill="fillDemo" /></template>
+    <template #default>
     <span class="inline-flex items-center text-xs font-semibold uppercase tracking-wider leading-none text-[#1f7a3a] bg-[#f3f9e3] rounded-full px-3 py-1.5 mb-3">Residents &amp; Businesses</span>
 
     <h1 class="text-3xl font-bold tracking-tight text-slate-900 mb-2">Welcome back</h1>
@@ -38,7 +71,12 @@ export default {
       <div>
         <label :class="labelClass" for="login-id">Email or mobile number</label>
         <input id="login-id" v-model="form.identifier" type="text" required autocomplete="username"
-          placeholder="you@email.com or 0917 123 4567" :class="inputClass" />
+          @blur="identifierTouched = true"
+          :aria-invalid="showIdentifierProblem ? 'true' : 'false'"
+          :aria-describedby="showIdentifierProblem ? 'login-id-error' : null"
+          placeholder="you@email.com or 0917 123 4567"
+          :class="showIdentifierProblem ? inputErrorClass : inputClass" />
+        <p v-if="showIdentifierProblem" id="login-id-error" class="mt-1.5 text-sm text-red-600">{{ identifierProblem }}</p>
       </div>
       <div>
         <label :class="labelClass" for="login-pw">Password</label>
@@ -56,20 +94,11 @@ export default {
       <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
 
       <div class="pt-1">
-        <button type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Please wait…' : 'Log In' }}</button>
+        <button ref="submitBtn" type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Please wait…' : 'Log In' }}</button>
       </div>
     </form>
 
-    <div class="flex items-center gap-3 my-4">
-      <div class="flex-1 h-px bg-slate-200"></div>
-      <span class="text-xs text-slate-400">or continue with</span>
-      <div class="flex-1 h-px bg-slate-200"></div>
-    </div>
-    <button type="button" disabled title="Not available in this demo"
-      class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-100 text-sm font-semibold text-slate-500 cursor-not-allowed">
-      <svg class="w-4 h-4" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-      Google
-    </button>
+    <GoogleButton @busy="loading = $event" />
 
     <p class="text-sm text-slate-500 mt-5 text-center">
       Don't have an account?
@@ -79,6 +108,7 @@ export default {
       City staff?
       <router-link to="/staff/login" class="font-semibold text-slate-500 hover:text-[#1f7a3a] hover:underline">Sign in to the Staff Portal →</router-link>
     </p>
+    </template>
   </AuthLayout>
   `,
 };

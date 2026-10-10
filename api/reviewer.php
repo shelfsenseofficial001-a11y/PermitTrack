@@ -3,6 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/support.php';
 require_once __DIR__ . '/lib/pipeline.php';
+require_once __DIR__ . '/lib/threads.php';
 
 /**
  * The office code a department answers to. Every barangay secretariat shares the code BARANGAY,
@@ -105,12 +106,13 @@ if ($action === 'decision' && $method === 'POST') {
     $update = $pdo->prepare('UPDATE applications SET status = ?, assigned_reviewer_id = COALESCE(assigned_reviewer_id, ?) WHERE id = ?');
     $update->execute([$status, $user['id'], $appId]);
 
-    $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)");
-    $activity->execute([$appId, $user['id'], 'Status updated to "' . $status . '" by ' . $user['full_name'] . '.']);
+    $statusEvent = $status === 'Approved' ? 'approved' : ($status === 'Rejected' ? 'rejected' : 'status');
+    $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', ?, ?)");
+    $activity->execute([$appId, $user['id'], $statusEvent, 'Status updated to "' . $status . '" by ' . $user['full_name'] . '.']);
 
     if ($notes !== '') {
-        $note = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
-        $note->execute([$appId, $user['id'], $notes]);
+        // A note is a message to the applicant: it lands in the application's thread in Messages.
+        post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $notes);
     }
 
     $pdo->commit();
@@ -210,16 +212,31 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     // Rejecting stays available at any point — that is how a bad application gets stopped early.
     if ($decision === 'approved') {
         $officeCode = office_code_for_department((int)$user['department_id']);
-        $pendingStmt = db()->prepare(
-            "SELECT COUNT(*) FROM application_documents
-              WHERE application_id = ?
-                AND COALESCE(office_code, 'BARANGAY') = ?
-                AND status <> 'Verified'"
-        );
-        $pendingStmt->execute([$appId, $officeCode]);
-        $pending = (int)$pendingStmt->fetchColumn();
-        if ($pending > 0) {
-            fail('Review the ' . $pending . ' document(s) your office is responsible for before approving this step.', 409);
+        if ($officeCode === 'BARANGAY') {
+            // Intake covers the whole submission, not just the barangay's own paperwork: the city
+            // offices do not see any of it until this step is signed off, so anything still
+            // unchecked would travel on unseen.
+            $pendingStmt = db()->prepare(
+                "SELECT COUNT(*) FROM application_documents
+                  WHERE application_id = ? AND status NOT IN ('Intake Approved', 'Verified')"
+            );
+            $pendingStmt->execute([$appId]);
+            $pending = (int)$pendingStmt->fetchColumn();
+            if ($pending > 0) {
+                fail('Check the ' . $pending . ' remaining document(s) at intake before forwarding this application.', 409);
+            }
+        } else {
+            $pendingStmt = db()->prepare(
+                "SELECT COUNT(*) FROM application_documents
+                  WHERE application_id = ?
+                    AND COALESCE(office_code, 'BARANGAY') = ?
+                    AND status <> 'Verified'"
+            );
+            $pendingStmt->execute([$appId, $officeCode]);
+            $pending = (int)$pendingStmt->fetchColumn();
+            if ($pending > 0) {
+                fail('Review the ' . $pending . ' document(s) your office is responsible for before approving this step.', 409);
+            }
         }
     }
 
@@ -231,11 +248,12 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
         $update = $pdo->prepare('UPDATE applications SET status = ?, assigned_reviewer_id = COALESCE(assigned_reviewer_id, ?) WHERE id = ?');
         $update->execute([$resultStatus, $user['id'], $appId]);
 
-        $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)");
-        $activity->execute([$appId, $user['id'], $current['step_label'] . ' — ' . ucfirst($decision) . ' by ' . $user['full_name'] . '.']);
+        // A rejected step rejects the permit; an approved one either moves it on or issues it.
+        $stepEvent = $decision === 'rejected' ? 'rejected' : ($resultStatus === 'Approved' ? 'approved' : 'status');
+        $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', ?, ?)");
+        $activity->execute([$appId, $user['id'], $stepEvent, $current['step_label'] . ' — ' . ucfirst($decision) . ' by ' . $user['full_name'] . '.']);
         if ($notes !== '') {
-            $note = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
-            $note->execute([$appId, $user['id'], $notes]);
+            post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $notes);
         }
 
         $pdo->commit();

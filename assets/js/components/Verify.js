@@ -1,5 +1,6 @@
-import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=117';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import { authState, verifyCode, resendCode, homePathFor } from '../store/auth.js?v=129';
+import { enterSignedIn } from '../store/ui.js?v=129';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=129';
 
 export default {
   name: 'Verify',
@@ -62,7 +63,12 @@ export default {
       this.loading = true;
       try {
         const user = await verifyCode(this.code);
-        this.$router.push(homePathFor(user));
+        const first = (user && (user.first_name || String(user.full_name || '').trim().split(/\s+/)[0])) || '';
+        await enterSignedIn(this.$router, homePathFor(user), user, {
+          from: this.$refs.submitBtn,
+          greeting: first ? `Welcome to PermitTrack, ${first}` : 'Welcome to PermitTrack',
+          line: 'Setting up your dashboard…',
+        });
       } catch (e) {
         this.error = e.message;
         this.code = '';
@@ -110,7 +116,7 @@ export default {
         <p v-if="error" class="text-sm text-red-600" role="alert">{{ error }}</p>
         <p v-if="notice" class="text-sm text-[#1f7a3a]" aria-live="polite">{{ notice }}</p>
 
-        <button type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Checking…' : 'Verify' }}</button>
+        <button ref="submitBtn" type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Checking…' : 'Verify' }}</button>
       </form>
 
       <p class="text-sm text-slate-500 mt-5 text-center">
@@ -126,7 +132,7 @@ export default {
 
       <!-- Only shown while email/SMS use the local 'log' driver (no real sending configured) -->
       <div v-if="v.dev_code" class="mt-6 rounded-xl border border-dashed border-sun-400 bg-sun-50 p-3 text-xs text-sun-700">
-        <strong>Test mode:</strong> email/SMS sending isn't set up yet, so the code is shown here:
+        <strong>Test mode:</strong> your code is shown here so you can continue without waiting for the email or text:
         <button type="button" class="font-mono font-bold underline ml-1" @click="code = v.dev_code; submit()">{{ v.dev_code }}</button>
       </div>
     </template>

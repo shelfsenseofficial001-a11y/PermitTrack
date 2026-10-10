@@ -1,8 +1,9 @@
-import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=117';
-import AppShell from './AppShell.js?v=117';
-import { authState, loadCurrentUser } from '../store/auth.js?v=117';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
+import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=129';
+import AppShell from './AppShell.js?v=129';
+import { authState, loadCurrentUser } from '../store/auth.js?v=129';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
+import SelectMenu from './SelectMenu.js?v=129';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
@@ -14,7 +15,7 @@ function today() {
 export default {
   name: 'ResidencyUpgrade',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell, Loader },
+  components: { AppShell, Loader, SelectMenu },
   data() {
     return {
       authState,
@@ -286,11 +287,9 @@ export default {
                   <input id="ru-street" v-model="address.address_line" type="text" autocomplete="address-line1" :class="inputClass" />
                 </div>
                 <div>
-                  <label :class="labelClass" for="ru-brgy">Barangay</label>
-                  <input id="ru-brgy" v-model="address.barangay" list="ru-barangay-list" type="text" placeholder="Start typing to search…" autocomplete="off" :class="inputClass" />
-                  <datalist id="ru-barangay-list">
-                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
-                  </datalist>
+                  <label id="ru-brgy-label" :class="labelClass" for="ru-brgy">Barangay</label>
+                  <SelectMenu id="ru-brgy" :labelledby="'ru-brgy-label'" v-model="address.barangay" placeholder="Choose a barangay…"
+            :options="barangays.map((b) => ({ value: b.name, label: b.name }))" />
                 </div>
               </div>
             </section>

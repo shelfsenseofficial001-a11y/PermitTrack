@@ -15,7 +15,7 @@ A permit application & review system for residents/businesses and city staff, bu
    or import the files in phpMyAdmin, in filename order. Migrations are safe to run more
    than once, so re-running the whole set is the way to bring an existing database up to date.
 
-   <details><summary>The 28 migrations, in order</summary>
+   <details><summary>The 36 migrations, in order</summary>
 
    ```
    001_user_levels.sql
@@ -46,9 +46,19 @@ A permit application & review system for residents/businesses and city staff, bu
    025_application_barangay.sql
    026_address_psgc.sql
    027_chatbot_business_scope.sql
+   028_verification_barangay_scope.sql
+   029_rename_burol_main.sql
+   030_conversations.sql
+   030_google_sign_in.sql
+   031_application_threads.sql
+   031_document_intake_stage.sql
+   032_document_reject_reason.sql
+   033_activity_event.sql
    ```
-   Two files share the `008` prefix; filename order (`permit_pipeline` before
-   `withdraw_applications`) is the correct order.
+   Two files share the `008` prefix (`permit_pipeline` before `withdraw_applications`), two
+   share `030` (`conversations` before `google_sign_in`), and two share `031`
+   (`application_threads` before `document_intake_stage`); filename order is the correct order
+   in each case.
    </details>
 
 
@@ -60,6 +70,18 @@ A permit application & review system for residents/businesses and city staff, bu
 3. (Optional) Copy `api/config.local.example.php` to `api/config.local.php` to set up real email (SMTP) and SMS
    (Semaphore or Twilio). Until then, verification codes are written to `storage/outbox.log` and shown on the
    verify screen in a "Test mode" box.
+
+   **Sign in with Google** is off until `google.client_id` is set there. To turn it on:
+   1. In [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials),
+      create an **OAuth client ID** of type **Web application** (set up the OAuth consent screen first if asked).
+   2. Under **Authorized JavaScript origins**, add the origin the site is opened from — `http://localhost` for
+      XAMPP (add `http://localhost:8080` etc. if Apache uses another port). No redirect URI is needed.
+   3. Put the client ID in `api/config.local.php`: `'google' => ['client_id' => '…apps.googleusercontent.com']`.
+
+   The Google button then appears on Log in and Sign up. The server verifies Google's ID token itself (signature,
+   audience, expiry, verified email) before signing anyone in. An existing account with the same email is linked on
+   first use; a new person finishes a short sign-up (birthdate, address, consent) with no code and no password.
+   City Staff accounts can't use Google and keep signing in on the Staff Portal.
 4. Visit `http://localhost/PermitTrack-main/` in your browser. Signed-out visitors see the landing page; signed-in users go straight to their dashboard or queue.
 
 ## User levels
@@ -77,8 +99,41 @@ Resident and Business Owner are labels on the same account — one person can be
 ## Accounts
 
 - **Residents / businesses**: sign up from the login screen.
-- **City Staff** (demo): `staff@hotmail.com` / `Password123!` — sign in at `#/staff/login`
-- **Admin** (demo): `admin@hotmail.com` / `Password123!` — sign in at `#/staff/login`
+- **Everything already seeded**: both sign-in screens carry a **Demo** tab on the right edge of the
+  card. It lists the accounts this install can be signed in as — normal users, residents, business
+  owners, the city offices, the 75 barangay secretariats and the admin — and fills the form with
+  whichever one you pick. Picking a staff account from the resident screen (or the other way round)
+  moves you to the right page with the form already filled, since the API refuses the wrong one.
+
+The picker reads `auth.php?action=demo_accounts`, which only lists accounts that the shared demo
+password actually opens — so a real person's account never appears in it, and nothing listed is a
+dead end. Both the picker and that password live behind `testing.demo_accounts` in
+`api/config.php`; set it to `false` in `config.local.php` on any install with real accounts on it
+and the tab, the endpoint and the password all go away.
+
+## Help and messages
+
+Every signed-in resident has a chat button in the bottom-right corner; on the landing page it pops
+in once the FAQ is on screen. It opens one panel with three tabs — **Home**, **Messages** and
+**Help** — and writing to someone starts by choosing who:
+
+- **Gibs**, the FAQ assistant, for an instant answer (`api/chat.php`). The Help tab reads the same
+  FAQ entries, so editing one on the Admin page changes both.
+- **City staff**, by picking the permit the question is about. It goes to the office that *issues*
+  that permit — the office of its last pipeline step — or to the resident's own barangay
+  secretariat when that step is the barangay (`api/conversations.php`, migration 030).
+
+Every application also has its own thread in Messages: its status updates (submitted, a document
+sent back, a step approved) as small notes, and the messages about it as bubbles. The permit pages
+show the latest update and an **Open in Messages** button instead of a reply box, and a reviewer's
+decision note lands in the same thread (migration 031, `api/lib/threads.php`).
+
+Staff answer from **Messages** in the Staff Portal, which lists only their own office's threads —
+questions about permits it issues, and applications on its pipeline that someone has written in
+(admins see every office's) — and badges the ones waiting on a reply. **Message the applicant** on
+the review page opens that application's thread. A reply reaches the resident
+in the chat panel and by email or SMS. Signed out, the panel is help only: messaging asks you to
+sign in.
 
 ## Structure
 
@@ -101,7 +156,7 @@ Resident and Business Owner are labels on the same account — one person can be
 3. Resident upgrade: add the missing email/mobile, two proofs of residence, declaration; staff approve or reject with a reason
 4. Business upgrade: register one or more businesses with their documents; a rejected business can be fixed and resubmitted
 5. Browse permits (Normal Users) / new application form: file as yourself (Resident) or for a verified business
-6. Permit detail page: documents, activity log, messaging with the reviewer
+6. Permit detail page: documents, the latest update, and a link to the application's thread in Messages
 7. Staff Portal login (City Staff and Admin)
 8. Reviewer queue (New / In Progress / Awaiting Applicant) for city staff
 9. Review detail: approve/reject documents, change status, notify applicant

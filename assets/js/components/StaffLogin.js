@@ -1,9 +1,11 @@
-import { login, homePathFor } from '../store/auth.js?v=117';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=117';
+import { login, homePathFor } from '../store/auth.js?v=129';
+import { enterSignedIn } from '../store/ui.js?v=129';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=129';
+import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=129';
 
 export default {
   name: 'StaffLogin',
-  components: { AuthLayout },
+  components: { AuthLayout, DemoAccounts },
   data() {
     return {
       form: { email: '', password: '' },
@@ -13,13 +15,22 @@ export default {
       inputClass, labelClass, primaryButtonClass,
     };
   },
+  mounted() {
+    const carried = takeDemoPrefill();
+    if (carried) this.fillDemo(carried);
+  },
   methods: {
+    fillDemo({ identifier, password }) {
+      this.form.email = identifier;
+      this.form.password = password;
+      this.error = '';
+    },
     async submit() {
       this.error = '';
       this.loading = true;
       try {
         const user = await login(this.form.email, this.form.password, true);
-        this.$router.push(homePathFor(user));
+        await enterSignedIn(this.$router, homePathFor(user), user, { from: this.$refs.submitBtn, line: 'Opening your queue…' });
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -29,6 +40,8 @@ export default {
   },
   template: `
   <AuthLayout :loading="loading" loading-kind="staff" portal="Staff Portal" eyebrow="For city staff" headline="Review, inspect, and issue permits — all from one queue.">
+    <template #edge><DemoAccounts portal="staff" @fill="fillDemo" /></template>
+    <template #default>
     <span class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider leading-none text-ink-700 bg-sun-100 rounded-full px-3 py-1.5 mb-4">
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       City Staff &amp; Admin
@@ -57,16 +70,17 @@ export default {
       <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
 
       <div class="pt-1">
-        <button type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Please wait…' : 'Sign in as Staff' }}</button>
+        <button ref="submitBtn" type="submit" :disabled="loading" :class="primaryButtonClass">{{ loading ? 'Please wait…' : 'Sign in as Staff' }}</button>
       </div>
     </form>
 
-    <p class="text-xs text-slate-400 mt-5 text-center">Demo staff login: staff@hotmail.com / Password123!</p>
+    <p class="text-xs text-slate-400 mt-5 text-center">Need an account to try? Open <span class="font-semibold text-slate-500">Demo</span> on the left edge.</p>
 
     <p class="text-sm text-slate-500 mt-6 text-center">
       Not city staff?
       <router-link to="/login" class="text-[#1f7a3a] font-semibold hover:underline">Resident &amp; business login</router-link>
     </p>
+    </template>
   </AuthLayout>
   `,
 };

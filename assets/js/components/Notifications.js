@@ -1,8 +1,9 @@
-import { apiGet, apiPost } from '../api/client.js?v=117';
-import AppShell from './AppShell.js?v=117';
-import { notificationsChanged } from '../store/ui.js?v=117';
-import { timeAgo, formatDate, formatDateTime } from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import AppShell from './AppShell.js?v=129';
+import { notificationsChanged } from '../store/ui.js?v=129';
+import { timeAgo, formatDate, formatDateTime } from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
+import NotificationIcon from './NotificationIcon.js?v=129';
 
 // Every update on the applicant's permits in one place — the full version of the bell's
 // dropdown, with filters by read state, kind, permit and free text, grouped by day.
@@ -10,7 +11,7 @@ const LIMIT = 200;
 
 export default {
   name: 'Notifications',
-  components: { AppShell, Loader },
+  components: { AppShell, Loader, NotificationIcon },
   data() {
     return {
       items: [],
@@ -182,8 +183,11 @@ export default {
         </div>
         <!-- Search -->
         <div class="relative">
-          <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input v-model="search" type="search" placeholder="Search notifications" aria-label="Search notifications"
+          <button type="button" @click="$refs.searchInput.focus()" aria-label="Search"
+            class="absolute left-0 top-0 h-full px-3 flex items-center text-slate-400 hover:text-brand-600 transition">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+          <input ref="searchInput" v-model="search" type="search" placeholder="Search notifications" aria-label="Search notifications"
             class="w-full sm:w-60 rounded-xl border border-brand-100 bg-white pl-10 pr-4 py-2 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
         </div>
       </div>
@@ -224,11 +228,7 @@ export default {
               <button type="button" @click="open(n)" :aria-label="n.title + '. Open permit'"
                 class="group w-full text-left flex gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition hover:bg-meadow/70 focus:outline-none focus-visible:bg-meadow"
                 :class="n.unread ? 'bg-brand-50/60' : ''">
-                <span class="mt-0.5 w-9 h-9 rounded-xl shrink-0 flex items-center justify-center"
-                  :class="n.kind === 'message' ? 'bg-sun-100 text-sun-700' : 'bg-brand-100 text-brand-700'">
-                  <svg v-if="n.kind === 'message'" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>
-                  <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
+                <NotificationIcon :item="n" class="mt-0.5" />
                 <span class="min-w-0 flex-1">
                   <span class="flex items-start gap-2">
                     <span class="flex-1 font-semibold text-ink-700 leading-snug">{{ n.title }}</span>

@@ -1,23 +1,22 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=117';
-import AppShell from './AppShell.js?v=117';
-import StatusStepper from './StatusStepper.js?v=117';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=117';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=117';
-import Loader from './Loader.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=129';
+import AppShell from './AppShell.js?v=129';
+import StatusStepper from './StatusStepper.js?v=129';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel } from '../util.js?v=129';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=129';
+import Loader from './Loader.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import ThreadCard from './ThreadCard.js?v=129';
 
 export default {
   name: 'PermitDetail',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell, StatusStepper, Loader, BaseModal },
+  components: { AppShell, StatusStepper, Loader, BaseModal, ThreadCard },
   data() {
     return {
       uiState,
       app: null,
       activity: [],
       loading: true,
-      newMessage: '',
-      sending: false,
       reuploadingId: null,
       uploadAccept: UPLOAD_ACCEPT,
       docError: '',   // why the last file was refused, shown under the documents list
@@ -56,6 +55,7 @@ export default {
   },
   methods: {
     permitLabel,
+    rejectReasonLabel,
     toggleReviewerHints,
     permitNumber,
     permitIconClass,
@@ -156,21 +156,6 @@ export default {
         event.target.value = '';
       }
     },
-    async sendMessage() {
-      if (!this.newMessage.trim()) return;
-      this.sending = true;
-      try {
-        await apiPost('messages.php?action=send', {
-          application_id: this.app.id,
-          message: this.newMessage,
-        });
-        this.newMessage = '';
-        const activityRes = await apiGet(`messages.php?action=list&application_id=${this.app.id}`);
-        this.activity = activityRes.activity;
-      } finally {
-        this.sending = false;
-      }
-    },
   },
   template: `
   <AppShell>
@@ -206,7 +191,10 @@ export default {
               Discard
             </button>
           </template>
-          <span class="text-xs font-bold px-3 py-1.5 rounded-full" :class="app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
+          <span class="text-xs font-bold px-3 py-1.5 rounded-full"
+            :class="app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
+              : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600'
+              : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
         </div>
       </div>
 
@@ -277,7 +265,13 @@ export default {
                 <div class="min-w-0">
                   <div class="text-sm font-semibold text-slate-800 truncate">{{ doc.doc_name }}</div>
                   <div class="text-xs" :class="doc.status === 'Verified' ? 'text-emerald-600' : doc.status === 'Needs Re-upload' ? 'text-red-500' : 'text-slate-400'">
-                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs Update — see reviewer note' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs a new copy' : doc.status === 'Intake Approved' ? 'Checked by your barangay, with the city office' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                  </div>
+                  <!-- What is actually wrong with it, rather than sending them to hunt the activity feed -->
+                  <div v-if="doc.status === 'Needs Re-upload' && doc.reject_reason"
+                       class="mt-1.5 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 text-xs leading-snug">
+                    <span class="font-semibold text-red-700">{{ rejectReasonLabel(doc.reject_reason) }}</span>
+                    <span v-if="doc.reject_notes" class="text-slate-600"> — {{ doc.reject_notes }}</span>
                   </div>
                   <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
                 </div>
@@ -303,27 +297,7 @@ export default {
           <p v-if="docError" class="mt-3 text-xs text-red-600">{{ docError }}</p>
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 p-6 flex flex-col">
-          <h2 class="font-bold text-ink-700 mb-4">Activity &amp; Messages</h2>
-          <div class="flex-1 space-y-3 max-h-80 overflow-y-auto scroll-soft pr-1">
-            <div v-for="item in activity" :key="item.id" class="text-sm">
-              <template v-if="item.type === 'status_change'">
-                <div class="text-xs text-slate-400">{{ formatDateTime(item.created_at) }} — {{ item.body }}</div>
-              </template>
-              <template v-else>
-                <div class="bg-slate-50 rounded-lg px-3 py-2">
-                  <div class="text-xs font-bold text-slate-600 mb-0.5">{{ item.sender_name }} <span v-if="item.sender_role === 'staff'" class="text-brand-600 font-medium">&middot; Reviewer</span></div>
-                  <div class="text-slate-800">{{ item.body }}</div>
-                </div>
-              </template>
-            </div>
-            <p v-if="!activity.length" class="text-sm text-slate-400">No activity yet.</p>
-          </div>
-          <form @submit.prevent="sendMessage" class="mt-4 flex gap-2">
-            <input v-model="newMessage" type="text" placeholder="Write a reply…" class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
-            <button :disabled="sending" class="bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-brand-700 disabled:opacity-60">Send</button>
-          </form>
-        </div>
+        <ThreadCard :application-id="app.id" :activity="activity" tone="slate" />
       </div>
 
       <!-- Editing what the applicant can still change: the address and the description. The

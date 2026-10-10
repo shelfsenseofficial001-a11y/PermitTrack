@@ -1,9 +1,10 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=117';
-import StatusStepper from './StatusStepper.js?v=117';
-import PipelineStepper from './PipelineStepper.js?v=117';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=129';
+import StatusStepper from './StatusStepper.js?v=129';
+import PipelineStepper from './PipelineStepper.js?v=129';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import ThreadCard from './ThreadCard.js?v=129';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php and the new-application form.
 const MAX_UPLOAD_MB = 5;
@@ -11,10 +12,10 @@ const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 // Collapsible list of permits, shared by the dashboard preview and the My Permits page.
 // Collapsed rows show a mini timeline; opening one loads and shows the whole permit —
-// documents, activity and replies — so there is nothing else to click through to.
+// documents, and the latest update with a way into its thread in Messages.
 export default {
   name: 'PermitList',
-  components: { StatusStepper, PipelineStepper, Loader, BaseModal },
+  components: { StatusStepper, PipelineStepper, Loader, BaseModal, ThreadCard },
   props: {
     apps: { type: Array, required: true },
     // Which permit starts open. Defaults to the first one needing action.
@@ -45,8 +46,6 @@ export default {
       details: {},        // id -> { app, activity }, fetched the first time a row opens
       detailLoading: {},  // id -> bool
       detailError: {},    // id -> message
-      drafts: {},         // id -> reply text
-      sendingId: null,
       reuploadingId: null,
     };
   },
@@ -216,19 +215,6 @@ export default {
         event.target.value = '';
       }
     },
-    async sendMessage(id) {
-      const body = (this.drafts[id] || '').trim();
-      if (!body) return;
-      this.sendingId = id;
-      try {
-        await apiPost('messages.php?action=send', { application_id: id, message: body });
-        this.drafts[id] = '';
-        const activityRes = await apiGet(`messages.php?action=list&application_id=${id}`);
-        this.details[id] = { ...this.details[id], activity: activityRes.activity };
-      } finally {
-        this.sendingId = null;
-      }
-    },
     docStatusText(status) {
       return status === 'Verified' ? 'Verified'
         : status === 'Needs Re-upload' ? 'Needs Update — see reviewer note'
@@ -392,31 +378,8 @@ export default {
             </ul>
           </div>
 
-          <!-- Activity and replies -->
-          <div class="rounded-xl border border-brand-100 bg-white p-5 flex flex-col">
-            <h3 class="font-bold text-ink-700 mb-3">Activity &amp; Messages</h3>
-            <div class="flex-1 space-y-3 max-h-72 overflow-y-auto scroll-soft pr-1">
-              <div v-for="item in details[app.id].activity" :key="item.id" class="text-sm">
-                <div v-if="item.type === 'status_change'" class="text-xs text-slate-400">{{ formatDateTime(item.created_at) }} — {{ item.body }}</div>
-                <div v-else class="bg-slate-50 rounded-lg px-3 py-2">
-                  <div class="text-xs font-bold text-slate-600 mb-0.5">
-                    {{ item.sender_name }}
-                    <span v-if="item.sender_role === 'staff'" class="text-brand-600 font-medium">&middot; Reviewer</span>
-                  </div>
-                  <div class="text-slate-800">{{ item.body }}</div>
-                </div>
-              </div>
-              <p v-if="!details[app.id].activity.length" class="text-sm text-slate-400">No activity yet.</p>
-            </div>
-            <form @submit.prevent="sendMessage(app.id)" class="mt-4 flex gap-2">
-              <input v-model="drafts[app.id]" type="text" placeholder="Write a reply…" :aria-label="'Reply about ' + app.permit_type + ' permit'"
-                class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
-              <button type="submit" :disabled="sendingId === app.id"
-                class="bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-60">
-                {{ sendingId === app.id ? 'Sending…' : 'Send' }}
-              </button>
-            </form>
-          </div>
+          <!-- Its updates and messages: in Messages, as this application's thread -->
+          <ThreadCard :application-id="app.id" :activity="details[app.id].activity" />
         </div>
         </template>
 

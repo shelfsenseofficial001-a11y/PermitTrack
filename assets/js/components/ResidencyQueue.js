@@ -1,7 +1,7 @@
-import { apiGet } from '../api/client.js?v=117';
-import StaffShell from './StaffShell.js?v=117';
-import { formatDate } from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
+import { apiGet } from '../api/client.js?v=129';
+import StaffShell from './StaffShell.js?v=129';
+import { formatDate } from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
 
 const TABS = [
   { key: 'pending', label: 'Waiting for review' },
@@ -61,11 +61,11 @@ export default {
 
     <Loader v-if="loading" kind="queue" />
 
-    <div v-else-if="!requests.length" class="bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center text-slate-500">
+    <div v-else-if="!requests.length" :key="'empty-' + activeTab" class="pt-tab-in bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center text-slate-500">
       {{ activeTab === 'pending' ? 'No one is waiting for verification right now.' : 'Nothing here yet.' }}
     </div>
 
-    <div v-else class="space-y-3">
+    <div v-else :key="'list-' + activeTab" class="pt-stagger space-y-3">
       <router-link v-for="r in requests" :key="r.id" :to="'/staff/residency/' + r.id"
         class="bg-white rounded-2xl border border-brand-100 hover:border-brand-300 hover:shadow-sm transition p-4 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
         <div class="flex items-center gap-3 min-w-0">

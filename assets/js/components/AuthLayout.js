@@ -1,7 +1,6 @@
-import { authState } from '../store/auth.js?v=117';
-import { backButtonClass, backIconClass } from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
-
+import { authState } from '../store/auth.js?v=129';
+import { backButtonClass, backIconClass } from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
 // Shared card for the sign-in pages: gradient panel on the left, form on the right.
 export default {
   name: 'AuthLayout',
@@ -29,12 +28,11 @@ export default {
   },
   template: `
   <div class="font-inter min-h-screen lg:h-screen lg:overflow-hidden bg-[#f3f9e3] flex items-center justify-center p-4 sm:p-6">
-    <div class="page-body w-full max-w-6xl bg-white rounded-[28px] p-3 sm:p-4 shadow-[0_30px_80px_-20px_rgba(95,140,40,0.30)] grid lg:grid-cols-2 gap-4 lg:h-[min(700px,calc(100vh-3rem))]">
+    <div class="page-body relative w-full max-w-6xl bg-white rounded-[28px] p-3 sm:p-4 shadow-[0_30px_80px_-20px_rgba(95,140,40,0.30)] grid lg:grid-cols-2 gap-4 lg:h-[min(700px,calc(100vh-3rem))]">
 
       <div class="pt-gradient hidden lg:flex relative overflow-hidden rounded-[22px] flex-col justify-between p-10 text-white">
         <router-link to="/" class="flex items-center gap-3 text-[#0b3d20] self-start rounded-xl hover:opacity-90 transition" aria-label="PermitTrack home">
-          <img src="assets/images/PermitTrackIcon.png?v=117" alt="" class="w-14 h-14 object-contain shrink-0 drop-shadow" />
-          <div class="leading-tight">
+          <img src="assets/images/PermitTrackIcon.png?v=129" alt="" class="w-14 h-14 object-contain shrink-0 drop-shadow" />          <div class="leading-tight">
             <div class="text-lg font-semibold tracking-tight">PermitTrack</div>
             <div v-if="portal" class="text-xs font-bold uppercase tracking-widest">{{ portal }}</div>
           </div>
@@ -57,18 +55,26 @@ export default {
             </button>
           </div>
           <router-link to="/" class="flex lg:hidden items-center gap-2 mb-5 self-start" aria-label="PermitTrack home">
-            <img src="assets/images/PermitTrackIcon.png?v=117" alt="" class="w-9 h-9 object-contain shrink-0" />
-            <span class="text-lg font-bold text-slate-900">PermitTrack</span>
+            <img src="assets/images/PermitTrackIcon.png?v=129" alt="" class="w-9 h-9 object-contain shrink-0" />            <span class="text-lg font-bold text-slate-900">PermitTrack</span>
           </router-link>
           <slot></slot>
         </div>
       </div>
+
+      <!-- Anything that hangs off the card's own edge rather than sitting in the form column —
+           the demo-account tab. It belongs out here because the column above scrolls on lg,
+           and a scroll container clips whatever pokes out of it. -->
+      <slot name="edge"></slot>
     </div>
   </div>
   `,
 };
 
-// Shared input styling for the auth forms
-export const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-[#1f7a3a]/15 focus:border-[#1f7a3a] outline-none transition';
+// Shared input styling for the auth forms. The two states are built as whole class strings and
+// swapped, never concatenated: `border-red-400` appended after `border-slate-300` leaves both in
+// the attribute, and which one lands is down to their order in Tailwind's stylesheet, not ours.
+const inputBase = 'w-full rounded-xl border bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 outline-none transition';
+export const inputClass = inputBase + ' border-slate-300 focus:ring-[#1f7a3a]/15 focus:border-[#1f7a3a]';
+export const inputErrorClass = inputBase + ' border-red-400 focus:ring-red-500/15 focus:border-red-500';
 export const labelClass = 'block text-[15px] font-medium text-slate-900 mb-1.5';
 export const primaryButtonClass = 'w-full py-3 rounded-xl bg-[#1f7a3a] text-white text-sm font-semibold hover:bg-[#186332] disabled:opacity-60 transition shadow-[0_12px_24px_-8px_rgba(31,122,58,0.55)]';

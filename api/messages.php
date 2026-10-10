@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/threads.php';
+
+// An application's timeline. Its messages are also its thread in Messages (api/conversations.php),
+// which is where the app reads and writes them now; this stays for anything still calling it.
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -27,7 +31,7 @@ if ($action === 'list' && $method === 'GET') {
     $stmt = db()->prepare(
         'SELECT act.*, u.full_name AS sender_name, u.role AS sender_role
          FROM application_activity act LEFT JOIN users u ON u.id = act.sender_id
-         WHERE act.application_id = ? ORDER BY act.created_at ASC'
+         WHERE act.application_id = ? ORDER BY act.id ASC'
     );
     $stmt->execute([$appId]);
     respond(['activity' => $stmt->fetchAll()]);
@@ -39,13 +43,12 @@ if ($action === 'send' && $method === 'POST') {
     $appId = (int)($in['application_id'] ?? 0);
     $body = trim((string)($in['message'] ?? ''));
 
-    assert_can_view_application($appId, $user);
     if ($body === '') {
         fail('Message cannot be empty.');
     }
 
-    $stmt = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'message', ?)");
-    $stmt->execute([$appId, $user['id'], $body]);
+    $app = assert_can_view_application($appId, $user);
+    post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $body);
 
     respond(['ok' => true], 201);
 }

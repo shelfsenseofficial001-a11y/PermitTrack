@@ -16,7 +16,7 @@ if ($action === 'list' && $method === 'GET') {
     $limit = min(max((int)($_GET['limit'] ?? NOTIFICATION_LIMIT), 1), NOTIFICATION_LIMIT_MAX);
 
     $stmt = db()->prepare(
-        "SELECT v.id, v.type, v.body, v.created_at,
+        "SELECT v.id, v.type, v.event, v.body, v.created_at,
                 a.id AS application_id, a.property_address, a.status,
                 COALESCE(a.permit_type, pt.name) AS permit_type,
                 u.full_name AS sender_name, u.role AS sender_role
@@ -70,14 +70,20 @@ if ($action === 'list' && $method === 'GET') {
                 $unseen++;
             }
         }
+        $event = notification_event($row);
+        $presentation = notification_presentation($event);
         $items[] = [
             'id' => (int)$row['id'],
             'application_id' => (int)$row['application_id'],
             'permit_type' => $row['permit_type'],
             'property_address' => $row['property_address'],
-            'title' => notification_title($row),
+            'title' => notification_title($row, $event),
             'body' => $row['body'],
-            'kind' => $row['type'] === 'status_change' ? 'stage' : 'message',
+            'event' => $event,
+            // How it should look — 'action', 'refused', 'good', 'progress', 'neutral', 'message'
+            'tone' => $presentation['tone'],
+            // The existing filter on the Notifications page still works in these two terms
+            'kind' => $event === 'message' ? 'message' : 'stage',
             'created_at' => $row['created_at'],
             'unread' => $isUnread,
             // Unread AND newer than the last time the bell was opened — i.e. not yet announced
@@ -126,33 +132,85 @@ if ($action === 'read_all' && $method === 'POST') {
     respond(['ok' => true]);
 }
 
+/**
+ * What kind of thing this is, for the headline and for the icon and colour the bell shows.
+ *
+ * Reads the stored `event` (migration 033). Older rows, written before that column existed, fall
+ * back to reading their wording — which is exactly the guesswork the column replaced, kept only
+ * for history. New code should never rely on it.
+ */
+function notification_event(array $row): string
+{
+    if (!empty($row['event'])) {
+        return $row['event'];
+    }
+    if ($row['type'] !== 'status_change') {
+        return 'message';
+    }
+    $body = $row['body'];
+    if (stripos($body, 'Needs Re-upload') !== false || stripos($body, 'sent back:') !== false) {
+        return 'doc_rejected';
+    }
+    if (stripos($body, 'passed intake') !== false) {
+        return 'doc_intake';
+    }
+    if (stripos($body, 'marked as Verified') !== false) {
+        return 'doc_verified';
+    }
+    if (stripos($body, 'submitted') !== false) {
+        return 'submitted';
+    }
+    if (preg_match('/to "?Approved"?/i', $body)) {
+        return 'approved';
+    }
+    if (preg_match('/to "?Rejected"?/i', $body)) {
+        return 'rejected';
+    }
+    return 'status';
+}
+
+/**
+ * How the bell should look and read. 'tone' drives the icon and colour on the toast and the
+ * Notifications page: an alert is not a tick, and a permit being refused should not arrive in the
+ * same cheerful green as one being issued.
+ */
+function notification_presentation(string $event): array
+{
+    return match ($event) {
+        'doc_rejected' => ['tone' => 'action', 'lead' => 'A document needs a new copy'],
+        'rejected'     => ['tone' => 'refused', 'lead' => 'Application rejected'],
+        'approved'     => ['tone' => 'good', 'lead' => 'Permit approved'],
+        'doc_verified' => ['tone' => 'good', 'lead' => 'Document approved'],
+        'doc_intake'   => ['tone' => 'progress', 'lead' => 'Document checked at intake'],
+        'doc_undone'   => ['tone' => 'progress', 'lead' => 'Document review reopened'],
+        'submitted'    => ['tone' => 'progress', 'lead' => 'Application submitted'],
+        'reuploaded'   => ['tone' => 'progress', 'lead' => 'New copy uploaded'],
+        'withdrawn'    => ['tone' => 'neutral', 'lead' => 'Application withdrawn'],
+        'edited'       => ['tone' => 'neutral', 'lead' => 'Application details updated'],
+        'message'      => ['tone' => 'message', 'lead' => 'New message'],
+        default        => ['tone' => 'progress', 'lead' => 'Update'],
+    };
+}
+
 // A headline for the event, so the bell reads as news rather than as a log line.
-function notification_title(array $row): string
+function notification_title(array $row, string $event): string
 {
     // Permit names already end in "Permit" ("Demolition Permit"); only add the word when it is missing.
     $name = trim((string)$row['permit_type']);
     $permit = $name === '' ? 'application' : (preg_match('/\bpermit$/i', $name) ? $name : $name . ' permit');
 
-    if ($row['type'] !== 'status_change') {
+    if ($event === 'message') {
         $who = $row['sender_name'] ?: 'City Staff';
         return $who . ' replied on your ' . $permit;
     }
-
-    $body = $row['body'];
-    if (stripos($body, 'Needs Re-upload') !== false) {
-        return 'Document needs re-upload · ' . $permit;
+    if ($event === 'status') {
+        // "Status updated to "Under Review" by ..." / "Barangay — Approved by ..."
+        if (preg_match('/Status (?:updated|changed) to "?([^".]+)"?/i', $row['body'], $m)) {
+            return trim($m[1]) . ' · ' . $permit;
+        }
+        return $permit . ' · ' . $row['status'];
     }
-    if (stripos($body, 'marked as Verified') !== false) {
-        return 'Document verified · ' . $permit;
-    }
-    if (stripos($body, 'submitted') !== false) {
-        return 'Application submitted · ' . $permit;
-    }
-    // "Status updated to "Under Review" by ..." / "Status changed to Approved."
-    if (preg_match('/Status (?:updated|changed) to "?([^".]+)"?/i', $body, $m)) {
-        return trim($m[1]) . ' · ' . $permit;
-    }
-    return $permit . ' · ' . $row['status'];
+    return notification_presentation($event)['lead'] . ' · ' . $permit;
 }
 
 fail('Unknown action.', 404);

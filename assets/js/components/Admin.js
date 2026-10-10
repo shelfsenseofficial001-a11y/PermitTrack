@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=117';
-import StaffShell from './StaffShell.js?v=117';
-import { formatDate } from '../util.js?v=117';
-import Loader from './Loader.js?v=117';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import StaffShell from './StaffShell.js?v=129';
+import { formatDate } from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -240,7 +240,7 @@ export default {
     <Loader v-if="loading" kind="admin" />
 
     <!-- Overview -->
-    <div v-else-if="tab === 'overview' && summary" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div v-else-if="tab === 'overview' && summary" class="pt-tab-in grid grid-cols-2 lg:grid-cols-4 gap-4">
       <router-link to="/admin/staff" class="bg-white rounded-2xl border border-brand-100 p-5 hover:border-brand-300"><div class="text-xs font-semibold uppercase text-slate-500">Active staff</div><div class="text-3xl font-bold text-ink-700">{{ summary.staff }}</div><div class="text-xs text-slate-400">+ {{ summary.admins }} admin(s)</div></router-link>
       <router-link to="/admin/users" class="bg-white rounded-2xl border border-brand-100 p-5 hover:border-brand-300"><div class="text-xs font-semibold uppercase text-slate-500">Public accounts</div><div class="text-3xl font-bold text-ink-700">{{ summary.public_accounts }}</div><div class="text-xs text-slate-400">{{ summary.residents }} resident(s) · {{ summary.verified_businesses }} verified business(es)</div></router-link>
       <div class="bg-white rounded-2xl border border-brand-100 p-5"><div class="text-xs font-semibold uppercase text-slate-500">Waiting verifications</div><div class="text-3xl font-bold" :class="summary.pending_verifications ? 'text-sun-700' : 'text-ink-700'">{{ summary.pending_verifications }}</div><div class="text-xs text-slate-400">residents + businesses</div></div>
@@ -248,7 +248,7 @@ export default {
     </div>
 
     <!-- Staff -->
-    <div v-else-if="tab === 'staff'" class="grid lg:grid-cols-3 gap-6">
+    <div v-else-if="tab === 'staff'" class="pt-tab-in grid lg:grid-cols-3 gap-6">
       <div class="lg:col-span-2 bg-white rounded-2xl border border-brand-100 p-5 overflow-x-auto">
         <h2 class="font-bold text-ink-700 mb-3">Staff accounts</h2>
         <table class="w-full text-sm">
@@ -312,7 +312,7 @@ export default {
     </div>
 
     <!-- Departments -->
-    <div v-else-if="tab === 'departments'" class="space-y-4">
+    <div v-else-if="tab === 'departments'" class="pt-tab-in space-y-4">
       <div class="flex justify-end"><button type="button" @click="startEditDept(null)" class="px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold">+ New department</button></div>
       <form v-if="editingDept" @submit.prevent="saveDept" class="bg-white rounded-2xl border-2 border-brand-300 p-5 grid sm:grid-cols-2 gap-3">
         <h2 class="sm:col-span-2 font-bold text-ink-700">{{ editingDept.id ? 'Edit department' : 'New department' }}</h2>
@@ -351,7 +351,7 @@ export default {
     </div>
 
     <!-- Public accounts -->
-    <div v-else-if="tab === 'users'" class="bg-white rounded-2xl border border-brand-100 p-5 overflow-x-auto">
+    <div v-else-if="tab === 'users'" class="pt-tab-in bg-white rounded-2xl border border-brand-100 p-5 overflow-x-auto">
       <form @submit.prevent="loadUsers" class="flex flex-wrap gap-2 mb-4">
         <input v-model="userQuery" placeholder="Search name, email or mobile" class="flex-1 min-w-[12rem]" :class="inputClass" aria-label="Search accounts" />
         <select v-model="userFilter" @change="loadUsers" :class="inputClass" class="w-auto" aria-label="Filter">
@@ -380,7 +380,7 @@ export default {
     </div>
 
     <!-- Chat bot -->
-    <div v-else-if="tab === 'chatbot'" class="space-y-6">
+    <div v-else-if="tab === 'chatbot'" class="pt-tab-in space-y-6">
       <div class="grid grid-cols-3 gap-4">
         <div class="bg-white rounded-2xl border border-brand-100 p-5"><div class="text-xs font-semibold uppercase text-slate-500">Questions asked</div><div class="text-3xl font-bold text-ink-700">{{ faq.stats.total || 0 }}</div><div class="text-xs text-slate-400">{{ faq.stats.last_7_days || 0 }} in the last 7 days</div></div>
         <div class="bg-white rounded-2xl border border-brand-100 p-5"><div class="text-xs font-semibold uppercase text-slate-500">Answered</div><div class="text-3xl font-bold text-ink-700">{{ faq.stats.total ? Math.round(100 * faq.stats.answered / faq.stats.total) : 0 }}%</div><div class="text-xs text-slate-400">{{ faq.stats.answered || 0 }} of {{ faq.stats.total || 0 }}</div></div>
@@ -457,7 +457,7 @@ export default {
     </div>
 
     <!-- Audit log -->
-    <div v-else-if="tab === 'audit'" class="bg-white rounded-2xl border border-brand-100 p-5 overflow-x-auto">
+    <div v-else-if="tab === 'audit'" class="pt-tab-in bg-white rounded-2xl border border-brand-100 p-5 overflow-x-auto">
       <form @submit.prevent="loadAudit(1)" class="flex flex-wrap gap-2 mb-4">
         <select v-model="auditCategory" @change="loadAudit(1)" :class="inputClass" class="w-auto" aria-label="Category">
           <option value="">All activity</option><option value="residency">Resident verifications</option><option value="business">Business verifications</option><option value="admin">Admin actions (incl. chat bot edits)</option>

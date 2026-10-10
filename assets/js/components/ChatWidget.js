@@ -1,11 +1,14 @@
-import { apiGet, apiPost } from '../api/client.js?v=117';
-import BaseModal from './BaseModal.js?v=117';
-import GibsMascot from './GibsMascot.js?v=117';
-import GibsPeek from './GibsPeek.js?v=117';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import GibsMascot from './GibsMascot.js?v=129';
+import GibsPeek from './GibsPeek.js?v=129';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
 // api/chat.php.
+//
+// With `headless` there is no button and no peek: something else owns the corner (the chat
+// launcher, ChatLauncher.js) and opens Gibs through openChat(). It hears back through `closed`.
 
 const TYPING_LINES = ['Gibs is thinking…', 'Gibs is flipping through the rulebook…', 'Gibs is checking with the barangay…', 'Gibs is putting an answer together…'];
 
@@ -26,7 +29,9 @@ export default {
     // True on pages with a sticky action bar along the bottom (New Application's Back /
     // Continue), so the Ask button rides above it on every screen size instead of covering it.
     liftForBar: { type: Boolean, default: false },
+    headless: { type: Boolean, default: false },
   },
+  emits: ['closed'],
   data() {
     return {
       open: false,
@@ -111,6 +116,7 @@ export default {
     },
     close() {
       this.open = false;
+      this.$emit('closed');
       this.$nextTick(() => this.$refs.askButton && this.$refs.askButton.focus());
     },
     async send(text) {
@@ -174,7 +180,7 @@ export default {
   <!-- On phones the Ask button sits above the bottom tab tray (4rem + the home-bar inset), which
        already clears a page-level FAB like Landing's "Back to top"; from md up it normally sits at
        bottom-5, but lifts higher when liftForFab is set so the two don't overlap. -->
-  <div class="fixed right-5 z-40 flex flex-col items-end gap-3"
+  <div v-if="!headless" class="fixed right-5 z-40 flex flex-col items-end gap-3"
     :class="liftForBar ? 'bottom-[calc(9rem+env(safe-area-inset-bottom))] md:bottom-24'
       : ['bottom-[calc(4.75rem+env(safe-area-inset-bottom))]', liftForFab ? 'md:bottom-[5.25rem]' : 'md:bottom-5']">
     <GibsPeek v-if="!gibsHidden" :suppressed="open" :lift-for-fab="liftForFab" :lift-for-bar="liftForBar" @open="openChat" />
