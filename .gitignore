@@ -3,6 +3,7 @@ uploads/*
 .DS_Store
 Thumbs.db
 api/config.local.php
+.env
 storage/*
 !storage/.htaccess
 # The PSGC reference data ships with the repo so a fresh install works offline.
