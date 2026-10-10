@@ -66,17 +66,49 @@ function is_strong_password(string $password): bool
 }
 
 /**
+ * Reads a .env file (simple KEY=VALUE lines, '#' comments, optional quotes) into
+ * getenv()/$_ENV without requiring a dotenv package. Missing file is not an error.
+ */
+function load_env_file(string $path): void
+{
+    if (!is_file($path)) {
+        return;
+    }
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) {
+            continue;
+        }
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value);
+        if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'") && $value[-1] === $value[0]) {
+            $value = substr($value, 1, -1);
+        }
+        if ($key !== '' && getenv($key) === false) {
+            putenv("$key=$value");
+            $_ENV[$key] = $value;
+        }
+    }
+}
+
+/**
  * Settings that differ per install (SMTP, SMS provider, municipality name).
- * Copy config.local.example.php to config.local.php and fill it in.
+ * Preferred source is .env (copy .env.example to .env and fill it in); api/config.local.php
+ * is still supported for settings .env doesn't cover and overrides defaults, but a value also
+ * set in .env is taken from .env.
  */
 function app_config(): array
 {
     static $config = null;
     if ($config === null) {
+        load_env_file(dirname(__DIR__) . '/.env');
+
         $defaults = [
             'municipality' => 'City of Dasmariñas',
             'mail' => ['driver' => 'log'],
             'sms' => ['driver' => 'log'],
+            'google' => ['client_id' => ''], // Sign in with Google stays hidden until this is set
             // Walking a permit through its offices by hand means knowing which account signs
             // off on each step. With this on, the pipeline names that account. It exposes staff
             // email addresses, so any install with real accounts on it sets this false in
@@ -89,10 +121,46 @@ function app_config(): array
             // install with real accounts on it sets demo_accounts to false and the picker, the
             // password and the whole endpoint go with it. The picker only ever lists accounts
             // this password actually opens, so a real person's account never appears in it.
-            'testing' => ['reviewer_hints' => true, 'demo_accounts' => true, 'demo_password' => 'Test1234!'],
+            'testing' => [
+                'reviewer_hints' => true,
+                'demo_accounts' => true,
+                'demo_password' => 'Test1234!',
+                'show_codes' => false,
+            ],
         ];
         $local = is_file(__DIR__ . '/config.local.php') ? require __DIR__ . '/config.local.php' : [];
         $config = array_replace_recursive($defaults, is_array($local) ? $local : []);
+
+        $testMode = getenv('VERIFICATION_TEST_MODE');
+        if ($testMode !== false) {
+            $config['testing']['show_codes'] = filter_var($testMode, FILTER_VALIDATE_BOOLEAN);
+        }
+        $mailDriver = getenv('MAIL_DRIVER');
+        if ($mailDriver !== false) {
+            $config['mail'] = [
+                'driver' => $mailDriver,
+                'host' => getenv('SMTP_HOST') ?: null,
+                'port' => getenv('SMTP_PORT') ?: null,
+                'encryption' => getenv('SMTP_ENCRYPTION') ?: null,
+                'username' => getenv('SMTP_USERNAME') ?: null,
+                'password' => getenv('SMTP_PASSWORD') ?: null,
+                'from_email' => getenv('SMTP_FROM_EMAIL') ?: null,
+                'from_name' => getenv('SMTP_FROM_NAME') ?: null,
+            ];
+        }
+        $smsDriver = getenv('SMS_DRIVER');
+        if ($smsDriver !== false) {
+            $config['sms'] = [
+                'driver' => $smsDriver,
+                'api_key' => getenv('SEMAPHORE_API_KEY') ?: null,
+                'sender_name' => getenv('SEMAPHORE_SENDER_NAME') ?: null,
+                'account_sid' => getenv('TWILIO_ACCOUNT_SID') ?: null,
+                'auth_token' => getenv('TWILIO_AUTH_TOKEN') ?: null,
+                'from' => getenv('TWILIO_FROM') ?: null,
+                'api_token' => getenv('PHILSMS_API_TOKEN') ?: null,
+                'sender_id' => getenv('PHILSMS_SENDER_ID') ?: null,
+            ];
+        }
     }
     return $config;
 }
@@ -100,7 +168,7 @@ function app_config(): array
 const USER_COLUMNS = 'id, role, account_type, email, phone, full_name, first_name, middle_name, last_name, birthdate,
     address_line, barangay, barangay_id, city, city_code, province, province_code, postal_code, email_verified_at, phone_verified_at, resident_status, onboarding_completed,
     (SELECT COUNT(*) FROM businesses b WHERE b.user_id = users.id AND b.status = \'approved\') AS approved_businesses,
-    department_id, is_active, must_change_password, last_login_at, created_at,
+    department_id, is_active, must_change_password, (password_hash <> \'\') AS has_password, last_login_at, created_at,
     (SELECT d.name FROM departments d WHERE d.id = users.department_id) AS department_name,
     (SELECT d.code FROM departments d WHERE d.id = users.department_id) AS department_code,
     (SELECT d.permit_types FROM departments d WHERE d.id = users.department_id AND d.is_active = 1) AS department_permit_types';
@@ -258,6 +326,25 @@ function upload_type_error(array $file): ?string
     }
     return null;
 }
+
+/**
+ * Why a reviewer sent a document back. The applicant has to know what to fix, and "see reviewer
+ * note" was not an answer — so the reason comes from this list rather than being typed, which also
+ * keeps it consistent between offices and translatable later.
+ *
+ * The key is what is stored; the text is only what is shown. 'other' is deliberately last and
+ * requires notes — picking it without saying anything would put us back where we started.
+ * Keep in step with DOCUMENT_REJECT_REASONS in assets/js/util.js.
+ */
+const DOCUMENT_REJECT_REASONS = [
+    'unreadable'     => 'Blurry or hard to read',
+    'wont_open'      => "File won't open",
+    'wrong_document' => 'Wrong document',
+    'incomplete'     => 'Incomplete — pages missing',
+    'expired'        => 'Expired or out of date',
+    'mismatch'       => "Details don't match the application",
+    'other'          => 'Other (please explain)',
+];
 
 function required_documents_for(string $permitType): array
 {

@@ -1,11 +1,12 @@
-import { apiGet, apiPost } from '../api/client.js?v=119';
-import StaffShell from './StaffShell.js?v=119';
-import { formatDate } from '../util.js?v=119';
-import Loader from './Loader.js?v=119';
+import { apiGet, apiPost } from '../api/client.js?v=129';
+import StaffShell from './StaffShell.js?v=129';
+import { formatDate } from '../util.js?v=129';
+import Loader from './Loader.js?v=129';
+import MaskedValue from './MaskedValue.js?v=129';
 
 export default {
   name: 'BusinessReview',
-  components: { StaffShell, Loader },
+  components: { StaffShell, Loader, MaskedValue },
   data() {
     return {
       loading: true,
@@ -116,8 +117,8 @@ export default {
             <dl class="space-y-2.5 text-sm">
               <div><dt class="text-slate-400 text-xs font-semibold uppercase">Registered name</dt><dd class="font-semibold text-slate-800">{{ business.business_name }}</dd></div>
               <div v-if="business.trade_name"><dt class="text-slate-400 text-xs font-semibold uppercase">Trade name</dt><dd class="font-semibold text-slate-800">{{ business.trade_name }}</dd></div>
-              <div><dt class="text-slate-400 text-xs font-semibold uppercase">Registration no.</dt><dd class="font-semibold text-slate-800">{{ business.registration_number }}</dd></div>
-              <div><dt class="text-slate-400 text-xs font-semibold uppercase">TIN</dt><dd class="font-semibold text-slate-800">{{ business.tin }}</dd></div>
+              <div><dt class="text-slate-400 text-xs font-semibold uppercase">Registration no.</dt><dd><MaskedValue :value="business.registration_number" label="registration number" /></dd></div>
+              <div><dt class="text-slate-400 text-xs font-semibold uppercase">TIN</dt><dd><MaskedValue :value="business.tin" label="TIN" /></dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase">Line of business</dt><dd class="font-semibold text-slate-800">{{ business.line_of_business }}</dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase">Location</dt><dd class="font-semibold text-slate-800">{{ business.address_line }}, Brgy. {{ business.barangay }}, {{ business.city }} {{ business.postal_code }}</dd></div>
               <div v-if="business.floor_area_sqm || business.employee_count"><dt class="text-slate-400 text-xs font-semibold uppercase">Size</dt>

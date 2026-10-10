@@ -1,11 +1,11 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=119';
-import AppShell from './AppShell.js?v=119';
-import StatusStepper from './StatusStepper.js?v=119';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=119';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=119';
-import Loader from './Loader.js?v=119';
-import BaseModal from './BaseModal.js?v=119';
-import ThreadCard from './ThreadCard.js?v=119';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=129';
+import AppShell from './AppShell.js?v=129';
+import StatusStepper from './StatusStepper.js?v=129';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel } from '../util.js?v=129';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=129';
+import Loader from './Loader.js?v=129';
+import BaseModal from './BaseModal.js?v=129';
+import ThreadCard from './ThreadCard.js?v=129';
 
 export default {
   name: 'PermitDetail',
@@ -55,6 +55,7 @@ export default {
   },
   methods: {
     permitLabel,
+    rejectReasonLabel,
     toggleReviewerHints,
     permitNumber,
     permitIconClass,
@@ -190,7 +191,10 @@ export default {
               Discard
             </button>
           </template>
-          <span class="text-xs font-bold px-3 py-1.5 rounded-full" :class="app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
+          <span class="text-xs font-bold px-3 py-1.5 rounded-full"
+            :class="app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
+              : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600'
+              : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
         </div>
       </div>
 
@@ -261,7 +265,13 @@ export default {
                 <div class="min-w-0">
                   <div class="text-sm font-semibold text-slate-800 truncate">{{ doc.doc_name }}</div>
                   <div class="text-xs" :class="doc.status === 'Verified' ? 'text-emerald-600' : doc.status === 'Needs Re-upload' ? 'text-red-500' : 'text-slate-400'">
-                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs Update — see reviewer note' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs a new copy' : doc.status === 'Intake Approved' ? 'Checked by your barangay, with the city office' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                  </div>
+                  <!-- What is actually wrong with it, rather than sending them to hunt the activity feed -->
+                  <div v-if="doc.status === 'Needs Re-upload' && doc.reject_reason"
+                       class="mt-1.5 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 text-xs leading-snug">
+                    <span class="font-semibold text-red-700">{{ rejectReasonLabel(doc.reject_reason) }}</span>
+                    <span v-if="doc.reject_notes" class="text-slate-600"> — {{ doc.reject_notes }}</span>
                   </div>
                   <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
                 </div>
