@@ -26,10 +26,12 @@ export const EN = {
   'nav.residents': 'Residents',
   'nav.businesses': 'Businesses',
   'nav.messages': 'Messages',
+  'nav.payments': 'Payments',
   'nav.admin': 'Admin',
   'nav.residentsTitle': 'Resident Verifications',
   'nav.businessesTitle': 'Business Verifications',
   'nav.messagesTitle': 'Messages from applicants',
+  'nav.paymentsTitle': 'Payment confirmation',
 
   // ---- a message thread
   'msg.you': 'You',
@@ -106,10 +108,12 @@ export const TL = {
   'nav.residents': 'Mga Residente',
   'nav.businesses': 'Mga Negosyo',
   'nav.messages': 'Mga Mensahe',
+  'nav.payments': 'Mga Bayad',
   'nav.admin': 'Admin',
   'nav.residentsTitle': 'Pagpapatunay ng Residente',
   'nav.businessesTitle': 'Pagpapatunay ng Negosyo',
   'nav.messagesTitle': 'Mga mensahe mula sa mga aplikante',
+  'nav.paymentsTitle': 'Pagkumpirma ng bayad',
 
   // ---- a message thread
   'msg.you': 'Ikaw',

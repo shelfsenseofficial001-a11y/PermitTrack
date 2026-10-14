@@ -46,6 +46,26 @@ function latest_approved_application_for_renewal(int $applicantId, string $baseP
     return $app;
 }
 
+/**
+ * Which payment-bridge department (migration 040) receives a given permit's fee: the applicant's
+ * own barangay's payment account for a barangay-level permit (barangay_standalone or personal
+ * track — both are issued directly by the barangay), Municipal Treasury for everything else.
+ */
+function payment_recipient_department_id(array $permitType, ?int $barangayId): ?int
+{
+    if (in_array($permitType['track'], ['barangay_standalone', 'personal'], true)) {
+        if ($barangayId === null) {
+            return null;
+        }
+        $stmt = db()->prepare("SELECT id FROM departments WHERE barangay_id = ? AND purpose = 'payment' LIMIT 1");
+        $stmt->execute([$barangayId]);
+        $row = $stmt->fetch();
+        return $row ? (int)$row['id'] : null;
+    }
+    $row = db()->query("SELECT id FROM departments WHERE code = 'TREASURY_PAY' LIMIT 1")->fetch();
+    return $row ? (int)$row['id'] : null;
+}
+
 /** Same as latest_approved_application_for_renewal(), but looked up by the specific prior
  * application id the "Renew" button was clicked on (and still owned by $applicantId, still Approved). */
 function latest_approved_application_for_renewal_by_id(int $priorApplicationId, int $applicantId): ?array
@@ -266,7 +286,10 @@ function resolve_office_department(string $officeCode, ?int $barangayId): ?int
         if ($barangayId === null) {
             return null;
         }
-        $stmt = db()->prepare('SELECT id FROM departments WHERE barangay_id = ? LIMIT 1');
+        // purpose='review' excludes the barangay's payment-bridge department (migration 040),
+        // which shares the same barangay_id but owns no pipeline step and must never be resolved
+        // as the office reviewing anything.
+        $stmt = db()->prepare("SELECT id FROM departments WHERE barangay_id = ? AND purpose = 'review' LIMIT 1");
         $stmt->execute([$barangayId]);
         $row = $stmt->fetch();
         return $row ? (int)$row['id'] : null;
@@ -277,16 +300,31 @@ function resolve_office_department(string $officeCode, ?int $barangayId): ?int
     return $row ? (int)$row['id'] : null;
 }
 
+/** Records the applicant's branch-question answers. Split out of instantiate_pipeline() (below)
+ * so payment (section 3) can record them at submission time while deferring the route itself —
+ * built later by instantiate_pipeline_route(), once payment succeeds — without re-asking anything
+ * or hitting application_conditions' (application_id, condition_key) unique key twice. */
+function record_application_conditions(int $applicationId, array $conditions): void
+{
+    $stmt = db()->prepare(
+        'INSERT INTO application_conditions (application_id, condition_key, answer) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE answer = VALUES(answer)'
+    );
+    foreach ($conditions as $key => $answer) {
+        $stmt->execute([$applicationId, $key, $answer ? 1 : 0]);
+    }
+}
+
 /**
- * Builds the concrete pipeline for a newly-submitted application: every base step, plus every
- * branch step whose condition was answered true. Every branch question for this permit type MUST
- * have an answer in $conditions (forced at submission, per spec) — missing one is a hard failure,
- * not a silent skip.
+ * Builds the concrete pipeline for an application: every base step, plus every branch step whose
+ * condition was answered true. Every branch question for this permit type MUST have an answer in
+ * $conditions (forced at submission, per spec) — missing one is a hard failure, not a silent skip.
+ * Conditions must already be recorded (record_application_conditions()) before this runs.
  *
  * @param array<string,bool> $conditions condition_key => answer
- * @return array{application_id:int} on success; throws RuntimeException with a user-facing message on failure
+ * @throws RuntimeException with a user-facing message on failure
  */
-function instantiate_pipeline(int $applicationId, int $permitTypeId, array $conditions, ?int $barangayId): void
+function instantiate_pipeline_route(int $applicationId, int $permitTypeId, array $conditions, ?int $barangayId): void
 {
     $pdo = db();
     $stepsStmt = $pdo->prepare('SELECT * FROM permit_pipeline_steps WHERE permit_type_id = ? ORDER BY step_order');
@@ -312,13 +350,6 @@ function instantiate_pipeline(int $applicationId, int $permitTypeId, array $cond
         $resolvedSteps[] = $step;
     }
 
-    $conditionInsert = $pdo->prepare(
-        'INSERT INTO application_conditions (application_id, condition_key, answer) VALUES (?, ?, ?)'
-    );
-    foreach ($conditions as $key => $answer) {
-        $conditionInsert->execute([$applicationId, $key, $answer ? 1 : 0]);
-    }
-
     $progressInsert = $pdo->prepare(
         'INSERT INTO application_pipeline_progress
             (application_id, step_order, office_code, department_id, step_label, status)
@@ -342,6 +373,41 @@ function instantiate_pipeline(int $applicationId, int $permitTypeId, array $cond
             $i === 0 ? 'current' : 'pending',
         ]);
     }
+}
+
+/** Records conditions AND builds the route in one call — the original, still-used entry point for
+ * the common (no-payment-wait) case: a free application (fee_charged = 0) instantiates immediately. */
+function instantiate_pipeline(int $applicationId, int $permitTypeId, array $conditions, ?int $barangayId): void
+{
+    record_application_conditions($applicationId, $conditions);
+    instantiate_pipeline_route($applicationId, $permitTypeId, $conditions, $barangayId);
+}
+
+/**
+ * Activates a paid application once its payment is confirmed (api/payments.php action=confirm):
+ * builds the route from the conditions already recorded at submission, moves it out of
+ * 'Payment Pending', and lets the rest of the app treat it exactly like a free submission always
+ * has. Re-reads permit_type_id/barangay_id/conditions from the DB rather than trusting anything
+ * passed in, since this runs well after the original request.
+ */
+function activate_paid_application(int $applicationId): void
+{
+    $appStmt = db()->prepare('SELECT permit_type_id, barangay_id, status FROM applications WHERE id = ?');
+    $appStmt->execute([$applicationId]);
+    $app = $appStmt->fetch();
+    if (!$app || $app['status'] !== 'Payment Pending') {
+        return; // already activated, or not a payment-gated application — nothing to do
+    }
+
+    $condStmt = db()->prepare('SELECT condition_key, answer FROM application_conditions WHERE application_id = ?');
+    $condStmt->execute([$applicationId]);
+    $conditions = [];
+    foreach ($condStmt->fetchAll() as $row) {
+        $conditions[$row['condition_key']] = (bool)$row['answer'];
+    }
+
+    instantiate_pipeline_route($applicationId, (int)$app['permit_type_id'], $conditions, $app['barangay_id'] !== null ? (int)$app['barangay_id'] : null);
+    db()->prepare("UPDATE applications SET status = 'Submitted' WHERE id = ?")->execute([$applicationId]);
 }
 
 /** The pipeline progress rows for an application, in order. Empty array = pre-pipeline legacy application. */

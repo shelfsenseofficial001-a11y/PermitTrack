@@ -1,10 +1,10 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=168';
+import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=168';
 import AppShell from './AppShell.js?v=168';
 import BaseModal from './BaseModal.js?v=168';
 import SelectMenu from './SelectMenu.js?v=168';
 import FaceVerifyModal from './FaceVerifyModal.js?v=168';
 import { authState } from '../store/auth.js?v=168';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=168';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError, formatPeso } from '../util.js?v=168';
 import { documentInstructions } from '../docInstructions.js?v=168';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
@@ -34,7 +34,14 @@ const STEPS = [
   { key: 'choose', label: 'Choose permit', title: 'What are you applying for?', hint: 'Pick a permit. Need several together? Switch to “Several”.' },
   { key: 'questions', label: 'Quick questions', title: 'A few quick questions', hint: 'Your answers decide which offices review your permit.' },
   { key: 'glance', label: 'At a glance', title: "Here's how it will go", hint: 'The offices it passes through, and what to prepare.' },
-  { key: 'details', label: 'Details & submit', title: 'Almost done', hint: "Who's filing, where, and the documents." },
+  { key: 'details', label: 'Details', title: 'Almost done', hint: "Who's filing, where, and the documents." },
+  { key: 'payment', label: 'Payment & Submit', title: 'Payment', hint: 'Review the fee and choose how to pay.' },
+];
+
+const PAYMENT_METHODS = [
+  { value: 'gcash', label: 'GCash' },
+  { value: 'maya', label: 'Maya' },
+  { value: 'bank_transfer', label: 'Bank Transfer' },
 ];
 
 export default {
@@ -52,7 +59,11 @@ export default {
         business_id: '',
         project_description: '',
         conditions: {}, // condition_key -> 'yes' | 'no', forced before submit
+        payment_method: '', // 'gcash' | 'maya' | 'bank_transfer' — step 5, only asked when a fee applies
       },
+      paymentMethods: PAYMENT_METHODS,
+      paying: false,    // the simulated checkout is in flight (step 5's own spinner state)
+      payError: '',
       files: {},      // fieldKey -> File
       fileErrors: {}, // fieldKey -> message, when the chosen file was rejected
       faceVerifiedDocs: {}, // fieldKey -> true, once a live selfie has matched that ID photo
@@ -252,8 +263,27 @@ export default {
       }
       return '';
     },
+    // Section 3: first-time job seeker wins outright (free, no payment step at all); otherwise a
+    // senior citizen gets 20% off. Mirrors the server's own $feeFor() in applications.php create_v2.
+    isJobseekerYes() {
+      return this.form.conditions.first_time_jobseeker === 'yes';
+    },
+    isSeniorYes() {
+      return this.form.conditions.senior_citizen === 'yes';
+    },
+    totalFee() {
+      return this.selectedTypes.reduce((sum, t) => sum + this.feeDiscounted(t), 0);
+    },
+    // Barangay-level permits (standalone clearances, and the personal certificates the barangay
+    // issues directly) pay their own barangay's payment account; everything else pays Municipal
+    // Treasury. Mirrors payment_recipient_department_id() in api/lib/pipeline.php. Shown once, for
+    // the batch as a whole — a mixed-track multi-permit submission is an edge case this simplifies.
+    paymentRecipientLabel() {
+      const barangayLevel = this.selectedTypes.every((t) => t.track === 'barangay_standalone' || t.track === 'personal');
+      return barangayLevel ? ((this.matchedBarangay && this.matchedBarangay.name) ? 'Barangay ' + this.matchedBarangay.name : 'Your barangay') : 'Municipal Treasury';
+    },
     canSubmit() {
-      return !this.blockingReason && !this.submitting;
+      return !this.blockingReason && !this.submitting && (this.totalFee === 0 || !!this.form.payment_method);
     },
     submitLabel() {
       const n = this.selectedTypes.length;
@@ -289,7 +319,8 @@ export default {
         choose: !this.chooseBlock,
         questions: !this.chooseBlock && this.allConditionsAnswered,
         glance: !this.chooseBlock && this.allConditionsAnswered,
-        details: false,
+        details: !this.blockingReason,
+        payment: false,
       };
     },
   },
@@ -487,6 +518,16 @@ export default {
     askToFile() {
       if (this.canSubmit) this.confirming = true;
     },
+    // ---- payment (section 3) ----
+    feeFor(t) {
+      return Number(t.fee) || 0;
+    },
+    feeDiscounted(t) {
+      if (this.isJobseekerYes) return 0;
+      if (this.isSeniorYes) return Math.round(this.feeFor(t) * 0.8 * 100) / 100;
+      return this.feeFor(t);
+    },
+    formatPeso,
     // ---- documents ----
     fieldKey(docName) {
       return 'doc_' + docName.replace(/[^a-zA-Z0-9]+/g, '_');
@@ -586,6 +627,27 @@ export default {
           if (file) fd.append(key, file);
         });
         const res = await apiPostForm('applications.php?action=create_v2', fd);
+
+        // Section 3: a nonzero fee means the application was created at 'Payment Pending' and its
+        // pipeline isn't built yet — this simulated PayMongo checkout is what unblocks it (once a
+        // payment-bridge staff account confirms receipt; see api/payments.php). A zero fee (e.g.
+        // first-time job seeker) skips this entirely — payment_required is already false.
+        if (res.payment_required) {
+          this.paying = true;
+          try {
+            const payRes = await apiPost('payments.php?action=checkout', {
+              application_ids: res.application_ids,
+              method: this.form.payment_method,
+              simulate: 'success',
+            });
+            if (!payRes.succeeded) {
+              throw new Error(payRes.message || 'Payment did not go through. Please try again.');
+            }
+          } finally {
+            this.paying = false;
+          }
+        }
+
         await beat;
         clearInterval(this.lineTimer);
         // It landed: the plane becomes a tick, held just long enough to be seen
@@ -880,8 +942,8 @@ export default {
               </article>
             </div>
 
-            <!-- ============ 4 · DETAILS & SUBMIT ============ -->
-            <div v-else class="space-y-6">
+            <!-- ============ 4 · DETAILS ============ -->
+            <div v-else-if="step === 'details'" class="space-y-6">
               <!-- Filing as -->
               <section>
                 <p class="text-sm font-bold text-ink-700 mb-2">Filing as</p>
@@ -1015,6 +1077,52 @@ export default {
               <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
             </div>
 
+            <!-- ============ 5 · PAYMENT & SUBMIT ============ -->
+            <div v-else-if="step === 'payment'" class="space-y-6">
+              <section class="rounded-2xl border border-brand-100 bg-meadow/40 p-4 sm:p-5">
+                <p class="text-sm font-bold text-ink-700 mb-3">Fee</p>
+                <ul class="divide-y divide-brand-100/70 text-sm">
+                  <li v-for="t in selectedTypes" :key="'fee-' + t.id" class="flex items-center justify-between py-2 gap-3">
+                    <span class="text-slate-600 min-w-0 truncate">{{ t.name }}</span>
+                    <span class="font-semibold text-ink-700 shrink-0">
+                      <span v-if="feeDiscounted(t) !== feeFor(t)" class="line-through text-slate-400 mr-1.5 font-normal">{{ formatPeso(feeFor(t)) }}</span>
+                      {{ formatPeso(feeDiscounted(t)) }}
+                    </span>
+                  </li>
+                </ul>
+                <div class="flex items-center justify-between pt-3 mt-1 border-t border-brand-200">
+                  <span class="text-sm font-bold text-ink-700">Total</span>
+                  <span class="text-lg font-extrabold text-ink-700">{{ formatPeso(totalFee) }}</span>
+                </div>
+                <p v-if="isJobseekerYes" class="text-xs font-semibold text-brand-700 mt-2">Free — first-time job seeker.</p>
+                <p v-else-if="isSeniorYes" class="text-xs font-semibold text-brand-700 mt-2">20% senior citizen discount applied.</p>
+              </section>
+
+              <section v-if="totalFee > 0" class="space-y-3">
+                <div>
+                  <p class="text-sm font-bold text-ink-700">Pay to</p>
+                  <p class="text-sm text-slate-600">{{ paymentRecipientLabel }}</p>
+                </div>
+                <div>
+                  <p class="text-sm font-bold text-ink-700 mb-2">Pay with</p>
+                  <div class="grid sm:grid-cols-3 gap-2.5">
+                    <label v-for="m in paymentMethods" :key="m.value"
+                      class="flex items-center justify-center gap-2.5 rounded-2xl border p-3.5 cursor-pointer transition"
+                      :class="form.payment_method === m.value ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600' : 'border-slate-200 hover:border-brand-300'">
+                      <input type="radio" class="sr-only" name="payment-method" :value="m.value" v-model="form.payment_method" />
+                      <span class="text-sm font-semibold text-ink-700">{{ m.label }}</span>
+                    </label>
+                  </div>
+                </div>
+                <p class="text-xs text-slate-400">A simulated PayMongo checkout (test mode) — no real charge is made.</p>
+              </section>
+              <section v-else class="rounded-2xl bg-brand-50 border border-brand-200 px-4 py-3">
+                <p class="text-sm font-semibold text-brand-700">No payment needed — this submits for free.</p>
+              </section>
+
+              <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+            </div>
+
           </div>
 
           <!-- ====== Back / Continue, always in reach ====== -->
@@ -1044,17 +1152,18 @@ export default {
               <template v-if="step === 'choose'">{{ chooseBlock || (selectedTypes.length > 1 ? '' : selectedTypes[0].name) }}</template>
               <template v-else-if="step === 'questions'">{{ allConditionsAnswered ? 'All questions answered' : answeredCount + ' of ' + allQuestions.length + ' answered' }}</template>
               <template v-else-if="step === 'glance'">Next: who's filing and your documents</template>
-              <template v-else>{{ blockingReason || 'Ready to file' }}</template>
+              <template v-else-if="step === 'details'">{{ blockingReason || 'Ready for payment' }}</template>
+              <template v-else>{{ totalFee > 0 && !form.payment_method ? 'Choose how to pay' : 'Ready to file' }}</template>
             </p>
 
-            <button v-if="step !== 'details'" type="button" @click="next" :disabled="!stepComplete[step]"
+            <button v-if="step !== 'payment'" type="button" @click="next" :disabled="!stepComplete[step]"
               class="shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)] disabled:shadow-none">
               Continue
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </button>
             <button v-else type="button" @click="askToFile" :disabled="!canSubmit"
               class="shrink-0 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)] disabled:shadow-none">
-              {{ submitting ? 'Submitting…' : submitLabel }}
+              {{ submitting ? 'Submitting…' : (totalFee > 0 ? 'Pay & ' + submitLabel : submitLabel) }}
             </button>
             </div>
           </div>

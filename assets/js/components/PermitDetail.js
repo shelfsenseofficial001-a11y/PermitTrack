@@ -21,6 +21,14 @@ export default {
       uploadAccept: UPLOAD_ACCEPT,
       docError: '',   // why the last file was refused, shown under the documents list
       expandedHistory: {}, // document id -> bool, which revision-history lists are open
+      payMethod: '',  // 'gcash' | 'maya' | 'bank_transfer', chosen before the simulated checkout
+      paySaving: false,
+      payError: '',
+      paymentMethodOptions: [
+        { value: 'gcash', label: 'GCash' },
+        { value: 'maya', label: 'Maya' },
+        { value: 'bank_transfer', label: 'Bank Transfer' },
+      ],
       // Editing the details in place, and taking the application back out of the queue. Both are
       // only offered while nobody has started reviewing it (the API's `editable`).
       editing: false,
@@ -77,6 +85,29 @@ export default {
     formatPeso,
     toggleHistory(docId) {
       this.expandedHistory = { ...this.expandedHistory, [docId]: !this.expandedHistory[docId] };
+    },
+    paymentMethodLabel(v) {
+      const found = this.paymentMethodOptions.find((m) => m.value === v);
+      return found ? found.label : v;
+    },
+    async payNow(simulate) {
+      this.payError = '';
+      this.paySaving = true;
+      try {
+        const res = await apiPost('payments.php?action=checkout', {
+          application_ids: [this.app.id],
+          method: this.payMethod,
+          simulate,
+        });
+        if (!res.succeeded) {
+          this.payError = res.message;
+        }
+        await this.refresh(true);
+      } catch (e) {
+        this.payError = e.message;
+      } finally {
+        this.paySaving = false;
+      }
     },
     // `silent` skips the full-page Loader: used after an in-place action (editing, discarding,
     // re-uploading a document, choosing pickup/delivery) where the page is already showing and
@@ -244,9 +275,31 @@ export default {
         You can still change or discard this until a reviewer picks it up.
       </p>
 
+      <!-- Payment Pending (section 3): the pipeline isn't built yet — nothing to show as a route
+           or a stepper until payment is confirmed. A declined simulated attempt lands here too,
+           with a way to try again. -->
+      <div v-if="app.status === 'Payment Pending'" class="bg-white rounded-xl border border-amber-200 p-6 mt-6">
+        <h2 class="font-bold text-ink-700 mb-1">Payment needed</h2>
+        <p class="text-sm text-slate-500 mb-4">{{ formatPeso(app.fee_charged) }} due to {{ app.payment && app.payment.recipient_department_name }} before this application is reviewed.</p>
+        <p v-if="app.payment && app.payment.status === 'failed'" class="text-sm text-red-600 mb-3">Your last attempt didn't go through — try again below.</p>
+        <div v-if="!payMethod" class="grid sm:grid-cols-3 gap-2.5 mb-4">
+          <button v-for="m in paymentMethodOptions" :key="m.value" type="button" @click="payMethod = m.value"
+            class="rounded-xl border border-slate-200 hover:border-brand-300 px-3.5 py-3 text-sm font-semibold text-ink-700 transition">{{ m.label }}</button>
+        </div>
+        <template v-else>
+          <p class="text-sm text-slate-600 mb-3">Paying with <span class="font-semibold">{{ paymentMethodLabel(payMethod) }}</span> — a simulated PayMongo checkout (test mode).</p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" @click="payNow('success')" :disabled="paySaving"
+              class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">{{ paySaving ? 'Processing…' : 'Pay now' }}</button>
+            <button type="button" @click="payMethod = ''" :disabled="paySaving" class="text-sm font-semibold text-slate-500 hover:bg-slate-100 px-4 py-2.5 rounded-xl transition">Change method</button>
+          </div>
+        </template>
+        <p v-if="payError" class="text-sm text-red-600 mt-3">{{ payError }}</p>
+      </div>
+
       <!-- Pipeline apps (27-type flow): show each office in order. Legacy apps (5-type flow,
            empty app.pipeline) keep the original single-stage stepper. -->
-      <div v-if="app.pipeline && app.pipeline.length" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+      <div v-if="app.status !== 'Payment Pending' && app.pipeline && app.pipeline.length" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
         <div class="flex items-start justify-between gap-4 mb-4">
           <h2 class="font-bold text-ink-700">Where your application is</h2>
           <!-- Testing aid: name the account each office reviews with, so a permit can be walked
@@ -291,7 +344,7 @@ export default {
           </li>
         </ol>
       </div>
-      <div v-else class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+      <div v-else-if="app.status !== 'Payment Pending'" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
         <StatusStepper :stages="app.stages" :active-index="app.stage_index" :rejected="app.status === 'Rejected'" />
       </div>
 

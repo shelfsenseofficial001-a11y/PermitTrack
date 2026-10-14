@@ -15,6 +15,7 @@ import PermitDetail from '../components/PermitDetail.js?v=168';
 import NewApplication from '../components/NewApplication.js?v=168';
 import ReviewerQueue from '../components/ReviewerQueue.js?v=168';
 import ReviewDetail from '../components/ReviewDetail.js?v=168';
+import PaymentsQueue from '../components/PaymentsQueue.js?v=168';
 import ResidencyUpgrade from '../components/ResidencyUpgrade.js?v=168';
 import ResidencyQueue from '../components/ResidencyQueue.js?v=168';
 import ResidencyReview from '../components/ResidencyReview.js?v=168';
@@ -48,6 +49,7 @@ const routes = [
   { path: '/staff/businesses', component: BusinessQueue, meta: { role: 'staff' } },
   { path: '/staff/businesses/:id', component: BusinessReview, meta: { role: 'staff' } },
   { path: '/staff/messages/:id?', component: StaffMessages, meta: { role: 'staff' } },
+  { path: '/staff/payments', component: PaymentsQueue, meta: { role: 'staff' } },
   { path: '/admin/:tab?', component: Admin, meta: { role: 'admin' } },
   { path: '/account', component: Profile },
   // Changing a password is a dialog now; old links and bookmarks are handled in the guard below

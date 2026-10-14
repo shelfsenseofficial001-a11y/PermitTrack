@@ -109,6 +109,9 @@ function app_config(): array
             'mail' => ['driver' => 'log'],
             'sms' => ['driver' => 'log'],
             'google' => ['client_id' => ''], // Sign in with Google stays hidden until this is set
+            // PayMongo (test mode). Empty = api/payments.php always uses its built-in simulated
+            // checkout; real PayMongo calls are not implemented yet even when these are set.
+            'paymongo' => ['secret_key' => '', 'public_key' => ''],
             // Walking a permit through its offices by hand means knowing which account signs
             // off on each step. With this on, the pipeline names that account. It exposes staff
             // email addresses, so any install with real accounts on it sets this false in
@@ -159,6 +162,13 @@ function app_config(): array
                 'from' => getenv('TWILIO_FROM') ?: null,
                 'api_token' => getenv('PHILSMS_API_TOKEN') ?: null,
                 'sender_id' => getenv('PHILSMS_SENDER_ID') ?: null,
+            ];
+        }
+        $paymongoKey = getenv('PAYMONGO_SECRET_KEY');
+        if ($paymongoKey !== false) {
+            $config['paymongo'] = [
+                'secret_key' => $paymongoKey ?: '',
+                'public_key' => getenv('PAYMONGO_PUBLIC_KEY') ?: '',
             ];
         }
     }

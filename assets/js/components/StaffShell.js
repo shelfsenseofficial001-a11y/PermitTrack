@@ -11,7 +11,7 @@ export default {
   name: 'StaffShell',
   components: { LanguageSelect },
   data() {
-    return { authState, pendingResidency: 0, pendingBusinesses: 0, unreadMessages: 0, menuOpen: false };
+    return { authState, pendingResidency: 0, pendingBusinesses: 0, unreadMessages: 0, pendingPayments: 0, menuOpen: false };
   },
   computed: {
     initials() {
@@ -31,6 +31,7 @@ export default {
         { key: 'residents', to: '/staff/residency', label: t('nav.residents'), badge: this.pendingResidency, active: p.startsWith('/staff/residency') },
         { key: 'businesses', to: '/staff/businesses', label: t('nav.businesses'), badge: this.pendingBusinesses, active: p.startsWith('/staff/businesses') },
         { key: 'messages', to: '/staff/messages', label: t('nav.messages'), badge: this.unreadMessages, active: p.startsWith('/staff/messages') },
+        { key: 'payments', to: '/staff/payments', label: t('nav.payments'), badge: this.pendingPayments, active: p.startsWith('/staff/payments') },
       ];
       if (this.isAdmin) tabs.push({ key: 'admin', to: '/admin', label: t('nav.admin'), active: p.startsWith('/admin') });
       return tabs;
@@ -50,12 +51,14 @@ export default {
     document.addEventListener('keydown', this.onKey);
 
     // Badges on the verification links
-    const [residency, business] = await Promise.all([
+    const [residency, business, payments] = await Promise.all([
       apiGet('residency.php?action=counts').catch(() => ({ pending: 0 })),
       apiGet('business.php?action=counts').catch(() => ({ pending: 0 })),
+      apiGet('payments.php?action=queue').catch(() => ({ payments: [] })),
     ]);
     this.pendingResidency = residency.pending;
     this.pendingBusinesses = business.pending;
+    this.pendingPayments = (payments.payments || []).length;
 
     // Questions from applicants keep arriving while a page is open, so this one is watched
     this.refreshMessages();
@@ -104,6 +107,10 @@ export default {
             <router-link to="/staff/messages" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" :title="$t('nav.messagesTitle')">
               {{ $t('nav.messages') }}
               <span v-if="unreadMessages" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="$t('shell.unread', { n: unreadMessages })">{{ unreadMessages }}</span>
+            </router-link>
+            <router-link to="/staff/payments" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" :title="$t('nav.paymentsTitle')">
+              {{ $t('nav.payments') }}
+              <span v-if="pendingPayments" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="$t('shell.waiting', { n: pendingPayments })">{{ pendingPayments }}</span>
             </router-link>
           </nav>
         </div>

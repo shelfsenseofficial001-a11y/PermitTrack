@@ -293,6 +293,16 @@ if ($action === 'detail' && $method === 'GET') {
     // Empty array = this application predates the pipeline (filed via the old 'create' action).
     $app['pipeline'] = pipeline_progress_for($id);
 
+    // Payment (section 3): present whenever this application has a fee, regardless of status, so
+    // the detail page can show what was paid (or still owed) after the fact too.
+    $payStmt = db()->prepare(
+        'SELECT p.*, d.name AS recipient_department_name FROM payments p
+          JOIN departments d ON d.id = p.recipient_department_id
+         WHERE p.application_id = ? ORDER BY p.id DESC LIMIT 1'
+    );
+    $payStmt->execute([$id]);
+    $app['payment'] = $payStmt->fetch() ?: null;
+
     respond(['application' => application_summary($app)]);
 }
 
@@ -544,12 +554,29 @@ if ($action === 'create_v2' && $method === 'POST') {
             : 'No barangay is on file for ' . ($business ? 'this business' : 'your account') . ' yet — this is required to route the application.', 422);
     }
 
+    // Fee (section 3): first-time job seeker makes it free outright (wins over any other
+    // discount); otherwise a senior citizen gets 20% off. Computed per permit type below, since a
+    // single submission can cover several permits at once with different fees.
+    $permitTypesById = array_column($permitTypes, null, 'id');
+    $isJobseeker = !empty($conditions['first_time_jobseeker']);
+    $isSenior = !empty($conditions['senior_citizen']);
+    $feeFor = function (array $pt) use ($isJobseeker, $isSenior): float {
+        $fee = (float)$pt['fee'];
+        if ($isJobseeker) {
+            return 0.0;
+        }
+        if ($isSenior) {
+            return round($fee * 0.8, 2);
+        }
+        return $fee;
+    };
+
     $pdo = db();
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare(
-            'INSERT INTO applications (applicant_id, business_id, permit_type_id, property_address, barangay_id, business_name, project_description, priority)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO applications (applicant_id, business_id, permit_type_id, property_address, barangay_id, business_name, project_description, priority, fee_charged, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
 
         // An uploaded file can only be moved out of its temp location once, but the same document
@@ -557,13 +584,30 @@ if ($action === 'create_v2' && $method === 'POST') {
         // need it moves it; the rest get a copy, so one upload really does serve them all.
         $movedFiles = [];
         $createdIds = [];
+        $paymentsNeeded = []; // appId => ['amount' => float, 'recipient_department_id' => int]
 
         foreach ($permitTypeIds as $permitTypeId) {
-        $stmt->execute([$user['id'], $businessId ?: null, $permitTypeId, $propertyAddress ?: 'N/A', $barangayId, $businessName ?: null, $description ?: null, 'Standard']);
+        $pt = $permitTypesById[$permitTypeId];
+        $fee = $feeFor($pt);
+        $status = $fee > 0 ? 'Payment Pending' : 'Submitted';
+        $stmt->execute([$user['id'], $businessId ?: null, $permitTypeId, $propertyAddress ?: 'N/A', $barangayId, $businessName ?: null, $description ?: null, 'Standard', $fee, $status]);
         $appId = (int)$pdo->lastInsertId();
         $createdIds[] = $appId;
 
-        instantiate_pipeline($appId, $permitTypeId, $conditions, $barangayId);
+        if ($fee > 0) {
+            // Payment gates the pipeline itself (section 3): conditions are recorded now (nothing
+            // about them depends on payment), but the route is only built once payment is
+            // confirmed — see api/payments.php action=confirm, which calls activate_paid_application().
+            record_application_conditions($appId, $conditions);
+            $recipientId = payment_recipient_department_id($pt, $barangayId);
+            if ($recipientId === null) {
+                $pdo->rollBack();
+                fail('Could not find who to route this permit\'s payment to.', 500);
+            }
+            $paymentsNeeded[$appId] = ['amount' => $fee, 'recipient_department_id' => $recipientId, 'permit_type_name' => $pt['name']];
+        } else {
+            instantiate_pipeline($appId, $permitTypeId, $conditions, $barangayId);
+        }
 
         $requiredDocs = required_documents_for_type($permitTypeId, $conditions);
         if ($requiredDocs) {
@@ -626,11 +670,32 @@ if ($action === 'create_v2' && $method === 'POST') {
         }
 
         $activityStmt = $pdo->prepare(
-            "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'submitted', ?)"
+            "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', ?, ?)"
         );
-        $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
+        $activityStmt->execute([
+            $appId, $user['id'], 'submitted',
+            isset($paymentsNeeded[$appId])
+                ? 'Application created — waiting on payment of ' . number_format($paymentsNeeded[$appId]['amount'], 2) . '.'
+                : 'Application submitted.',
+        ]);
 
         } // end of the per-permit loop
+
+        // One payment row per fee-bearing application, all tagged with the same batch_token so
+        // the payment step can settle them together in one simulated checkout.
+        $paymentIds = [];
+        if ($paymentsNeeded) {
+            $batchToken = bin2hex(random_bytes(10));
+            $payInsert = $pdo->prepare(
+                'INSERT INTO payments (application_id, amount, method, status, recipient_department_id, batch_token) VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            foreach ($paymentsNeeded as $appId => $p) {
+                // method is filled in at checkout; a placeholder keeps the NOT NULL column happy
+                // until then and is overwritten the moment the applicant picks one.
+                $payInsert->execute([$appId, $p['amount'], 'gcash', 'pending', $p['recipient_department_id'], $batchToken]);
+                $paymentIds[] = (int)$pdo->lastInsertId();
+            }
+        }
 
         $pdo->commit();
     } catch (RuntimeException $e) {
@@ -639,8 +704,15 @@ if ($action === 'create_v2' && $method === 'POST') {
     }
 
     // application_id is the first one filed, so a caller that only knows about single submissions
-    // still lands somewhere sensible.
-    respond(['application_id' => $createdIds[0], 'application_ids' => $createdIds], 201);
+    // still lands somewhere sensible. payment_required tells the frontend whether step 5 is a real
+    // checkout or an automatic pass-through (fee is 0 — e.g. a first-time job seeker).
+    respond([
+        'application_id' => $createdIds[0],
+        'application_ids' => $createdIds,
+        'payment_required' => count($paymentsNeeded) > 0,
+        'payment_batch_token' => $paymentsNeeded ? $batchToken : null,
+        'payment_total' => $paymentsNeeded ? array_sum(array_column($paymentsNeeded, 'amount')) : 0,
+    ], 201);
 }
 
 if ($action === 'create' && $method === 'POST') {

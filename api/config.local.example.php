@@ -40,6 +40,15 @@ return [
         // 'from' => '+15005550006',
     ],
 
+    // PayMongo (test mode) — https://dashboard.paymongo.com/developers. Leave both empty to use
+    // the built-in simulated checkout in api/payments.php (deterministic success/failure, no real
+    // gateway call) — the default, and what every demo install uses. Setting these does not
+    // currently switch api/payments.php to real PayMongo calls; that integration isn't built yet.
+    'paymongo' => [
+        'secret_key' => '', // sk_test_...
+        'public_key' => '', // pk_test_...
+    ],
+
     // Sign in with Google. Create an OAuth client ID (type "Web application") at
     // https://console.cloud.google.com/apis/credentials and add the site's origin under
     // "Authorized JavaScript origins", e.g. http://localhost. Leave empty to hide the button.
