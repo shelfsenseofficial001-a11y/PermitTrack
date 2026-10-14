@@ -314,19 +314,28 @@ export default {
         <h2 class="font-bold text-ink-700 mb-1">Payment needed</h2>
         <p class="text-sm text-slate-500 mb-4">{{ formatPeso(app.fee_charged) }} due to {{ app.payment && app.payment.recipient_department_name }} before this application is reviewed.</p>
         <p v-if="app.payment && app.payment.status === 'failed'" class="text-sm text-red-600 mb-3">Your last attempt didn't go through — try again below.</p>
-        <div v-if="!payMethod" class="grid sm:grid-cols-3 gap-2.5 mb-4">
-          <button v-for="m in paymentMethodOptions" :key="m.value" type="button" @click="payMethod = m.value"
-            class="rounded-xl border border-slate-200 hover:border-brand-300 px-3.5 py-3 text-sm font-semibold text-ink-700 transition">{{ m.label }}</button>
+
+        <!-- Checkout already succeeded — the payment-bridge office just hasn't confirmed receipt
+             yet. Re-paying isn't offered here; the method picker only shows for a first attempt
+             or after a declined one. -->
+        <div v-if="app.payment && app.payment.status === 'pending' && app.payment.reference" class="rounded-xl bg-brand-50 border border-brand-200 px-4 py-3 text-sm text-brand-700">
+          Payment received via {{ paymentMethodLabel(app.payment.method) }} (ref {{ app.payment.reference }}) — waiting on {{ app.payment.recipient_department_name }} to confirm it arrived.
         </div>
         <template v-else>
-          <p class="text-sm text-slate-600 mb-3">Paying with <span class="font-semibold">{{ paymentMethodLabel(payMethod) }}</span> — a simulated PayMongo checkout (test mode).</p>
-          <div class="flex flex-wrap gap-2">
-            <button type="button" @click="payNow('success')" :disabled="paySaving"
-              class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">{{ paySaving ? 'Processing…' : 'Pay now' }}</button>
-            <button type="button" @click="payMethod = ''" :disabled="paySaving" class="text-sm font-semibold text-slate-500 hover:bg-slate-100 px-4 py-2.5 rounded-xl transition">Change method</button>
+          <div v-if="!payMethod" class="grid sm:grid-cols-3 gap-2.5 mb-4">
+            <button v-for="m in paymentMethodOptions" :key="m.value" type="button" @click="payMethod = m.value"
+              class="rounded-xl border border-slate-200 hover:border-brand-300 px-3.5 py-3 text-sm font-semibold text-ink-700 transition">{{ m.label }}</button>
           </div>
+          <template v-else>
+            <p class="text-sm text-slate-600 mb-3">Paying with <span class="font-semibold">{{ paymentMethodLabel(payMethod) }}</span> — a simulated PayMongo checkout (test mode).</p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" @click="payNow('success')" :disabled="paySaving"
+                class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">{{ paySaving ? 'Processing…' : 'Pay now' }}</button>
+              <button type="button" @click="payMethod = ''" :disabled="paySaving" class="text-sm font-semibold text-slate-500 hover:bg-slate-100 px-4 py-2.5 rounded-xl transition">Change method</button>
+            </div>
+          </template>
+          <p v-if="payError" class="text-sm text-red-600 mt-3">{{ payError }}</p>
         </template>
-        <p v-if="payError" class="text-sm text-red-600 mt-3">{{ payError }}</p>
       </div>
 
       <!-- Pipeline apps (27-type flow): show each office in order. Legacy apps (5-type flow,
