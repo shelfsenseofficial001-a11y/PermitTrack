@@ -243,7 +243,8 @@ if ($action === 'users' && $method === 'GET') {
         'SELECT u.id, u.full_name, u.email, u.phone, u.barangay, u.city, u.resident_status, u.is_active, u.created_at, u.last_login_at,
                 u.email_verified_at, u.phone_verified_at,
                 (SELECT COUNT(*) FROM businesses b WHERE b.user_id = u.id AND b.status = \'approved\') AS approved_businesses,
-                (SELECT COUNT(*) FROM applications a WHERE a.applicant_id = u.id) AS applications
+                (SELECT COUNT(*) FROM applications a WHERE a.applicant_id = u.id) AS applications,
+                (SELECT COUNT(*) FROM user_reports r WHERE r.reported_user_id = u.id AND r.status = \'open\') AS open_reports
          FROM users u WHERE ' . implode(' AND ', $where) . ' ORDER BY u.created_at DESC LIMIT 200'
     );
     $stmt->execute($params);

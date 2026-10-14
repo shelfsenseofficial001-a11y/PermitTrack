@@ -154,6 +154,23 @@ export function rejectReasonLabel(value) {
   return found ? found.label : '';
 }
 
+// Report User categories (section 4, mockup 4). Mirrors USER_REPORT_CATEGORIES in api/config.php.
+export const USER_REPORT_CATEGORIES = [
+  { value: 'nsfw', label: 'NSFW / Inappropriate Media' },
+  { value: 'fraudulent_documents', label: 'Fraudulent / Altered Documents' },
+  { value: 'fake_payment', label: 'Fake Payment Proof' },
+  { value: 'malicious_files', label: 'Malicious File Attachments' },
+  { value: 'spam', label: 'Spam & Queue Flooding' },
+  { value: 'identity_theft', label: 'Identity Theft & Unauthorized Representation' },
+  { value: 'misrepresentation', label: 'Misrepresentation of Business Scope' },
+  { value: 'falsified_ownership', label: 'Falsified Lease/Property Ownership' },
+];
+
+export function userReportCategoryLabel(value) {
+  const found = USER_REPORT_CATEGORIES.find((c) => c.value === value);
+  return found ? found.label : value;
+}
+
 // Named so the message can say why, rather than just listing what is allowed
 const OFFICE_EXT = ['doc', 'docx', 'ppt', 'pptx', 'pptm', 'xls', 'xlsx', 'odt', 'odp', 'pages', 'key'];
 

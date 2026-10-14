@@ -236,6 +236,14 @@ if ($action === 'detail' && $method === 'GET') {
     $applicantStmt->execute([$app['applicant_id']]);
     $app['applicant'] = $applicantStmt->fetch();
 
+    // The flag staff see on an account (section 4): how many OPEN reports exist against this
+    // applicant, visible to staff only -- an applicant reading their own application never sees it.
+    if ($user['role'] !== 'applicant') {
+        $reportStmt = db()->prepare("SELECT COUNT(*) FROM user_reports WHERE reported_user_id = ? AND status = 'open'");
+        $reportStmt->execute([$app['applicant_id']]);
+        $app['applicant']['open_reports'] = (int)$reportStmt->fetchColumn();
+    }
+
     // The verified business this permit was filed for, if any
     $app['business'] = null;
     if ($app['business_id']) {

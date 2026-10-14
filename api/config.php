@@ -357,6 +357,22 @@ const DOCUMENT_REJECT_REASONS = [
     'other'          => 'Other (please explain)',
 ];
 
+/**
+ * Report User categories (section 4, mockup 4) — behaviour a staff member flags about an
+ * applicant, separate from rejecting one of their documents (DOCUMENT_REJECT_REASONS above).
+ * Keep in step with USER_REPORT_CATEGORIES in assets/js/util.js.
+ */
+const USER_REPORT_CATEGORIES = [
+    'nsfw'                => 'NSFW / Inappropriate Media',
+    'fraudulent_documents'=> 'Fraudulent / Altered Documents',
+    'fake_payment'        => 'Fake Payment Proof',
+    'malicious_files'     => 'Malicious File Attachments',
+    'spam'                => 'Spam & Queue Flooding',
+    'identity_theft'      => 'Identity Theft & Unauthorized Representation',
+    'misrepresentation'   => 'Misrepresentation of Business Scope',
+    'falsified_ownership' => 'Falsified Lease/Property Ownership',
+];
+
 // Flat fee for having an approved permit delivered instead of picked up at the office. Snapshotted
 // onto the application the moment delivery is chosen (see applications.php 'set_delivery' action),
 // so changing this later never rewrites what an applicant already agreed to pay.

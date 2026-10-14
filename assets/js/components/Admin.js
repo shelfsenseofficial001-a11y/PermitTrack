@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from '../api/client.js?v=168';
 import StaffShell from './StaffShell.js?v=168';
-import { formatDate, isValidEmail, numberFieldError } from '../util.js?v=168';
+import { formatDate, formatDateTime, isValidEmail, numberFieldError, userReportCategoryLabel } from '../util.js?v=168';
 import Loader from './Loader.js?v=168';
 
 const TABS = [
@@ -9,6 +9,7 @@ const TABS = [
   { key: 'departments', label: 'Departments' },
   { key: 'users', label: 'Public accounts' },
   { key: 'chatbot', label: 'Chat bot' },
+  { key: 'reports', label: 'Reports' },
   { key: 'audit', label: 'Audit log' },
 ];
 
@@ -70,6 +71,10 @@ export default {
       editingFaq: null,
       testMessage: '',
       testReply: null,
+      reports: [],
+      reportCounts: { open: 0, actioned: 0, dismissed: 0 },
+      reportFilter: 'open',
+      reportUpdatingId: null,
     };
   },
   computed: {
@@ -91,9 +96,14 @@ export default {
   },
   watch: {
     tab: { handler: 'load', immediate: true },
+    reportFilter() {
+      if (this.tab === 'reports') this.loadReports();
+    },
   },
   methods: {
     formatDate,
+    formatDateTime,
+    userReportCategoryLabel,
     auditLabel(action) {
       return AUDIT_LABELS[action] || action;
     },
@@ -127,6 +137,7 @@ export default {
         if (this.tab === 'users') await this.loadUsers();
         if (this.tab === 'audit') await this.loadAudit(1);
         if (this.tab === 'chatbot') this.faq = await apiGet('admin.php?action=faq');
+        if (this.tab === 'reports') await this.loadReports();
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -136,6 +147,22 @@ export default {
     async loadUsers() {
       const res = await apiGet(`admin.php?action=users&filter=${this.userFilter}&q=${encodeURIComponent(this.userQuery.trim())}`);
       this.users = res.users;
+    },
+    async loadReports() {
+      const res = await apiGet(`reports.php?action=list&status=${this.reportFilter}`);
+      this.reports = res.reports;
+      this.reportCounts = res.counts;
+    },
+    async setReportStatus(report, status) {
+      this.reportUpdatingId = report.id;
+      try {
+        await apiPost('reports.php?action=update_status', { id: report.id, status });
+        await this.loadReports();
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.reportUpdatingId = null;
+      }
     },
     async loadAudit(page) {
       const res = await apiGet(`admin.php?action=audit&page=${page}&category=${this.auditCategory}&actor=${encodeURIComponent(this.auditActor.trim())}`);
@@ -393,7 +420,8 @@ export default {
         <tbody>
           <tr v-for="u in users" :key="u.id" class="border-t border-slate-100 align-top" :class="Number(u.is_active) ? '' : 'opacity-60'">
             <td class="py-3 pr-3"><div class="font-semibold text-slate-800">{{ u.full_name }}</div><div class="text-xs text-slate-500">{{ u.email }}<span v-if="u.email && u.phone"> · </span>{{ u.phone }}</div>
-              <span v-if="!Number(u.is_active)" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Deactivated</span></td>
+              <span v-if="!Number(u.is_active)" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Deactivated</span>
+              <span v-if="Number(u.open_reports)" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 ml-1">{{ u.open_reports }} open report{{ Number(u.open_reports) > 1 ? 's' : '' }}</span></td>
             <td class="py-3 pr-3"><span v-for="l in u.levels" :key="l" class="inline-block mr-1 text-[11px] font-bold px-2 py-0.5 rounded-full" :class="l === 'Unregistered User' ? 'bg-slate-100 text-slate-600' : 'bg-brand-100 text-brand-700'">{{ l }}</span></td>
             <td class="py-3 pr-3 text-slate-600">{{ u.barangay || '—' }}</td>
             <td class="py-3 pr-3 text-slate-500">{{ formatDate(u.created_at) }}</td>
@@ -486,6 +514,57 @@ export default {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- Reports (section 4, mockup 4): what staff flagged via "Report User" in ReviewDetail.js -->
+    <div v-else-if="tab === 'reports'" class="pt-tab-in bg-white rounded-2xl border border-brand-100 p-5 overflow-x-auto">
+      <div class="flex flex-wrap gap-2 mb-4">
+        <button v-for="s in ['open', 'actioned', 'dismissed']" :key="s" type="button" @click="reportFilter = s"
+          class="text-sm font-semibold px-3.5 py-2 rounded-full border transition"
+          :class="reportFilter === s ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-brand-100 text-slate-600 hover:border-brand-300'">
+          {{ s === 'open' ? 'Open' : s === 'actioned' ? 'Actioned' : 'Dismissed' }}
+          <span class="ml-1 text-xs" :class="reportFilter === s ? 'text-white/70' : 'text-slate-400'">{{ reportCounts[s] }}</span>
+        </button>
+      </div>
+
+      <div v-if="!reports.length" class="text-sm text-slate-400 py-8 text-center">No {{ reportFilter }} reports.</div>
+      <table v-else class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-100">
+            <th class="pb-2 pr-3">Reported user</th>
+            <th class="pb-2 pr-3">Category</th>
+            <th class="pb-2 pr-3">Description</th>
+            <th class="pb-2 pr-3">Application</th>
+            <th class="pb-2 pr-3">Reported by</th>
+            <th class="pb-2 pr-3">When</th>
+            <th class="pb-2 text-right">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr v-for="r in reports" :key="r.id">
+            <td class="py-2.5 pr-3">
+              <div class="font-semibold text-ink-700">{{ r.reported_user_name }}</div>
+              <div class="text-xs text-slate-400">{{ r.reported_user_email }}</div>
+            </td>
+            <td class="py-2.5 pr-3 text-slate-700">{{ userReportCategoryLabel(r.category) }}</td>
+            <td class="py-2.5 pr-3 text-slate-600 max-w-xs">
+              <p class="line-clamp-3">{{ r.description }}</p>
+              <p v-if="r.document_name" class="text-xs text-slate-400 mt-0.5">Re: {{ r.document_name }}</p>
+            </td>
+            <td class="py-2.5 pr-3 text-slate-600">{{ r.permit_type_name || r.property_address || '—' }}</td>
+            <td class="py-2.5 pr-3 text-slate-600">{{ r.reported_by_name }}</td>
+            <td class="py-2.5 pr-3 text-slate-500 whitespace-nowrap">{{ formatDateTime(r.created_at) }}</td>
+            <td class="py-2.5 text-right">
+              <select :value="r.status" @change="setReportStatus(r, $event.target.value)" :disabled="reportUpdatingId === r.id"
+                class="text-xs font-semibold rounded-lg border border-slate-300 px-2 py-1.5">
+                <option value="open">Open</option>
+                <option value="actioned">Actioned</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- Audit log -->
