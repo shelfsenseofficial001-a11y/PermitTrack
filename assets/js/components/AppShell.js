@@ -1,13 +1,13 @@
-import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=129';
-import { apiGet, apiPost } from '../api/client.js?v=129';
-import ChatLauncher from './ChatLauncher.js?v=129';
-import AddAccountModal from './AddAccountModal.js?v=129';
-import BaseModal from './BaseModal.js?v=129';
-import { formatDateTime } from '../util.js?v=129';
-import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=129';
-import Loader from './Loader.js?v=129';
-import NotificationToasts from './NotificationToasts.js?v=129';
-import NotificationIcon from './NotificationIcon.js?v=129';
+import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=142';
+import ChatLauncher from './ChatLauncher.js?v=142';
+import AddAccountModal from './AddAccountModal.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import { formatDateTime } from '../util.js?v=142';
+import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=142';
+import Loader from './Loader.js?v=142';
+import NotificationToasts from './NotificationToasts.js?v=142';
+import NotificationIcon from './NotificationIcon.js?v=142';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -237,7 +237,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=129" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/PermitTrackIcon.png?v=142" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
@@ -321,7 +321,7 @@ export default {
                 <div class="text-xs text-ink-300 truncate">{{ authState.user && (authState.user.email || authState.user.phone) }}</div>
                 <div class="flex flex-wrap gap-1 mt-2">
                   <span v-for="level in (authState.user ? authState.user.levels : [])" :key="level"
-                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Normal User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
+                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Unregistered User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
                 </div>
               </div>
               <router-link to="/account" role="menuitem" @click="menuOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">

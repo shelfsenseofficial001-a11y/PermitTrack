@@ -211,7 +211,7 @@ function reviewable_permit_types(array $user): ?array
     return array_values(array_filter(array_map('trim', explode(',', $user['department_permit_types']))));
 }
 
-/** Adds the labels the UI shows, e.g. ['Normal User'] or ['Resident', 'Business Owner']. */
+/** Adds the labels the UI shows, e.g. ['Unregistered User'] or ['Resident', 'Business Owner']. */
 function with_levels(array $user): array
 {
     $labels = match ($user['role']) {
@@ -227,7 +227,7 @@ function with_levels(array $user): array
             $labels[] = 'Business Owner';
         }
         if (!$labels) {
-            $labels[] = 'Normal User';
+            $labels[] = 'Unregistered User';
         }
     }
     $user['levels'] = $labels;
@@ -344,6 +344,18 @@ const DOCUMENT_REJECT_REASONS = [
     'expired'        => 'Expired or out of date',
     'mismatch'       => "Details don't match the application",
     'other'          => 'Other (please explain)',
+];
+
+// Flat fee for having an approved permit delivered instead of picked up at the office. Snapshotted
+// onto the application the moment delivery is chosen (see applications.php 'set_delivery' action),
+// so changing this later never rewrites what an applicant already agreed to pay.
+const DELIVERY_FEE = 150.00;
+
+/** The wording the UI shows for a delivery_status value. Keep in step with assets/js/util.js. */
+const DELIVERY_STATUS_LABELS = [
+    'preparing'        => 'Preparing',
+    'out_for_delivery' => 'Out for delivery',
+    'delivered'        => 'Delivered',
 ];
 
 function required_documents_for(string $permitType): array

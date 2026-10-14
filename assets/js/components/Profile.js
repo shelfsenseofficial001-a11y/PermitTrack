@@ -1,11 +1,11 @@
-import { apiGet, apiPost } from '../api/client.js?v=129';
-import BaseModal from './BaseModal.js?v=129';
-import AppShell from './AppShell.js?v=129';
-import SelectMenu from './SelectMenu.js?v=129';
-import { inputClass } from './AuthLayout.js?v=129';
-import { authState, loadCurrentUser } from '../store/auth.js?v=129';
-import { formatDate, timeAgo } from '../util.js?v=129';
-import { openChangePassword } from '../store/ui.js?v=129';
+import { apiGet, apiPost } from '../api/client.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import { inputClass } from './AuthLayout.js?v=142';
+import { authState, loadCurrentUser } from '../store/auth.js?v=142';
+import { formatDate, timeAgo } from '../util.js?v=142';
+import { openChangePassword } from '../store/ui.js?v=142';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'province_code', 'city_code', 'postal_code'];
 
@@ -218,8 +218,8 @@ export default {
           <div class="flex flex-wrap gap-1.5 mt-3">
             <span v-for="level in levels" :key="level"
               class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full ring-1 ring-inset"
-              :class="level === 'Normal User' ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-brand-50 text-brand-700 ring-brand-200'">
-              <svg v-if="level !== 'Normal User'" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              :class="level === 'Unregistered User' ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-brand-50 text-brand-700 ring-brand-200'">
+              <svg v-if="level !== 'Unregistered User'" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
               {{ level }}
             </span>
           </div>

@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=129';
-import StaffShell from './StaffShell.js?v=129';
-import { formatDate } from '../util.js?v=129';
-import Loader from './Loader.js?v=129';
+import { apiGet, apiPost } from '../api/client.js?v=142';
+import StaffShell from './StaffShell.js?v=142';
+import { formatDate } from '../util.js?v=142';
+import Loader from './Loader.js?v=142';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -355,7 +355,7 @@ export default {
       <form @submit.prevent="loadUsers" class="flex flex-wrap gap-2 mb-4">
         <input v-model="userQuery" placeholder="Search name, email or mobile" class="flex-1 min-w-[12rem]" :class="inputClass" aria-label="Search accounts" />
         <select v-model="userFilter" @change="loadUsers" :class="inputClass" class="w-auto" aria-label="Filter">
-          <option value="all">All</option><option value="normal">Normal Users</option><option value="residents">Residents</option><option value="business">Business Owners</option><option value="deactivated">Deactivated</option>
+          <option value="all">All</option><option value="normal">Unregistered Users</option><option value="residents">Residents</option><option value="business">Business Owners</option><option value="deactivated">Deactivated</option>
         </select>
         <button type="submit" class="px-4 rounded-xl bg-ink-700 text-white text-sm font-semibold">Search</button>
       </form>
@@ -365,7 +365,7 @@ export default {
           <tr v-for="u in users" :key="u.id" class="border-t border-slate-100 align-top" :class="Number(u.is_active) ? '' : 'opacity-60'">
             <td class="py-3 pr-3"><div class="font-semibold text-slate-800">{{ u.full_name }}</div><div class="text-xs text-slate-500">{{ u.email }}<span v-if="u.email && u.phone"> · </span>{{ u.phone }}</div>
               <span v-if="!Number(u.is_active)" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Deactivated</span></td>
-            <td class="py-3 pr-3"><span v-for="l in u.levels" :key="l" class="inline-block mr-1 text-[11px] font-bold px-2 py-0.5 rounded-full" :class="l === 'Normal User' ? 'bg-slate-100 text-slate-600' : 'bg-brand-100 text-brand-700'">{{ l }}</span></td>
+            <td class="py-3 pr-3"><span v-for="l in u.levels" :key="l" class="inline-block mr-1 text-[11px] font-bold px-2 py-0.5 rounded-full" :class="l === 'Unregistered User' ? 'bg-slate-100 text-slate-600' : 'bg-brand-100 text-brand-700'">{{ l }}</span></td>
             <td class="py-3 pr-3 text-slate-600">{{ u.barangay || '—' }}</td>
             <td class="py-3 pr-3 text-slate-500">{{ formatDate(u.created_at) }}</td>
             <td class="py-3 pr-3 text-slate-600">{{ u.applications }}</td>

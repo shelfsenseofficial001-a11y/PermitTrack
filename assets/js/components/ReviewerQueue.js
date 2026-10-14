@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=129';
-import StaffShell from './StaffShell.js?v=129';
-import { formatDate, permitIconClass, permitLabel } from '../util.js?v=129';
-import { authState } from '../store/auth.js?v=129';
-import Loader from './Loader.js?v=129';
+import { apiGet } from '../api/client.js?v=142';
+import StaffShell from './StaffShell.js?v=142';
+import { formatDate, permitIconClass, permitLabel, deliveryStatusLabel, formatPeso } from '../util.js?v=142';
+import { authState } from '../store/auth.js?v=142';
+import Loader from './Loader.js?v=142';
 
 const TABS = [
   { key: 'new', label: 'New' },
@@ -26,6 +26,9 @@ export default {
       apps: [],
       counts: { new: 0, in_progress: 0, awaiting_applicant: 0 },
       loading: true,
+      // Approved permits waiting on delivery: they've left both queues above (status is no
+      // longer 'Submitted'/current-step), so without this list there'd be no way back to them.
+      deliveryApps: [],
     };
   },
   computed: {
@@ -60,6 +63,8 @@ export default {
     permitLabel,
     formatDate,
     permitIconClass,
+    deliveryStatusLabel,
+    formatPeso,
     tabIconClass(key) {
       return { new: 'bg-brand-50 text-brand-600', in_progress: 'bg-sun-100 text-sun-700', awaiting_applicant: 'bg-brand-600 text-sun-300' }[key];
     },
@@ -72,20 +77,25 @@ export default {
     },
     async refresh() {
       this.loading = true;
+      const deliveryPromise = apiGet('reviewer.php?action=delivery_queue');
       if (this.isPipelineStaff) {
-        const [queueRes, countsRes] = await Promise.all([
+        const [queueRes, countsRes, deliveryRes] = await Promise.all([
           apiGet('reviewer.php?action=pipeline_queue'),
           apiGet('reviewer.php?action=pipeline_counts'),
+          deliveryPromise,
         ]);
         this.apps = queueRes.applications;
         this.counts = countsRes;
+        this.deliveryApps = deliveryRes.applications;
       } else {
-        const [queueRes, countsRes] = await Promise.all([
+        const [queueRes, countsRes, deliveryRes] = await Promise.all([
           apiGet(`reviewer.php?action=queue&tab=${this.activeTab}`),
           apiGet('reviewer.php?action=counts'),
+          deliveryPromise,
         ]);
         this.apps = queueRes.applications;
         this.counts = countsRes;
+        this.deliveryApps = deliveryRes.applications;
       }
       this.loading = false;
     },
@@ -95,7 +105,7 @@ export default {
     <div class="pt-gradient-wide relative overflow-hidden rounded-3xl px-6 py-8 sm:px-10 sm:py-10 mb-8 flex items-end justify-between flex-wrap gap-6 shadow-[0_24px_60px_-28px_rgba(31,122,58,0.7)]">
       <div class="max-w-xl">
         <p class="text-sm font-medium text-white/85 mb-2">Welcome back{{ firstName ? ', ' + firstName : '' }}</p>
-        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight">My Review Queue</h1>
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight">Permit Verification</h1>
         <p class="text-white/85 text-sm mt-2">{{ totalCount }} open application(s) · {{ scopeLabel }}</p>
       </div>
       <!-- Says which side of the app this is; it is not a link anywhere. It used to be a solid
@@ -128,6 +138,33 @@ export default {
           <div class="text-3xl font-bold text-ink-700 mt-0.5">{{ counts[tab.key] }}</div>
         </div>
       </button>
+    </div>
+
+    <!-- Approved permits waiting on delivery. They've left the queues above — status is no
+         longer 'Submitted', or they're past their current pipeline step — so without this,
+         there'd be no way back to an application once it needed its delivery handled. -->
+    <div v-if="deliveryApps.length" class="mb-8">
+      <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Needs delivery action ({{ deliveryApps.length }})</h2>
+      <div class="space-y-3">
+        <div v-for="app in deliveryApps" :key="app.id" class="bg-white rounded-2xl border border-brand-100 hover:border-brand-300 hover:shadow-sm transition p-4 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-sun-100 text-sun-700">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            </div>
+            <div class="min-w-0">
+              <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ permitLabel(app.permit_type || app.permit_type_name) }}</div>
+              <div class="text-sm text-slate-500 mt-0.5 truncate">To {{ app.delivery_address }} &middot; {{ formatPeso(app.delivery_fee) }}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <span class="text-xs font-bold px-3 py-1.5 rounded-full bg-sun-100 text-sun-700">{{ deliveryStatusLabel(app.delivery_status) }}</span>
+            <router-link :to="'/reviewer/applications/' + app.id" class="inline-flex items-center gap-1.5 bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-brand-700 transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">
+              Manage
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </router-link>
+          </div>
+        </div>
+      </div>
     </div>
 
     <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{{ isPipelineStaff ? 'Waiting on your office' : activeTabLabel + ' applications' }}</h2>

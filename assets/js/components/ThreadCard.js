@@ -1,5 +1,5 @@
-import { openApplicationThread } from '../store/ui.js?v=119';
-import { timeAgo } from '../util.js?v=119';
+import { openApplicationThread } from '../store/ui.js?v=142';
+import { timeAgo } from '../util.js?v=142';
 
 // Where "Activity & Messages" used to be on a permit. The conversation itself lives in Messages
 // now (the chat panel's thread for this application); this shows the latest thing that happened

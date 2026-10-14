@@ -88,9 +88,9 @@ A permit application & review system for residents/businesses and city staff, bu
 
 | Level | How it's granted | Can do |
 |---|---|---|
-| Normal User | Self sign-up (email **or** mobile, verified with a 6-digit code) | Browse permits and requirements |
-| Resident | Normal User + verified email **and** mobile + two proofs of residence, approved by City Staff | Apply for resident permits |
-| Business Owner | Normal User + at least one business approved by City Staff (DTI/SEC/CDA registration, TIN, representative ID, barangay clearance, proof of location) | Apply for business permits for that business |
+| Unregistered User | Self sign-up (email **or** mobile, verified with a 6-digit code) | Browse permits and requirements |
+| Resident | Unregistered User + verified email **and** mobile + two proofs of residence, approved by City Staff | Apply for resident permits |
+| Business Owner | Unregistered User + at least one business approved by City Staff (DTI/SEC/CDA registration, TIN, representative ID, barangay clearance, proof of location) | Apply for business permits for that business |
 | City Staff | Created by an Admin (temporary password, changed on first sign-in) | Review verifications, and permit applications for their department |
 | Admin | Created by an Admin | Everything City Staff can do across all departments, plus the Admin page: staff accounts, departments, public accounts, audit log |
 
@@ -100,7 +100,7 @@ Resident and Business Owner are labels on the same account — one person can be
 
 - **Residents / businesses**: sign up from the login screen.
 - **Everything already seeded**: both sign-in screens carry a **Demo** tab on the right edge of the
-  card. It lists the accounts this install can be signed in as — normal users, residents, business
+  card. It lists the accounts this install can be signed in as — unregistered users, residents, business
   owners, the city offices, the 75 barangay secretariats and the admin — and fills the form with
   whichever one you pick. Picking a staff account from the resident screen (or the other way round)
   moves you to the right page with the form already filled, since the API refuses the wrong one.
@@ -151,11 +151,11 @@ sign in.
 
 ## Flow implemented
 
-1. Sign up as a Normal User (3-step form + email/SMS code), log in with email or mobile number
+1. Sign up as an Unregistered User (3-step form + email/SMS code), log in with email or mobile number
 2. Dashboard with account level, stat tiles and a 5-stage permit status stepper
 3. Resident upgrade: add the missing email/mobile, two proofs of residence, declaration; staff approve or reject with a reason
 4. Business upgrade: register one or more businesses with their documents; a rejected business can be fixed and resubmitted
-5. Browse permits (Normal Users) / new application form: file as yourself (Resident) or for a verified business
+5. Browse permits (Unregistered Users) / new application form: file as yourself (Resident) or for a verified business
 6. Permit detail page: documents, the latest update, and a link to the application's thread in Messages
 7. Staff Portal login (City Staff and Admin)
 8. Reviewer queue (New / In Progress / Awaiting Applicant) for city staff

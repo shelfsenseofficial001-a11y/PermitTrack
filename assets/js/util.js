@@ -148,6 +148,24 @@ export function uploadTypeError(file) {
   return 'Only a scan, photo or PDF can be uploaded (' + UPLOAD_TYPES_LABEL + ').';
 }
 
+// Staff's tracking of an approved permit's physical handoff, once delivery is chosen.
+// Mirrors DELIVERY_STATUS_LABELS and DELIVERY_FEE in api/config.php.
+export const DELIVERY_STATUS_STEPS = [
+  { value: 'preparing', label: 'Preparing' },
+  { value: 'out_for_delivery', label: 'Out for delivery' },
+  { value: 'delivered', label: 'Delivered' },
+];
+export const DELIVERY_FEE = 150.00;
+
+export function deliveryStatusLabel(value) {
+  const found = DELIVERY_STATUS_STEPS.find((s) => s.value === value);
+  return found ? found.label : '';
+}
+
+export function formatPeso(amount) {
+  return '₱' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // Permit names already end in "Permit" (e.g. "Demolition Permit"). Add the word only when it is
 // missing, so a headline never reads "Demolition Permit Permit".
 export function permitLabel(name) {

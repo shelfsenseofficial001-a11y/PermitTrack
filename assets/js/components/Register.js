@@ -1,9 +1,9 @@
-import { register, googleSignupProfile, googleRegister, googleCancel, homePathFor } from '../store/auth.js?v=129';
-import { apiGet } from '../api/client.js?v=129';
-import { isValidEmail, isValidPhMobile } from '../util.js?v=129';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=129';
-import SelectMenu from './SelectMenu.js?v=129';
-import GoogleButton from './GoogleButton.js?v=129';
+import { register, googleSignupProfile, googleRegister, googleCancel, homePathFor } from '../store/auth.js?v=142';
+import { apiGet } from '../api/client.js?v=142';
+import { isValidEmail, isValidPhMobile } from '../util.js?v=142';
+import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import GoogleButton from './GoogleButton.js?v=142';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
 // Signing up with Google: the email is Google's (already verified) and there is no password

@@ -47,7 +47,7 @@ if ($action === 'reupload' && $method === 'POST') {
 
     // A fresh file answers whatever the old one was sent back for, so the reason goes with it.
     $update = db()->prepare("UPDATE application_documents SET file_path = ?, original_filename = ?, status = 'Pending Review', uploaded_at = ?,
-                                    reject_reason = NULL, reject_notes = NULL, rejected_by = NULL, rejected_at = NULL WHERE id = ?");
+                                    reject_reason = NULL, reject_notes = NULL, rejected_by = NULL, rejected_at = NULL, pre_reject_status = NULL WHERE id = ?");
     $update->execute([$filePath, $originalName, date('Y-m-d H:i:s'), $docId]);
 
     $activity = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'reuploaded', ?)");
@@ -140,12 +140,17 @@ if ($action === 'review' && $method === 'POST') {
         fail('This document has not been submitted yet.', 409);
     }
 
-    // Undo steps back one stage rather than all the way: an office taking back its approval leaves
-    // the barangay's intake pass standing, because that pass still happened.
+    // Undo puts a document back exactly where it was before the decision being undone. Undoing an
+    // approval steps back one stage, since the barangay's intake pass still happened. Undoing a
+    // rejection restores whatever status the document held the moment it was rejected — Verified
+    // included — so un-rejecting an approved document approves it again instead of sending it
+    // through approval once more.
     if ($decision === 'approve') {
         $status = $stage === 'intake' ? 'Intake Approved' : 'Verified';
     } elseif ($decision === 'reject') {
         $status = 'Needs Re-upload';
+    } elseif ($doc['status'] === 'Needs Re-upload' && $doc['pre_reject_status']) {
+        $status = $doc['pre_reject_status'];
     } else {
         $status = ($stage === 'owner' && !empty($doc['intake_at'])) ? 'Intake Approved' : 'Pending Review';
     }
@@ -153,10 +158,10 @@ if ($action === 'review' && $method === 'POST') {
     // The reason lives only as long as the rejection does: approving it, undoing the rejection or
     // the applicant re-uploading all clear it, so a document never carries a reason it no longer has.
     if ($decision === 'reject') {
-        $sql = 'UPDATE application_documents SET status = ?, reject_reason = ?, reject_notes = ?, rejected_by = ?, rejected_at = NOW()';
-        $args = [$status, $reason, $notes, $user['id']];
+        $sql = 'UPDATE application_documents SET status = ?, reject_reason = ?, reject_notes = ?, rejected_by = ?, rejected_at = NOW(), pre_reject_status = ?';
+        $args = [$status, $reason, $notes, $user['id'], $doc['status']];
     } else {
-        $sql = 'UPDATE application_documents SET status = ?, reject_reason = NULL, reject_notes = NULL, rejected_by = NULL, rejected_at = NULL';
+        $sql = 'UPDATE application_documents SET status = ?, reject_reason = NULL, reject_notes = NULL, rejected_by = NULL, rejected_at = NULL, pre_reject_status = NULL';
         $args = [$status];
     }
     if ($stage === 'intake') {

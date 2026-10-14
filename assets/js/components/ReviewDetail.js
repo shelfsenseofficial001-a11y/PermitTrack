@@ -1,12 +1,12 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=129';
-import StaffShell from './StaffShell.js?v=129';
-import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass, permitLabel, DOCUMENT_REJECT_REASONS, rejectReasonLabel } from '../util.js?v=129';
-import { inputClass } from './AuthLayout.js?v=129';
-import Loader from './Loader.js?v=129';
-import BaseModal from './BaseModal.js?v=129';
-import MaskedValue from './MaskedValue.js?v=129';
-import SelectMenu from './SelectMenu.js?v=129';
-import { authState } from '../store/auth.js?v=129';
+import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=142';
+import StaffShell from './StaffShell.js?v=142';
+import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass, permitLabel, DOCUMENT_REJECT_REASONS, rejectReasonLabel, DELIVERY_STATUS_STEPS, formatPeso } from '../util.js?v=142';
+import { inputClass } from './AuthLayout.js?v=142';
+import Loader from './Loader.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import MaskedValue from './MaskedValue.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import { authState } from '../store/auth.js?v=142';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
@@ -33,9 +33,15 @@ export default {
       loadError: '',     // the application could not be opened at all (wrong office, or gone)
       error: '',
       saved: false,
+      deliverySteps: DELIVERY_STATUS_STEPS,
+      deliverySaving: false,
+      deliveryError: '',
     };
   },
   computed: {
+    deliveryStepIndex() {
+      return DELIVERY_STATUS_STEPS.findIndex((s) => s.value === (this.app && this.app.delivery_status));
+    },
     // Pipeline-mode applications (filed through the new 27-type flow) carry pipeline rows;
     // legacy applications (the original 5-type flow) have none. See BREAKING_CHANGES.md #3.
     isPipelineApp() {
@@ -97,6 +103,22 @@ export default {
       // comes from the permit_types join instead. See BREAKING_CHANGES.md #5.
       return (this.app && (this.app.permit_type || this.app.permit_type_name)) || 'Permit';
     },
+    // The barangay secretariat handles delivery — the office closest to the applicant, and the
+    // one every pipeline already routes through — not whichever city office happened to issue
+    // the permit. Mirrors the same rule enforced server-side in reviewer.php's delivery_status
+    // action; this is just so the buttons aren't shown misleadingly.
+    deliveryHandlingStep() {
+      if (!this.isPipelineApp) return null;
+      return this.app.pipeline.find((s) => s.office_code === 'BARANGAY') || null;
+    },
+    canManageDelivery() {
+      const u = authState.user;
+      if (!u) return false;
+      if (u.role === 'admin') return true;
+      // Legacy apps carry no pipeline rows to check against; the server is the actual judge there.
+      if (!this.isPipelineApp) return true;
+      return !!(this.deliveryHandlingStep && Number(u.department_id) === Number(this.deliveryHandlingStep.department_id));
+    },
   },
   watch: {
     // An error that stays up after the thing it complained about is fixed reads as broken.
@@ -121,10 +143,15 @@ export default {
     permitNumber,
     formatDate,
     formatDateTime,
+    formatPeso,
     downloadUrl,
     rejectReasonLabel,
-    async refresh() {
-      this.loading = true;
+    // `silent` skips the full-page Loader: used after an in-place action (approving a document,
+    // saving a decision, moving a delivery status) where the page is already showing and swapping
+    // it out for the Loader's much shorter layout, then back, is what was making the scroll
+    // position jump. Only the very first load needs the Loader — there's nothing to show yet.
+    async refresh(silent = false) {
+      if (!silent) this.loading = true;
       const id = this.$route.params.id;
       try {
         const res = await apiGet(`applications.php?action=detail&id=${id}`);
@@ -135,7 +162,7 @@ export default {
         // bookmark can land on one that is not theirs. Say so plainly instead of spinning forever.
         this.loadError = e.message;
       } finally {
-        this.loading = false;
+        if (!silent) this.loading = false;
       }
     },
     // Which of the two checks this viewer is here to make on a document, or null for none.
@@ -161,10 +188,11 @@ export default {
       return this.docStage(doc) !== null && doc.status !== 'Needs Re-upload' && doc.status !== 'Missing';
     },
     // Undo takes back this office's own decision, so it is offered only on a decision it made.
+    // Once a document is approved only Reject is shown — rejecting it is itself undoable, and that
+    // undo restores the approval, so there is no separate "undo the approval" button to offer too.
     canUndoDocument(doc) {
       const stage = this.docStage(doc);
-      if (stage === 'intake') return doc.status === 'Intake Approved' || doc.status === 'Needs Re-upload';
-      if (stage === 'owner') return doc.status === 'Verified' || doc.status === 'Needs Re-upload';
+      if (stage === 'intake' || stage === 'owner') return doc.status === 'Needs Re-upload';
       return false;
     },
     // The button repeats the title's verb: "Pass intake" is not the same act as "Approve".
@@ -202,7 +230,7 @@ export default {
       this.docActionId = doc.id;
       try {
         await apiPost('documents.php?action=review', payload);
-        await this.refresh();
+        await this.refresh(true);
       } catch (e) {
         // Without this the refusal vanished and the buttons looked broken.
         this.docError = e.message;
@@ -222,7 +250,7 @@ export default {
         });
         this.decision.notes = '';
         this.saved = true;
-        await this.refresh();
+        await this.refresh(true);
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -242,11 +270,27 @@ export default {
         this.pipelineNotes = '';
         this.saved = true;
         this.lastResultStatus = res.status;
-        await this.refresh();
+        await this.refresh(true);
       } catch (e) {
         this.error = e.message;
       } finally {
         this.saving = false;
+      }
+    },
+    async setDeliveryStatus(status) {
+      if (this.deliverySaving) return;
+      this.deliveryError = '';
+      this.deliverySaving = true;
+      try {
+        await apiPost('reviewer.php?action=delivery_status', {
+          application_id: this.app.id,
+          delivery_status: status,
+        });
+        await this.refresh(true);
+      } catch (e) {
+        this.deliveryError = e.message;
+      } finally {
+        this.deliverySaving = false;
       }
     },
   },
@@ -357,6 +401,28 @@ export default {
                 </div>
               </li>
             </ul>
+          </div>
+
+          <!-- Staff's own tracking of the physical handoff, once the applicant has chosen delivery.
+               Nothing shows for pickup, or before the choice is made. -->
+          <div v-if="app.delivery_method === 'delivery'" class="bg-white rounded-2xl border border-brand-100 p-6">
+            <h2 class="font-bold text-ink-700 mb-1">Delivery</h2>
+            <p class="text-sm text-slate-500 mb-4">To <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span> — {{ formatPeso(app.delivery_fee) }} fee.</p>
+            <div v-if="!canManageDelivery" class="rounded-xl bg-sun-50 border border-sun-200 px-4 py-3 text-sm text-sun-700">
+              Delivery for this permit is handled by <strong>{{ deliveryHandlingStep ? deliveryHandlingStep.department_name : "the applicant's barangay secretariat" }}</strong> — not your office.
+            </div>
+            <div v-else class="flex flex-wrap gap-2 mb-2">
+              <button v-for="(s, i) in deliverySteps" :key="s.value" type="button"
+                :disabled="deliverySaving || i <= deliveryStepIndex"
+                @click="setDeliveryStatus(s.value)"
+                class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition disabled:cursor-default"
+                :class="i < deliveryStepIndex ? 'bg-brand-50 border-brand-200 text-brand-700'
+                  : i === deliveryStepIndex ? 'bg-brand-600 border-brand-600 text-white'
+                  : 'border-slate-300 text-slate-600 hover:bg-meadow hover:border-brand-300 disabled:opacity-60'">
+                {{ s.label }}
+              </button>
+            </div>
+            <p v-if="deliveryError" class="text-sm text-red-600 mt-2">{{ deliveryError }}</p>
           </div>
         </div>
 

@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=129';
-import AppShell from './AppShell.js?v=129';
-import PermitList from './PermitList.js?v=129';
-import { authState, loadCurrentUser } from '../store/auth.js?v=129';
-import Loader from './Loader.js?v=129';
+import { apiGet } from '../api/client.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import PermitList from './PermitList.js?v=142';
+import { authState, loadCurrentUser } from '../store/auth.js?v=142';
+import Loader from './Loader.js?v=142';
 
 // How many permits the dashboard previews before sending you to My Permits
 const PREVIEW_COUNT = 3;
@@ -88,10 +88,10 @@ export default {
           <div class="flex items-center gap-2 mb-1">
             <h2 class="font-bold text-ink-700">Your account</h2>
             <span v-for="level in user.levels" :key="level" class="text-xs font-bold px-2.5 py-1 rounded-full"
-              :class="level === 'Normal User' ? 'bg-slate-100 text-slate-600' : 'bg-brand-100 text-brand-700'">{{ level }}</span>
+              :class="level === 'Unregistered User' ? 'bg-slate-100 text-slate-600' : 'bg-brand-100 text-brand-700'">{{ level }}</span>
           </div>
           <p class="text-sm text-slate-500 max-w-xl">
-            {{ canApply ? 'You can apply for permits. You can also add another label to your account.' : 'As a Normal User you can browse permits and their requirements. To apply, verify your account as a Resident, a Business Owner, or both.' }}
+            {{ canApply ? 'You can apply for permits. You can also add another label to your account.' : 'As an Unregistered User you can browse permits and their requirements. To apply, verify your account as a Resident, a Business Owner, or both.' }}
           </p>
         </div>
       </div>

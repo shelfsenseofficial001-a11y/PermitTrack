@@ -302,6 +302,52 @@ if ($action === 'withdraw' && $method === 'POST') {
 
     respond(['ok' => true]);
 }
+// The one-time pickup-vs-delivery choice, offered once a permit is Approved. Pickup needs
+// nothing further; delivery snapshots an address and the current flat fee onto the application
+// and starts staff's own delivery_status tracking at 'preparing'.
+if ($action === 'set_delivery' && $method === 'POST') {
+    $user = require_role('applicant');
+    $in = json_input();
+    $app = own_application((int)($in['id'] ?? 0), $user);
+
+    if ($app['status'] !== 'Approved') {
+        fail('This permit is not approved yet.', 409);
+    }
+    if (!empty($app['delivery_method'])) {
+        fail('Pickup or delivery has already been chosen for this permit.', 409);
+    }
+
+    $method2 = (string)($in['delivery_method'] ?? '');
+    if (!in_array($method2, ['pickup', 'delivery'], true)) {
+        fail('Choose pickup or delivery.');
+    }
+
+    $address = null;
+    $fee = null;
+    $status = null;
+    if ($method2 === 'delivery') {
+        $address = trim((string)($in['delivery_address'] ?? ''));
+        if ($address === '') {
+            fail('Please give an address to deliver to.');
+        }
+        $fee = DELIVERY_FEE;
+        $status = 'preparing';
+    }
+
+    db()->prepare(
+        'UPDATE applications SET delivery_method = ?, delivery_address = ?, delivery_fee = ?, delivery_status = ?, delivery_requested_at = NOW() WHERE id = ?'
+    )->execute([$method2, $address, $fee, $status, $app['id']]);
+
+    $body = $method2 === 'pickup'
+        ? 'Applicant chose to pick up this permit at the office.'
+        : 'Applicant asked for this permit to be delivered to: ' . $address . ' (₱' . number_format((float)DELIVERY_FEE, 2) . ' delivery fee).';
+    db()->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
+    )->execute([$app['id'], $user['id'], $body]);
+
+    respond(['ok' => true]);
+}
+
 if ($action === 'create_v2' && $method === 'POST') {
     $user = require_role('applicant');
     if (!can_apply($user)) {
@@ -519,7 +565,7 @@ if ($action === 'create_v2' && $method === 'POST') {
 
 if ($action === 'create' && $method === 'POST') {
     $user = require_role('applicant');
-    // Normal Users can browse only; applying needs a verified label
+    // Unregistered Users can browse only; applying needs a verified label
     if (!can_apply($user)) {
         fail('Only verified Residents or Business Owners can apply for permits. Verify your account first.', 403);
     }

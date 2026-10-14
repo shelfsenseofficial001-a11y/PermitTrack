@@ -1,14 +1,23 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=129';
-import AppShell from './AppShell.js?v=129';
-import BaseModal from './BaseModal.js?v=129';
-import SelectMenu from './SelectMenu.js?v=129';
-import { authState } from '../store/auth.js?v=129';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=129';
+import { apiGet, apiPostForm } from '../api/client.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import FaceVerifyModal from './FaceVerifyModal.js?v=142';
+import { authState } from '../store/auth.js?v=142';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=142';
+import { documentInstructions } from '../docInstructions.js?v=142';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
 // these two have to move together.
 const MAX_UPLOAD_MB = 5;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+// The one document name a government ID always carries (see "Valid Government ID" across
+// permit_type_documents). Face verification only makes sense against a photo — PDFs and HEIC
+// scans are not something a browser can draw to a canvas and run detection on — so this field
+// alone gets a narrower, image-only accept list.
+const ID_DOC_NAME = 'Valid Government ID';
+const ID_DOC_ACCEPT = 'image/jpeg,image/png,image/webp';
 
 const TRACK_LABELS = {
   construction: 'Construction & Property',
@@ -30,7 +39,7 @@ const STEPS = [
 
 export default {
   name: 'NewApplication',
-  components: { AppShell, BaseModal, SelectMenu },
+  components: { AppShell, BaseModal, SelectMenu, FaceVerifyModal },
   data() {
     return {
       // Which permits are being filed. One each in single mode, any number in multiple mode;
@@ -46,6 +55,9 @@ export default {
       },
       files: {},      // fieldKey -> File
       fileErrors: {}, // fieldKey -> message, when the chosen file was rejected
+      faceVerifiedDocs: {}, // fieldKey -> true, once a live selfie has matched that ID photo
+      pendingFaceVerify: null, // { key, file } while FaceVerifyModal is open for an ID field
+      docHelpOpen: {}, // fieldKey -> true, while that document's "How do I get this?" is expanded
       error: '',
       submitting: false,
       authState,
@@ -441,10 +453,22 @@ export default {
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
       return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     },
+    isIdDoc(docName) {
+      return docName === ID_DOC_NAME;
+    },
+    documentInstructions,
+    toggleDocHelp(docName) {
+      const key = this.fieldKey(docName);
+      this.docHelpOpen[key] = !this.docHelpOpen[key];
+    },
+    docAccept(docName) {
+      return this.isIdDoc(docName) ? ID_DOC_ACCEPT : this.uploadAccept;
+    },
     onFile(docName, event) {
       const key = this.fieldKey(docName);
       const file = event.target.files[0] || null;
       this.fileErrors[key] = '';
+      delete this.faceVerifiedDocs[key];
       if (!file) {
         this.files[key] = null;
         return;
@@ -463,12 +487,28 @@ export default {
         event.target.value = '';
         return;
       }
+      if (this.isIdDoc(docName)) {
+        // Held out of `files` (so it can't be submitted) until a live selfie matches it.
+        this.pendingFaceVerify = { key, file };
+        event.target.value = '';
+        return;
+      }
       this.files[key] = file;
+    },
+    onFaceVerified() {
+      const { key, file } = this.pendingFaceVerify;
+      this.files[key] = file;
+      this.faceVerifiedDocs[key] = true;
+      this.pendingFaceVerify = null;
+    },
+    cancelFaceVerify() {
+      this.pendingFaceVerify = null;
     },
     clearFile(docName) {
       const key = this.fieldKey(docName);
       this.files[key] = null;
       this.fileErrors[key] = '';
+      delete this.faceVerifiedDocs[key];
     },
     async submit() {
       this.error = '';
@@ -527,7 +567,7 @@ export default {
 
       <div v-if="!canApply" class="flex items-start gap-3 bg-sun-50 border border-sun-200 rounded-2xl px-4 py-3 mb-6">
         <svg class="w-5 h-5 text-sun-700 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-        <p class="text-sm text-sun-700">You're browsing as a <strong>Normal User</strong>. To apply for a permit, verify your account as a Resident or Business Owner from your dashboard.</p>
+        <p class="text-sm text-sun-700">You're browsing as an <strong>Unregistered User</strong>. To apply for a permit, verify your account as a Resident or Business Owner from your dashboard.</p>
       </div>
 
       <div v-if="canApply" ref="wizard" class="mt-5">
@@ -870,7 +910,12 @@ export default {
                         <span class="block text-xs mt-0.5"
                           :class="fileErrors[fieldKey(doc)] ? 'text-red-600' : files[fieldKey(doc)] ? 'text-emerald-600' : 'text-slate-400'">
                           {{ files[fieldKey(doc)] ? formatSize(files[fieldKey(doc)].size) + ' · tap to replace'
+                            : isIdDoc(doc) ? "Tap to upload · a live selfie confirms it's you · max " + maxUploadMb + ' MB'
                             : 'Tap to upload · max ' + maxUploadMb + ' MB' + ((docUsedBy[doc] || []).length > 1 ? ' · used for ' + docUsedBy[doc].length + ' permits' : '') }}
+                        </span>
+                        <span v-if="faceVerifiedDocs[fieldKey(doc)]" class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mt-1">
+                          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
+                          Face verified
                         </span>
                       </span>
 
@@ -878,12 +923,22 @@ export default {
                         class="shrink-0 p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-100 transition" :aria-label="'Remove ' + doc">
                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                       </button>
-                      <input type="file" class="hidden" :accept="uploadAccept" @change="onFile(doc, $event)" />
+                      <input type="file" class="hidden" :accept="docAccept(doc)" @change="onFile(doc, $event)" />
                     </label>
                     <p v-if="fileErrors[fieldKey(doc)]" class="text-xs text-red-600 mt-1 px-1">{{ fileErrors[fieldKey(doc)] }}</p>
+                    <button v-if="documentInstructions(doc)" type="button" @click="toggleDocHelp(doc)"
+                      class="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-brand-700 mt-1 px-1 transition">
+                      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                      How do I get this?
+                    </button>
+                    <transition name="expand">
+                      <p v-if="docHelpOpen[fieldKey(doc)]" class="text-xs text-slate-500 leading-relaxed mt-1.5 px-1">{{ documentInstructions(doc) }}</p>
+                    </transition>
                   </div>
                 </div>
                 <p class="text-xs text-slate-400 mt-2">{{ uploadTypesLabel }} — up to {{ maxUploadMb }} MB each.</p>
+
+                <FaceVerifyModal v-if="pendingFaceVerify" :id-file="pendingFaceVerify.file" @verified="onFaceVerified" @close="cancelFaceVerify" />
               </section>
 
               <!-- What's left, each one a link straight to it -->
