@@ -1,11 +1,11 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=129';
-import { authState, logout, signOutPathFor } from './store/auth.js?v=129';
-import { uiState, beginTransition, endTransition } from './store/ui.js?v=129';
-import ChangePasswordModal from './components/ChangePasswordModal.js?v=129';
-import CookieBanner from './components/CookieBanner.js?v=129';
-import BaseModal from './components/BaseModal.js?v=129';
-import LogoMark from './components/LogoMark.js?v=129';
+import { router } from './router/router.js?v=142';
+import { authState, logout, signOutPathFor } from './store/auth.js?v=142';
+import { uiState, beginTransition, endTransition } from './store/ui.js?v=142';
+import ChangePasswordModal from './components/ChangePasswordModal.js?v=142';
+import CookieBanner from './components/CookieBanner.js?v=142';
+import BaseModal from './components/BaseModal.js?v=142';
+import LogoMark from './components/LogoMark.js?v=142';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

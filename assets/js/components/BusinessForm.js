@@ -1,12 +1,20 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=129';
-import AppShell from './AppShell.js?v=129';
-import { loadCurrentUser } from '../store/auth.js?v=129';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=129';
-import Loader from './Loader.js?v=129';
-import SelectMenu from './SelectMenu.js?v=129';
+import { apiGet, apiPostForm } from '../api/client.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import { loadCurrentUser } from '../store/auth.js?v=142';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=142';
+import Loader from './Loader.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import FaceVerifyModal from './FaceVerifyModal.js?v=142';
+import { documentInstructions } from '../docInstructions.js?v=142';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
+
+// The one document key that is a government ID — see "representative_id" in requiredDocs() below
+// and business_required_docs() on the server. Face verification needs a photo it can run
+// detection on, so this field alone is narrowed to images (no PDF/HEIC).
+const ID_DOC_KEY = 'representative_id';
+const ID_DOC_ACCEPT = 'image/jpeg,image/png,image/webp';
 
 function emptyForm() {
   return {
@@ -19,7 +27,7 @@ function emptyForm() {
 export default {
   name: 'BusinessForm',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { AppShell, Loader, SelectMenu },
+  components: { AppShell, Loader, SelectMenu, FaceVerifyModal },
   data() {
     return {
       loading: true,
@@ -27,6 +35,9 @@ export default {
       business: null, // existing record when editing / viewing
       form: emptyForm(),
       files: {}, // doc_key -> File
+      faceVerifiedDocs: {}, // doc_key -> true, once a live selfie has matched that ID photo
+      pendingFaceVerify: null, // { key, file } while FaceVerifyModal is open for the ID field
+      docHelpOpen: {}, // doc_key -> true, while that document's "How do I get this?" is expanded
       declaration: false,
       submitting: false,
       error: '',
@@ -90,15 +101,41 @@ export default {
     fileUrl(id) {
       return 'api/business.php?action=file&id=' + id;
     },
+    isIdDoc(key) {
+      return key === ID_DOC_KEY;
+    },
+    docAccept(key) {
+      return this.isIdDoc(key) ? ID_DOC_ACCEPT : 'application/pdf,image/jpeg,image/png,image/webp';
+    },
     onFile(key, event) {
       const file = event.target.files[0] || null;
       this.error = '';
+      delete this.faceVerifiedDocs[key];
       if (file && file.size > this.options.max_file_mb * 1048576) {
         this.error = `That file is too large. The limit is ${this.options.max_file_mb} MB.`;
         event.target.value = '';
         return;
       }
+      if (file && this.isIdDoc(key)) {
+        // Held out of `files` (so it can't be submitted) until a live selfie matches it.
+        this.pendingFaceVerify = { key, file };
+        event.target.value = '';
+        return;
+      }
       this.files[key] = file;
+    },
+    onFaceVerified() {
+      const { key, file } = this.pendingFaceVerify;
+      this.files[key] = file;
+      this.faceVerifiedDocs[key] = true;
+      this.pendingFaceVerify = null;
+    },
+    cancelFaceVerify() {
+      this.pendingFaceVerify = null;
+    },
+    documentInstructions,
+    toggleDocHelp(key) {
+      this.docHelpOpen[key] = !this.docHelpOpen[key];
     },
     async submit() {
       this.error = '';
@@ -284,12 +321,27 @@ export default {
                   <span class="text-sm font-semibold" :class="files[d.key] ? 'text-brand-700' : 'text-slate-500'">
                     {{ files[d.key] ? '✓ ' + files[d.key].name : existingDocs[d.key] ? 'Replace file (optional)' : 'Choose a file' }}
                   </span>
-                  <input type="file" class="sr-only" accept="application/pdf,image/jpeg,image/png,image/webp" @change="onFile(d.key, $event)" />
+                  <span v-if="faceVerifiedDocs[d.key]" class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
+                    Face verified
+                  </span>
+                  <input type="file" class="sr-only" :accept="docAccept(d.key)" @change="onFile(d.key, $event)" />
                 </label>
+                <p v-if="isIdDoc(d.key)" class="text-xs text-slate-400 mt-1.5">A live selfie confirms this ID is yours — photo only, no PDF.</p>
+                <button v-if="documentInstructions(d.key)" type="button" @click="toggleDocHelp(d.key)"
+                  class="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-brand-700 mt-1.5 transition">
+                  <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                  How do I get this?
+                </button>
+                <transition name="expand">
+                  <p v-if="docHelpOpen[d.key]" class="text-xs text-slate-500 leading-relaxed mt-1.5">{{ documentInstructions(d.key) }}</p>
+                </transition>
               </li>
             </ul>
           </section>
         </fieldset>
+
+        <FaceVerifyModal v-if="pendingFaceVerify" :id-file="pendingFaceVerify.file" @verified="onFaceVerified" @close="cancelFaceVerify" />
 
         <aside v-if="editable" class="bg-white rounded-2xl border border-brand-100 p-6 h-fit lg:sticky lg:top-24">
           <h2 class="font-bold text-ink-700 mb-3">5. Declaration</h2>

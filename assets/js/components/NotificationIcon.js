@@ -1,4 +1,4 @@
-import { notificationTone } from '../util.js?v=129';
+import { notificationTone } from '../util.js?v=142';
 
 // The icon tile beside a notification, in the tone the server gave it. Shared by the toast and
 // the Notifications page so the two can never disagree about what an event looks like.

@@ -3,8 +3,8 @@
 // the bottom right, and each is the same item the bell and the Notifications page show — clicking
 // it opens that permit.
 
-import NotificationIcon from './NotificationIcon.js?v=129';
-import { notificationTone } from '../util.js?v=129';
+import NotificationIcon from './NotificationIcon.js?v=142';
+import { notificationTone } from '../util.js?v=142';
 
 const DISMISS_MS = 7000;
 

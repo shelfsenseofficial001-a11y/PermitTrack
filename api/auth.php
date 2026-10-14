@@ -225,7 +225,7 @@ if ($action === 'check_contact' && $method === 'GET') {
     respond(['available' => !$stmt->fetch()]);
 }
 
-// Normal User sign-up. Nothing is written to the database until the code is confirmed
+// Unregistered User sign-up. Nothing is written to the database until the code is confirmed
 // (see the 'verify' action below) — a failed or abandoned sign-up leaves no trace.
 if ($action === 'register' && $method === 'POST') {
     $in = json_input();
@@ -660,7 +660,7 @@ if ($action === 'demo_accounts' && $method === 'GET') {
 
     // portal = which sign-in page takes this account; the API refuses the other one outright.
     $groups = [
-        'unregistered' => ['label' => 'Normal users', 'portal' => 'resident',
+        'unregistered' => ['label' => 'Unregistered users', 'portal' => 'resident',
             'note' => 'Signed up and verified, nothing approved yet — can browse permits and requirements.'],
         'resident' => ['label' => 'Residents', 'portal' => 'resident',
             'note' => 'Residency approved — can file personal and construction permits.'],

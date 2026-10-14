@@ -1,7 +1,7 @@
-import { permitIconClass } from '../util.js?v=129';
-import ChatLauncher from './ChatLauncher.js?v=129';
-import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=129';
-import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=129';
+import { permitIconClass } from '../util.js?v=142';
+import ChatLauncher from './ChatLauncher.js?v=142';
+import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=142';
+import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=142';
 
 // The public front door. Everything on it describes what PermitTrack really does — the offices a
 // permit actually passes through, the real permit catalogue and its real requirements — so nothing
@@ -668,7 +668,7 @@ export default {
         menuOpen || accountOpen || signInOpen ? 'z-[55]' : 'z-40']">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <button type="button" @click="go('top')" class="flex items-center gap-2.5 shrink-0" aria-label="PermitTrack, back to top">
-          <img src="assets/images/PermitTrackIcon.png?v=129" alt="" class="w-9 h-9 object-contain" />
+          <img src="assets/images/PermitTrackIcon.png?v=142" alt="" class="w-9 h-9 object-contain" />
           <span class="leading-tight text-left">
             <span class="block text-[15px] font-bold text-ink-700">PermitTrack</span>
             <span class="block text-[11px] text-slate-500">City of Dasmariñas</span>
@@ -696,7 +696,7 @@ export default {
                 <div class="text-xs text-ink-300 truncate">{{ accountUser.email || accountUser.phone }}</div>
                 <div class="flex flex-wrap gap-1 mt-2">
                   <span v-for="level in accountUser.levels" :key="level"
-                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Normal User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
+                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Unregistered User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
                 </div>
               </div>
               <router-link to="/dashboard" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
@@ -1527,7 +1527,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr] gap-10">
         <div>
           <div class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=129" alt="" class="w-9 h-9 object-contain" />
+            <img src="assets/images/PermitTrackIcon.png?v=142" alt="" class="w-9 h-9 object-contain" />
             <span class="leading-tight">
               <span class="block text-[15px] font-bold text-white">PermitTrack</span>
               <span class="block text-[11px] text-ink-300">City of Dasmariñas</span>
