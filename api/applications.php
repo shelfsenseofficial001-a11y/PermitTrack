@@ -233,6 +233,19 @@ if ($action === 'detail' && $method === 'GET') {
         $doc['owner_department_id'] = $ownerDept ? (int)$ownerDept['id'] : null;
         $doc['owner_department_name'] = $ownerDept['name'] ?? null;
         $doc['owner_step_status'] = $ownerDept['status'] ?? null;
+
+        // The view-before-deciding gate (migration 038), from this viewer's own side: whether
+        // *they* have opened and downloaded this document's current version. Staff only — an
+        // applicant is never gated on their own files.
+        if ($user['role'] !== 'applicant') {
+            $doc['viewed_current_version'] = document_access_satisfied((int)$doc['id'], (int)$doc['version'], (int)$user['id']);
+        }
+
+        // Every prior upload, newest first, for the record (item 5/6 — revision history on both
+        // the applicant's and the reviewer's screens).
+        $verStmt = db()->prepare('SELECT * FROM application_document_versions WHERE document_id = ? ORDER BY version DESC');
+        $verStmt->execute([$doc['id']]);
+        $doc['previous_versions'] = $verStmt->fetchAll();
     }
     unset($doc);
 

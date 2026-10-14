@@ -40,8 +40,11 @@ export function apiPostForm(path, formData) {
   }).then(handle);
 }
 
+// &dl=1 forces a real "Save As" download regardless of the file's mime type — distinct from
+// viewUrl's inline viewer, so a staff reviewer's "open" and "download" are two separate, logged
+// actions (api/documents.php records each; see the view-before-deciding gate in ReviewDetail.js).
 export function downloadUrl(docId) {
-  return `${BASE}/documents.php?action=download&id=${docId}`;
+  return `${BASE}/documents.php?action=download&id=${docId}&dl=1`;
 }
 
 // Where "View" on a document goes: the file inside a page that is named for it and carries the

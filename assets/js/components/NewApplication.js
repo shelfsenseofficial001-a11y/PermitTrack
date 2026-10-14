@@ -152,12 +152,20 @@ export default {
     },
     // Branch questions across everything chosen, de-duplicated: two permits asking the same
     // question are answered once. Every one is forced, no default — see BREAKING_CHANGES.md #4.
+    // Both the routing branch questions (t.questions — "yes" adds an office to the route) and the
+    // pure data-collection quick questions (t.quick_questions — senior citizen / first-time job
+    // seeker; migration 038) share this one Yes/No step, de-duplicated the same way.
     allQuestions() {
       const seen = new Set();
       const out = [];
-      this.selectedTypes.forEach((t) => (t.questions || []).forEach((q) => {
-        if (!seen.has(q.condition_key)) { seen.add(q.condition_key); out.push(q); }
-      }));
+      this.selectedTypes.forEach((t) => {
+        (t.questions || []).forEach((q) => {
+          if (!seen.has(q.condition_key)) { seen.add(q.condition_key); out.push(q); }
+        });
+        (t.quick_questions || []).forEach((q) => {
+          if (!seen.has(q.condition_key)) { seen.add(q.condition_key); out.push(q); }
+        });
+      });
       return out;
     },
     allConditionsAnswered() {
@@ -169,12 +177,19 @@ export default {
     currentQuestion() {
       return this.allQuestions[this.qIndex] || null;
     },
-    // The same paper required by two permits is uploaded once and attached to both.
+    // The same paper required by two permits is uploaded once and attached to both. A quick
+    // question's own document (e.g. Senior Citizen ID) only joins the list once it is answered yes.
     requiredDocs() {
       const seen = new Set();
       const out = [];
       this.selectedTypes.forEach((t) => (t.required_documents || []).forEach((d) => {
         if (!seen.has(d)) { seen.add(d); out.push(d); }
+      }));
+      this.selectedTypes.forEach((t) => (t.quick_questions || []).forEach((q) => {
+        if (q.requires_document && this.form.conditions[q.condition_key] === 'yes' && !seen.has(q.requires_document)) {
+          seen.add(q.requires_document);
+          out.push(q.requires_document);
+        }
       }));
       return out;
     },
@@ -722,10 +737,13 @@ export default {
                         :class="form.conditions[currentQuestion.condition_key] === 'yes' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'">
                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                       </span>
-                      <span class="text-base font-bold text-ink-700">Yes</span>
+                      <span class="text-base font-bold text-ink-700">{{ currentQuestion.yes_label || 'Yes' }}</span>
                     </span>
                     <span v-if="addedBy(currentQuestion.condition_key).length" class="block mt-2 text-xs text-slate-500 leading-snug">
                       Adds a review by <span class="font-semibold text-slate-600">{{ addedBy(currentQuestion.condition_key).join(', ') }}</span>
+                    </span>
+                    <span v-else-if="currentQuestion.requires_document" class="block mt-2 text-xs text-slate-500 leading-snug">
+                      Adds a required upload: <span class="font-semibold text-slate-600">{{ currentQuestion.requires_document }}</span>
                     </span>
                   </button>
                   <button type="button" @click="answer(currentQuestion, 'no')"
@@ -736,7 +754,7 @@ export default {
                         :class="form.conditions[currentQuestion.condition_key] === 'no' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'">
                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
                       </span>
-                      <span class="text-base font-bold text-ink-700">No</span>
+                      <span class="text-base font-bold text-ink-700">{{ currentQuestion.no_label || 'No' }}</span>
                     </span>
                     <span class="block mt-2 text-xs text-slate-500 leading-snug">Nothing extra to review</span>
                   </button>

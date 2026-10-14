@@ -20,6 +20,7 @@ export default {
       reuploadingId: null,
       uploadAccept: UPLOAD_ACCEPT,
       docError: '',   // why the last file was refused, shown under the documents list
+      expandedHistory: {}, // document id -> bool, which revision-history lists are open
       // Editing the details in place, and taking the application back out of the queue. Both are
       // only offered while nobody has started reviewing it (the API's `editable`).
       editing: false,
@@ -74,6 +75,9 @@ export default {
     viewUrl,
     deliveryStatusLabel,
     formatPeso,
+    toggleHistory(docId) {
+      this.expandedHistory = { ...this.expandedHistory, [docId]: !this.expandedHistory[docId] };
+    },
     // `silent` skips the full-page Loader: used after an in-place action (editing, discarding,
     // re-uploading a document, choosing pickup/delivery) where the page is already showing and
     // swapping it out for the Loader's much shorter layout, then back, is what was making the
@@ -354,9 +358,12 @@ export default {
                 <svg v-else-if="doc.status === 'Needs Re-upload'" class="w-4 h-4 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
                 <svg v-else class="w-4 h-4 text-slate-300 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
                 <div class="min-w-0">
-                  <div class="text-sm font-semibold text-slate-800 truncate">{{ doc.doc_name }}</div>
+                  <div class="flex items-center gap-1.5">
+                    <div class="text-sm font-semibold text-slate-800 truncate">{{ doc.doc_name }}</div>
+                    <span v-if="doc.version > 1" class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">v{{ doc.version }}</span>
+                  </div>
                   <div class="text-xs" :class="doc.status === 'Verified' ? 'text-emerald-600' : doc.status === 'Needs Re-upload' ? 'text-red-500' : 'text-slate-400'">
-                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs a new copy' : doc.status === 'Intake Approved' ? 'Checked by your barangay, with the city office' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? (doc.decision_type === 'revision' ? 'Needs a revision' : 'Needs a new copy') : doc.status === 'Intake Approved' ? 'Checked by your barangay, with the city office' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
                   </div>
                   <!-- What is actually wrong with it, rather than sending them to hunt the activity feed -->
                   <div v-if="doc.status === 'Needs Re-upload' && doc.reject_reason"
@@ -365,6 +372,18 @@ export default {
                     <span v-if="doc.reject_notes" class="text-slate-600"> — {{ doc.reject_notes }}</span>
                   </div>
                   <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
+                  <button v-if="doc.previous_versions && doc.previous_versions.length" type="button" @click="toggleHistory(doc.id)"
+                    class="text-xs font-semibold text-slate-400 hover:text-slate-600 mt-1">
+                    {{ expandedHistory[doc.id] ? 'Hide' : 'Show' }} revision history ({{ doc.previous_versions.length }})
+                  </button>
+                  <ul v-if="expandedHistory[doc.id]" class="mt-1.5 space-y-1 border-l-2 border-slate-100 pl-2.5">
+                    <li v-for="v in doc.previous_versions" :key="v.id" class="text-xs text-slate-500">
+                      <span class="font-semibold text-slate-600">v{{ v.version }}</span>
+                      <span v-if="v.status === 'Needs Re-upload'" class="text-red-500">— {{ v.decision_type === 'revision' ? 'revision requested' : 'rejected' }}<span v-if="v.reject_reason">: {{ rejectReasonLabel(v.reject_reason) }}</span></span>
+                      <span v-else>— {{ v.status }}</span>
+                      <span class="text-slate-400"> · {{ formatDateTime(v.uploaded_at) }}</span>
+                    </li>
+                  </ul>
                 </div>
               </div>
               <div class="flex items-center gap-2 shrink-0">

@@ -14,6 +14,11 @@ export default {
     dismissible: { type: Boolean, default: true },
     // 'md' is the usual narrow dialog; 'xl' is for ones that hold a list (the all-permits dialog)
     size: { type: String, default: 'md' },
+    // Stacking override for a modal that must sit above another already-raised layer — e.g. the
+    // chat widget's own "New chat" confirmation, which has to clear the chat panel itself
+    // (see ChatWidget.js). Every other caller keeps the default, which matches NotificationToasts'
+    // old shared value.
+    zIndex: { type: String, default: '60' },
   },
   emits: ['close'],
   data() {
@@ -39,7 +44,7 @@ export default {
   },
   template: `
   <transition appear enter-from-class="opacity-0" enter-active-class="transition-opacity duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0">
-    <div class="font-inter fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-ink-900/55 backdrop-blur-[3px]" @click.self="dismiss">
+    <div class="font-inter fixed inset-0 flex items-center justify-center p-4 sm:p-6 bg-ink-900/55 backdrop-blur-[3px]" :class="'z-[' + zIndex + ']'" @click.self="dismiss">
       <transition appear enter-from-class="opacity-0 translate-y-8 scale-[0.88]" enter-active-class="transition duration-500 ease-[cubic-bezier(.34,1.45,.64,1)] motion-reduce:transition-none motion-reduce:duration-0">
         <!-- The frame that animates in, around the dialog proper. The dialog clips to its rounded
              corners (overflow-hidden), so anything meant to hang off its edge — the demo-accounts

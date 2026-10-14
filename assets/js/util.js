@@ -144,6 +144,7 @@ export const DOCUMENT_REJECT_REASONS = [
   { value: 'incomplete', label: 'Incomplete — pages missing' },
   { value: 'expired', label: 'Expired or out of date' },
   { value: 'mismatch', label: "Details don't match the application" },
+  { value: 'unsupported_format', label: 'Unsupported file format or size' },
   { value: 'other', label: 'Other (please explain)' },
 ];
 

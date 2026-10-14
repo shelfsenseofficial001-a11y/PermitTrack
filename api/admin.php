@@ -235,7 +235,7 @@ if ($action === 'users' && $method === 'GET') {
     $where[] = match ($filter) {
         'residents' => "u.resident_status = 'verified'",
         'business' => "EXISTS (SELECT 1 FROM businesses b WHERE b.user_id = u.id AND b.status = 'approved')",
-        'normal' => "u.resident_status <> 'verified' AND NOT EXISTS (SELECT 1 FROM businesses b WHERE b.user_id = u.id AND b.status = 'approved')",
+        'unregistered' => "u.resident_status <> 'verified' AND NOT EXISTS (SELECT 1 FROM businesses b WHERE b.user_id = u.id AND b.status = 'approved')",
         'deactivated' => 'u.is_active = 0',
         default => '1=1',
     };

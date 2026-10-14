@@ -46,13 +46,26 @@ if ($action === 'reupload' && $method === 'POST') {
     move_uploaded_file($_FILES['file']['tmp_name'], $dest);
     $filePath = 'uploads/' . $doc['app_id'] . '/' . $safeName;
 
+    // Keep the superseded file for the record (migration 038) before overwriting it — every prior
+    // version stays visible to staff and applicant alike, newest marked current.
+    if (!empty($doc['file_path'])) {
+        archive_document_version($doc);
+    }
+    $nextVersion = (int)$doc['version'] + 1;
+
     // A fresh file answers whatever the old one was sent back for, so the reason goes with it.
-    $update = db()->prepare("UPDATE application_documents SET file_path = ?, original_filename = ?, status = 'Pending Review', uploaded_at = ?,
-                                    reject_reason = NULL, reject_notes = NULL, rejected_by = NULL, rejected_at = NULL, pre_reject_status = NULL WHERE id = ?");
-    $update->execute([$filePath, $originalName, date('Y-m-d H:i:s'), $docId]);
+    // The view-before-deciding gate (migration 038) re-arms automatically: it is keyed by
+    // (document, version), and this is a new version no one has opened yet.
+    $update = db()->prepare("UPDATE application_documents SET file_path = ?, original_filename = ?, status = 'Pending Review', uploaded_at = ?, version = ?,
+                                    reject_reason = NULL, reject_notes = NULL, decision_type = NULL, rejected_by = NULL, rejected_at = NULL, pre_reject_status = NULL WHERE id = ?");
+    $update->execute([$filePath, $originalName, date('Y-m-d H:i:s'), $nextVersion, $docId]);
 
     $activity = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'reuploaded', ?)");
-    $activity->execute([$doc['app_id'], $user['id'], 'Re-uploaded document: ' . $doc['doc_name']]);
+    $activity->execute([$doc['app_id'], $user['id'], 'Re-uploaded document: ' . $doc['doc_name'] . ' (version ' . $nextVersion . ')']);
+
+    // Every office whose node already passed hears about it — they signed off before this change
+    // existed, per BREAKING_CHANGES-style transparency around the pipeline.
+    notify_passed_departments_of_revision((int)$doc['app_id'], (string)$doc['doc_name']);
 
     respond(['ok' => true]);
 }
@@ -65,7 +78,7 @@ if ($action === 'review' && $method === 'POST') {
     // for the barangay and a full approval for the office that owns the document, and which one it
     // is depends on where the permit is. That is the server's call, not the browser's.
     $decision = (string)($in['decision'] ?? '');
-    if (!in_array($decision, ['approve', 'reject', 'undo'], true)) {
+    if (!in_array($decision, ['approve', 'reject', 'revise', 'undo'], true)) {
         fail('Invalid decision.');
     }
 
@@ -115,10 +128,22 @@ if ($action === 'review' && $method === 'POST') {
         fail('This application is not currently with your office, so its documents cannot be changed.', 403);
     }
 
-    // Only once we know this reviewer may act at all: a rejection has to say why, because the
-    // reason is the only thing the applicant gets to act on. Checked after the permission rules
-    // above so someone with no business here is told that, not asked to fill in a form.
-    if ($decision === 'reject') {
+    // View-before-deciding (migration 038): Approve, Reject and Revise all require that this
+    // staff member has opened AND downloaded this exact file at its current version first. The
+    // disabled button on the frontend is only a courtesy — this is what actually stops it.
+    if (in_array($decision, ['approve', 'reject', 'revise'], true)
+        && !document_access_satisfied($docId, (int)$doc['version'], (int)$user['id'])) {
+        fail('Please open and download this file before deciding on it.', 409);
+    }
+
+    // Reject and Revise both send the file back and both require a reason — mockup 3's picker
+    // serves either. They differ only in decision_type, which the UI uses to say which one it was.
+    $sendBack = in_array($decision, ['reject', 'revise'], true);
+
+    // Only once we know this reviewer may act at all: sending a document back has to say why,
+    // because the reason is the only thing the applicant gets to act on. Checked after the
+    // permission rules above so someone with no business here is told that, not asked to fill a form.
+    if ($sendBack) {
         $reason = (string)($in['reason'] ?? '');
         $notes = trim((string)($in['notes'] ?? ''));
         if (!isset(DOCUMENT_REJECT_REASONS[$reason])) {
@@ -148,7 +173,7 @@ if ($action === 'review' && $method === 'POST') {
     // through approval once more.
     if ($decision === 'approve') {
         $status = $stage === 'intake' ? 'Intake Approved' : 'Verified';
-    } elseif ($decision === 'reject') {
+    } elseif ($sendBack) {
         $status = 'Needs Re-upload';
     } elseif ($doc['status'] === 'Needs Re-upload' && $doc['pre_reject_status']) {
         $status = $doc['pre_reject_status'];
@@ -156,13 +181,13 @@ if ($action === 'review' && $method === 'POST') {
         $status = ($stage === 'owner' && !empty($doc['intake_at'])) ? 'Intake Approved' : 'Pending Review';
     }
 
-    // The reason lives only as long as the rejection does: approving it, undoing the rejection or
+    // The reason lives only as long as the rejection/revision does: approving it, undoing it or
     // the applicant re-uploading all clear it, so a document never carries a reason it no longer has.
-    if ($decision === 'reject') {
-        $sql = 'UPDATE application_documents SET status = ?, reject_reason = ?, reject_notes = ?, rejected_by = ?, rejected_at = NOW(), pre_reject_status = ?';
-        $args = [$status, $reason, $notes, $user['id'], $doc['status']];
+    if ($sendBack) {
+        $sql = 'UPDATE application_documents SET status = ?, reject_reason = ?, reject_notes = ?, decision_type = ?, rejected_by = ?, rejected_at = NOW(), pre_reject_status = ?';
+        $args = [$status, $reason, $notes, $decision === 'revise' ? 'revision' : 'rejected', $user['id'], $doc['status']];
     } else {
-        $sql = 'UPDATE application_documents SET status = ?, reject_reason = NULL, reject_notes = NULL, rejected_by = NULL, rejected_at = NULL, pre_reject_status = NULL';
+        $sql = 'UPDATE application_documents SET status = ?, reject_reason = NULL, reject_notes = NULL, decision_type = NULL, rejected_by = NULL, rejected_at = NULL, pre_reject_status = NULL';
         $args = [$status];
     }
     if ($stage === 'intake') {
@@ -174,12 +199,27 @@ if ($action === 'review' && $method === 'POST') {
     $args[] = $docId;
     db()->prepare($sql . ' WHERE id = ?')->execute($args);
 
+    // Documents belonging to the office whose turn it currently is: a reject/revise here freezes
+    // the whole node — it stays frozen until the applicant uploads a new version and this same
+    // office approves it (maybe_unfreeze_after_approval, called below on the matching approve).
+    if ($stage === 'owner') {
+        if ($sendBack) {
+            freeze_current_node(
+                $appId, (int)$user['id'], 'revision',
+                ($decision === 'revise' ? 'Revision requested' : 'Rejected') . ' on "' . $doc['doc_name'] . '": '
+                    . DOCUMENT_REJECT_REASONS[$reason] . ($notes !== null ? ' — ' . $notes : '')
+            );
+        } elseif ($decision === 'approve') {
+            maybe_unfreeze_after_approval($appId, $owner);
+        }
+    }
+
     // The feed still gets a line, now carrying the reason — it is the permit's running record.
     // The event is stored beside it so the bell never has to read the sentence to know what
     // happened; rewording this text is then safe, which it previously was not.
-    if ($decision === 'reject') {
-        $event = 'doc_rejected';
-        $what = 'sent back: ' . DOCUMENT_REJECT_REASONS[$reason] . ($notes !== null ? ' — ' . $notes : '');
+    if ($sendBack) {
+        $event = $decision === 'revise' ? 'doc_revision' : 'doc_rejected';
+        $what = ($decision === 'revise' ? 'sent back for revision: ' : 'sent back: ') . DOCUMENT_REJECT_REASONS[$reason] . ($notes !== null ? ' — ' . $notes : '');
     } elseif ($stage === 'intake' && $decision === 'approve') {
         $event = 'doc_intake';
         $what = 'passed intake';
@@ -220,6 +260,15 @@ if ($action === 'download' && $method === 'GET') {
         fail('File not found.', 404);
     }
 
+    // View-before-deciding (migration 038): staff opening or downloading a document — at its
+    // current version — is what the gate in documents.php?action=review and
+    // reviewer.php?action=pipeline_decision actually checks. Applicants aren't gated by anything,
+    // so there's nothing to log for their own requests.
+    $forceDownload = ($_GET['dl'] ?? '') === '1';
+    if ($user['role'] !== 'applicant') {
+        log_document_access((int)$doc['id'], (int)$doc['version'], (int)$user['id'], !$forceDownload);
+    }
+
     // "View" opens this in a new tab, so a file a browser can show is sent to be shown, not saved.
     // The type comes from the file's own contents rather than anything the uploader named it, and
     // only these four are ever sent inline; anything else (a HEIC photo, say) still downloads.
@@ -230,12 +279,14 @@ if ($action === 'download' && $method === 'GET') {
     if (($_GET['view'] ?? '') === '1' && in_array($mime, BROWSER_VIEWABLE_MIME, true)) {
         send_file_viewer((string)($doc['doc_name'] ?: $name), raw_file_url(), $mime);
     }
-    if (in_array($mime, BROWSER_VIEWABLE_MIME, true)) {
-        header('Content-Type: ' . $mime);
-        header('Content-Disposition: inline; filename="' . $name . '"');
-    } else {
+    // ?dl=1 is the link's "Download": always a real save, regardless of whether the browser could
+    // have shown this mime type inline.
+    if ($forceDownload || !in_array($mime, BROWSER_VIEWABLE_MIME, true)) {
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="' . $name . '"');
+    } else {
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . $name . '"');
     }
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, no-store');

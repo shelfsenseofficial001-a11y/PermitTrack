@@ -384,7 +384,7 @@ export default {
       <form @submit.prevent="loadUsers" class="flex flex-wrap gap-2 mb-4">
         <input v-model="userQuery" placeholder="Search name, email or mobile" class="flex-1 min-w-[12rem]" :class="inputClass" aria-label="Search accounts" />
         <select v-model="userFilter" @change="loadUsers" :class="inputClass" class="w-auto" aria-label="Filter">
-          <option value="all">All</option><option value="normal">Unregistered Users</option><option value="residents">Residents</option><option value="business">Business Owners</option><option value="deactivated">Deactivated</option>
+          <option value="all">All</option><option value="unregistered">Unregistered Users</option><option value="residents">Residents</option><option value="business">Business Owners</option><option value="deactivated">Deactivated</option>
         </select>
         <button type="submit" class="px-4 rounded-xl bg-ink-700 text-white text-sm font-semibold">Search</button>
       </form>

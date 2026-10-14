@@ -343,6 +343,7 @@ const DOCUMENT_REJECT_REASONS = [
     'incomplete'     => 'Incomplete — pages missing',
     'expired'        => 'Expired or out of date',
     'mismatch'       => "Details don't match the application",
+    'unsupported_format' => 'Unsupported file format or size',
     'other'          => 'Other (please explain)',
 ];
 

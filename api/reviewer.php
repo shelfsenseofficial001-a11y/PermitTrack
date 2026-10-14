@@ -211,8 +211,11 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     $decision = (string)($in['decision'] ?? '');
     $notes = trim((string)($in['notes'] ?? ''));
 
-    if (!in_array($decision, ['approved', 'rejected'], true)) {
-        fail('decision must be "approved" or "rejected".');
+    // The node as a whole offers four actions (approve/reject/freeze/revise) on top of each
+    // file's own approve/reject/revise in documents.php. 'resume' lifts a freeze without
+    // otherwise deciding anything — the companion to 'freeze'.
+    if (!in_array($decision, ['approved', 'rejected', 'freeze', 'revise', 'resume'], true)) {
+        fail('Invalid decision.');
     }
     if (empty($user['department_id'])) {
         fail('Your account is not assigned to an office.', 403);
@@ -234,11 +237,56 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
         fail('This application is not currently waiting on your office.', 403);
     }
 
+    $officeCode = office_code_for_department((int)$user['department_id']);
+
+    // View-before-deciding (migration 038): every document this office owns on this application
+    // must have been opened AND downloaded, at its current version, by this staff member — for
+    // all four node-level actions. 'resume' just lifts a freeze, so it is exempt.
+    if ($decision !== 'resume') {
+        $missing = unreviewed_documents_for_office($appId, $officeCode, (int)$user['id']);
+        if ($missing) {
+            fail('Please open and download every document your office handles first — still pending: ' . implode(', ', $missing) . '.', 409);
+        }
+    }
+
+    if ($decision === 'resume') {
+        if (empty($current['frozen_at'])) {
+            fail('This application is not frozen.', 409);
+        }
+        unfreeze_current_node($appId);
+        $activity = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'status', ?)");
+        $activity->execute([$appId, $user['id'], $current['step_label'] . ' — resumed by ' . $user['full_name'] . '.']);
+        respond(['ok' => true, 'status' => $app['status']]);
+    }
+
+    if ($decision === 'freeze' || $decision === 'revise') {
+        if ($notes === '') {
+            fail('Please say what needs to be fixed before freezing this application.');
+        }
+        freeze_current_node($appId, (int)$user['id'], $decision === 'revise' ? 'revision' : 'freeze', $notes);
+        $activity = db()->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'status', ?)");
+        $activity->execute([$appId, $user['id'], $current['step_label'] . ' — '
+            . ($decision === 'revise' ? 'sent back for revision' : 'frozen') . ' by ' . $user['full_name'] . ': ' . $notes]);
+        post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $notes);
+        notify_user(
+            (int)$app['applicant_id'],
+            'Your permit application needs your attention',
+            'Your application at ' . $app['property_address'] . ' is paused at the ' . $current['step_label']
+                . ' stage until you act on this: ' . $notes
+        );
+        respond(['ok' => true, 'status' => $app['status']]);
+    }
+
+    // approved / rejected, same as before — but refused outright while the node is frozen; a
+    // freeze (manual, or automatic from a file-level reject/revise) must be cleared first.
+    if (!empty($current['frozen_at'])) {
+        fail('This application is frozen pending a revision — resolve that before deciding the step.', 409);
+    }
+
     // No skipping: an office signs its node off only once it has actually decided the documents it
     // is responsible for. Otherwise a permit could move past paperwork nobody ever looked at.
     // Rejecting stays available at any point — that is how a bad application gets stopped early.
     if ($decision === 'approved') {
-        $officeCode = office_code_for_department((int)$user['department_id']);
         if ($officeCode === 'BARANGAY') {
             // Intake covers the whole submission, not just the barangay's own paperwork: the city
             // offices do not see any of it until this step is signed off, so anything still

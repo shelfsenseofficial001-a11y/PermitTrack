@@ -159,7 +159,7 @@ export default {
   emits: ['open', 'close'],
   template: `
   <!-- Below the sticky header, and click-through except on the toasts themselves -->
-  <div class="fixed top-20 right-4 z-[60] flex flex-col items-end gap-2.5 pointer-events-none">
+  <div class="fixed top-20 right-4 z-[80] flex flex-col items-end gap-2.5 pointer-events-none">
     <Toast v-for="n in items" :key="n.id" :item="n" @open="$emit('open', $event)" @close="$emit('close', $event)" />
   </div>
   `,

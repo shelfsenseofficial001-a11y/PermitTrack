@@ -177,6 +177,10 @@ export default {
     },
   },
   template: `
+  <!-- Single wrapping root so nothing here can leak into the surrounding page's layout. Stacking
+       order (back to front): launcher (40) < any ordinary page modal (BaseModal's default 60) <
+       this chat panel (65) < this chat's own internal modals e.g. "New chat" (75) < toasts (80). -->
+  <div>
   <!-- On phones the Ask button sits above the bottom tab tray (4rem + the home-bar inset), which
        already clears a page-level FAB like Landing's "Back to top"; from md up it normally sits at
        bottom-5, but lifts higher when liftForFab is set so the two don't overlap. -->
@@ -199,7 +203,7 @@ export default {
   <transition enter-from-class="opacity-0 md:translate-y-3 md:scale-[0.97]" enter-active-class="transition duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0"
     leave-to-class="opacity-0 md:translate-y-2 md:scale-[0.98]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none motion-reduce:duration-0">
     <div v-if="open"
-      class="font-inter gibs-shell z-50 flex bg-ink-900/45 backdrop-blur-[3px] md:bg-transparent md:backdrop-blur-none md:origin-bottom-right"
+      class="font-inter gibs-shell z-[65] flex bg-ink-900/45 backdrop-blur-[3px] md:bg-transparent md:backdrop-blur-none md:origin-bottom-right"
       :class="liftForFab || liftForBar ? 'is-lifted' : ''" @click.self="close">
       <section role="dialog" aria-modal="true" aria-labelledby="gibs-title"
         class="gibs-panel relative flex flex-col bg-white md:rounded-3xl overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
@@ -281,7 +285,7 @@ export default {
     </div>
   </transition>
 
-  <BaseModal v-if="confirmReset" title="Start a new chat?" eyebrow="New conversation" tone="sun"
+  <BaseModal v-if="confirmReset" title="Start a new chat?" eyebrow="New conversation" tone="sun" z-index="75"
     subtitle="This clears everything in the current chat. Your permits and account aren't affected."
     @close="keepChat">
     <template #icon>
@@ -298,5 +302,6 @@ export default {
       </div>
     </template>
   </BaseModal>
+  </div>
   `,
 };
