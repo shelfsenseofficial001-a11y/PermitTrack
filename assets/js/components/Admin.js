@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from '../api/client.js?v=119';
 import StaffShell from './StaffShell.js?v=119';
-import { formatDate } from '../util.js?v=119';
+import { formatDate, isValidEmail, numberFieldError } from '../util.js?v=119';
 import Loader from './Loader.js?v=119';
 
 const TABS = [
@@ -13,6 +13,7 @@ const TABS = [
 ];
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none';
+const inputErrorClass = 'w-full rounded-xl border border-red-400 bg-white px-3 py-2 text-sm focus:ring-4 focus:ring-red-500/15 focus:border-red-500 outline-none';
 
 const AUDIT_LABELS = {
   'residency.submitted': 'Submitted residency proofs',
@@ -39,7 +40,8 @@ export default {
   data() {
     return {
       tabs: TABS,
-      inputClass,
+      inputClass, inputErrorClass,
+      shake: {},
       loading: false,
       error: '',
       notice: '',
@@ -74,6 +76,12 @@ export default {
     },
     auditPages() {
       return Math.max(1, Math.ceil(this.audit.total / this.audit.per_page));
+    },
+    newStaffEmailError() {
+      return this.newStaff.email && !isValidEmail(this.newStaff.email) ? 'Invalid email address.' : '';
+    },
+    faqOrderError() {
+      return this.editingFaq ? numberFieldError(this.editingFaq.sort_order) : '';
     },
   },
   watch: {
@@ -129,8 +137,17 @@ export default {
       this.audit = res;
     },
 
+    triggerShake(field) {
+      this.shake[field] = false;
+      this.$nextTick(() => { this.shake[field] = true; });
+    },
+
     // --- Staff ---
     createStaff() {
+      if (this.newStaffEmailError) {
+        this.triggerShake('new-staff-email');
+        return;
+      }
       return this.run(async () => {
         const res = await apiPost('admin.php?action=staff_create', this.newStaff);
         this.tempPassword = { name: this.newStaff.first_name + ' ' + this.newStaff.last_name, email: this.newStaff.email, password: res.temporary_password };
@@ -182,6 +199,10 @@ export default {
       this.$nextTick(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
     },
     saveFaq() {
+      if (this.faqOrderError) {
+        this.triggerShake('faq-order');
+        return;
+      }
       return this.run(async () => {
         await apiPost('admin.php?action=faq_save', this.editingFaq);
         this.editingFaq = null;
@@ -300,7 +321,10 @@ export default {
           <input v-model="newStaff.first_name" placeholder="First name" :class="inputClass" aria-label="First name" />
           <input v-model="newStaff.last_name" placeholder="Last name" :class="inputClass" aria-label="Last name" />
         </div>
-        <input v-model="newStaff.email" type="email" placeholder="Work email" :class="inputClass" aria-label="Work email" />
+        <input v-model="newStaff.email" type="email" placeholder="Work email" aria-label="Work email"
+          @animationend="shake['new-staff-email'] = false"
+          :class="[newStaffEmailError ? inputErrorClass : inputClass, shake['new-staff-email'] ? 'pt-shake' : '']" />
+        <p v-if="newStaffEmailError" class="text-xs text-red-600 -mt-1.5">{{ newStaffEmailError }}</p>
         <select v-model="newStaff.role" :class="inputClass" aria-label="Role"><option value="staff">City Staff</option><option value="admin">Admin (full access)</option></select>
         <select v-model="newStaff.department_id" :class="inputClass" aria-label="Department" :disabled="newStaff.role === 'admin'">
           <option value="">No department (sees all permits)</option>
@@ -400,7 +424,10 @@ export default {
         <label class="sm:col-span-2 text-sm font-semibold text-slate-700">Keywords <span class="font-normal text-slate-400">(words or phrases people might type, separated by commas — English and Filipino both help)</span>
           <input v-model="editingFaq.keywords" placeholder="e.g. fee, fees, how much, bayad, magkano" :class="inputClass" class="mt-1" /></label>
         <label class="text-sm font-semibold text-slate-700">Category<input v-model="editingFaq.category" :class="inputClass" class="mt-1" /></label>
-        <label class="text-sm font-semibold text-slate-700">Order<input v-model.number="editingFaq.sort_order" type="number" :class="inputClass" class="mt-1" /></label>
+        <label class="text-sm font-semibold text-slate-700">Order<input v-model.number="editingFaq.sort_order" type="number"
+          @animationend="shake['faq-order'] = false"
+          :class="[(faqOrderError ? inputErrorClass : inputClass) + ' mt-1', shake['faq-order'] ? 'pt-shake' : '']" />
+          <span v-if="faqOrderError" class="block text-xs font-normal text-red-600 mt-1">{{ faqOrderError }}</span></label>
         <label class="text-sm font-semibold text-slate-700">Link to page <span class="font-normal text-slate-400">(optional)</span><input v-model="editingFaq.link_path" placeholder="/residency" :class="inputClass" class="mt-1" /></label>
         <label class="text-sm font-semibold text-slate-700">Link text<input v-model="editingFaq.link_label" placeholder="Start resident verification" :class="inputClass" class="mt-1" /></label>
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="editingFaq.is_active" class="accent-[#1f7a3a]" /> Active</label>

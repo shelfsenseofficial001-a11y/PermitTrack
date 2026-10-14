@@ -1,7 +1,7 @@
 import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=119';
 import AppShell from './AppShell.js?v=119';
 import { authState, loadCurrentUser } from '../store/auth.js?v=119';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=119';
+import { formatDate, backButtonClass, backIconClass, isValidEmail, isValidPhMobile, digitsOnly } from '../util.js?v=119';
 import Loader from './Loader.js?v=119';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
@@ -34,12 +34,19 @@ export default {
       submitting: false,
       error: '',
       today: today(),
-      inputClass, labelClass,
+      shake: {},
+      inputClass, labelClass, digitsOnly,
     };
   },
   computed: {
     user() {
       return this.authState.user;
+    },
+    contactValueError() {
+      const v = this.contact.value.trim();
+      if (!v) return '';
+      if (this.missingChannel === 'email') return isValidEmail(v) ? '' : 'Invalid email address.';
+      return isValidPhMobile(v) ? '' : 'Invalid mobile number. Use a format like 0917 123 4567.';
     },
     status() {
       return this.user ? this.user.resident_status : 'none';
@@ -85,9 +92,22 @@ export default {
       this.address = { address_line: u.address_line || '', barangay: u.barangay || '' };
       this.loading = false;
     },
+    triggerShake(field) {
+      this.shake[field] = false;
+      this.$nextTick(() => { this.shake[field] = true; });
+    },
+    onCodeInput(event) {
+      const clean = digitsOnly(event.target.value).slice(0, 6);
+      if (clean !== event.target.value) this.triggerShake('contact-code');
+      this.contact.code = clean;
+    },
     async sendContactCode(resend = false) {
       const c = this.contact;
       c.error = '';
+      if (this.contactValueError) {
+        this.triggerShake('add-contact');
+        return;
+      }
       c.sending = true;
       try {
         const { verification } = await apiPost('account.php?action=add_contact', { channel: this.missingChannel, value: c.value, resend });
@@ -253,17 +273,21 @@ export default {
                 <label :class="labelClass" for="add-contact">{{ missingChannel === 'email' ? 'Add your email' : 'Add your mobile number' }}</label>
                 <div class="flex gap-2">
                   <input id="add-contact" v-model="contact.value" :type="missingChannel === 'email' ? 'email' : 'tel'"
-                    :placeholder="missingChannel === 'email' ? 'you@email.com' : '0917 123 4567'" :class="inputClass" />
+                    :placeholder="missingChannel === 'email' ? 'you@email.com' : '0917 123 4567'"
+                    @animationend="shake['add-contact'] = false"
+                    :class="[inputClass, shake['add-contact'] ? 'pt-shake' : '']" />
                   <button type="button" @click="sendContactCode(!!contact.sentTo)" :disabled="contact.sending || !contact.value.trim()"
                     class="shrink-0 px-4 rounded-xl bg-ink-700 text-white text-sm font-semibold hover:bg-ink-600 disabled:opacity-50 transition">
                     {{ contact.sending ? 'Sending…' : contact.sentTo ? 'Resend' : 'Send code' }}
                   </button>
                 </div>
+                <p v-if="contactValueError" class="text-xs text-red-600 mt-1.5">{{ contactValueError }}</p>
                 <template v-if="contact.sentTo">
                   <p class="text-xs text-slate-500 mt-3 mb-1.5">Enter the 6-digit code we sent to <strong>{{ contact.sentTo }}</strong>.</p>
                   <div class="flex gap-2">
-                    <input v-model="contact.code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••"
-                      :class="inputClass + ' tracking-[0.4em] font-semibold'" aria-label="Verification code" />
+                    <input :value="contact.code" @input="onCodeInput" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••"
+                      @animationend="shake['contact-code'] = false"
+                      :class="[inputClass + ' tracking-[0.4em] font-semibold', shake['contact-code'] ? 'pt-shake' : '']" aria-label="Verification code" />
                     <button type="button" @click="verifyContactCode" :disabled="contact.verifying || contact.code.length !== 6"
                       class="shrink-0 px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition">
                       {{ contact.verifying ? 'Checking…' : 'Verify' }}

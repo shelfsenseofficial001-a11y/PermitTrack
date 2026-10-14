@@ -1,10 +1,11 @@
 import { apiGet, apiPostForm } from '../api/client.js?v=119';
 import AppShell from './AppShell.js?v=119';
 import { loadCurrentUser } from '../store/auth.js?v=119';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=119';
+import { formatDate, backButtonClass, backIconClass, isValidEmail, numberFieldError } from '../util.js?v=119';
 import Loader from './Loader.js?v=119';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
+const inputErrorClass = 'w-full rounded-xl border border-red-400 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-red-500/15 focus:border-red-500 outline-none transition';
 const labelClass = 'block text-sm font-semibold text-slate-700 mb-1.5';
 
 function emptyForm() {
@@ -29,12 +30,22 @@ export default {
       declaration: false,
       submitting: false,
       error: '',
-      inputClass, labelClass,
+      shake: {},
+      inputClass, inputErrorClass, labelClass,
     };
   },
   computed: {
     isNew() {
       return !this.$route.params.id;
+    },
+    areaError() {
+      return numberFieldError(this.form.floor_area_sqm, { allowDecimal: true });
+    },
+    employeeError() {
+      return numberFieldError(this.form.employee_count);
+    },
+    businessEmailError() {
+      return this.form.business_email && !isValidEmail(this.form.business_email) ? 'Invalid email address.' : '';
     },
     editable() {
       return this.isNew || (this.business && ['draft', 'rejected'].includes(this.business.status));
@@ -86,6 +97,16 @@ export default {
   },
   methods: {
     formatDate,
+    triggerShake(field) {
+      this.shake[field] = false;
+      this.$nextTick(() => { this.shake[field] = true; });
+    },
+    // Shakes the moment the typed value becomes invalid (a minus sign, a letter), rather than
+    // waiting for blur or submit — the field most likely to get a stray keystroke is the one
+    // that should say so right away.
+    onNumberInput(field, errorKey) {
+      if (this[errorKey]) this.triggerShake(field);
+    },
     fileUrl(id) {
       return 'api/business.php?action=file&id=' + id;
     },
@@ -101,6 +122,13 @@ export default {
     },
     async submit() {
       this.error = '';
+      if (this.areaError || this.employeeError || this.businessEmailError) {
+        if (this.areaError) this.triggerShake('b-area');
+        if (this.employeeError) this.triggerShake('b-emp');
+        if (this.businessEmailError) this.triggerShake('b-email');
+        this.error = 'Please fix the highlighted fields before submitting.';
+        return;
+      }
       const missing = this.requiredDocs.find((d) => !this.files[d.key] && !this.existingDocs[d.key]);
       if (missing) {
         this.error = 'Please upload: ' + missing.label + '.';
@@ -206,11 +234,17 @@ export default {
               </div>
               <div>
                 <label :class="labelClass" for="b-area">Floor area (sq m) <span class="text-slate-400 font-normal">(optional)</span></label>
-                <input id="b-area" v-model="form.floor_area_sqm" type="number" min="0" step="0.01" :class="inputClass" />
+                <input id="b-area" v-model="form.floor_area_sqm" type="number" min="0" step="0.01"
+                  @input="onNumberInput('b-area', 'areaError')" @animationend="shake['b-area'] = false"
+                  :class="[areaError ? inputErrorClass : inputClass, shake['b-area'] ? 'pt-shake' : '']" />
+                <p v-if="areaError" class="mt-1.5 text-xs text-red-600">{{ areaError }}</p>
               </div>
               <div>
                 <label :class="labelClass" for="b-emp">No. of employees <span class="text-slate-400 font-normal">(optional)</span></label>
-                <input id="b-emp" v-model="form.employee_count" type="number" min="0" step="1" :class="inputClass" />
+                <input id="b-emp" v-model="form.employee_count" type="number" min="0" step="1"
+                  @input="onNumberInput('b-emp', 'employeeError')" @animationend="shake['b-emp'] = false"
+                  :class="[employeeError ? inputErrorClass : inputClass, shake['b-emp'] ? 'pt-shake' : '']" />
+                <p v-if="employeeError" class="mt-1.5 text-xs text-red-600">{{ employeeError }}</p>
               </div>
             </div>
           </section>
@@ -238,7 +272,10 @@ export default {
               </div>
               <div>
                 <label :class="labelClass" for="b-email">Business email <span class="text-slate-400 font-normal">(optional)</span></label>
-                <input id="b-email" v-model="form.business_email" type="email" :class="inputClass" />
+                <input id="b-email" v-model="form.business_email" type="email"
+                  @blur="businessEmailError && triggerShake('b-email')" @animationend="shake['b-email'] = false"
+                  :class="[businessEmailError ? inputErrorClass : inputClass, shake['b-email'] ? 'pt-shake' : '']" />
+                <p v-if="businessEmailError" class="mt-1.5 text-xs text-red-600">{{ businessEmailError }}</p>
               </div>
               <div>
                 <label :class="labelClass" for="b-phone">Business phone <span class="text-slate-400 font-normal">(optional)</span></label>

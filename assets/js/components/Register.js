@@ -1,6 +1,6 @@
 import { register } from '../store/auth.js?v=119';
 import { apiGet } from '../api/client.js?v=119';
-import { isValidEmail, isValidPhMobile } from '../util.js?v=119';
+import { isValidEmail, isValidPhMobile, digitsOnly } from '../util.js?v=119';
 import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
 
 const STEPS = ['About you', 'Contact & address', 'Password'];
@@ -28,13 +28,15 @@ export default {
       maxBirthdate: yearsAgo(18),
       minBirthdate: yearsAgo(80),
       error: '',
+      errorField: '',
+      shake: {},
       loading: false,
       provinces: [],
       cities: [],
       barangays: [],      // the 75 of Dasmariñas, used only when the chosen city is this one
       homeCityCode: '',
       loadingCities: false,
-      inputClass, labelClass, primaryButtonClass,
+      inputClass, labelClass, primaryButtonClass, digitsOnly,
     };
   },
   computed: {
@@ -92,33 +94,46 @@ export default {
     onCityChange() {
       if (!this.inHomeCity) this.form.barangay = '';
     },
-    // Client-side checks per step; the server re-validates everything.
+    // Client-side checks per step; the server re-validates everything. Sets errorField to the
+    // input the message is about, so the caller can shake it as well as show the text.
     stepError() {
       const f = this.form;
+      this.errorField = '';
       if (this.step === 0) {
-        if (!f.first_name.trim() || !f.last_name.trim()) return 'Please enter your first and last name.';
-        if (!f.birthdate) return 'Please enter your date of birth.';
-        if (f.birthdate > this.maxBirthdate) return 'You must be at least 18 years old to create an account.';
-        if (f.birthdate < this.minBirthdate) return 'Please enter a valid date of birth (age must be 80 or below).';
+        if (!f.first_name.trim() || !f.last_name.trim()) { this.errorField = !f.first_name.trim() ? 'r-first' : 'r-last'; return 'Please enter your first and last name.'; }
+        if (!f.birthdate) { this.errorField = 'r-dob'; return 'Please enter your date of birth.'; }
+        if (f.birthdate > this.maxBirthdate) { this.errorField = 'r-dob'; return 'You must be at least 18 years old to create an account.'; }
+        if (f.birthdate < this.minBirthdate) { this.errorField = 'r-dob'; return 'Please enter a valid date of birth (age must be 80 or below).'; }
       }
       if (this.step === 1) {
-        if (f.contact_method === 'email' && !isValidEmail(f.email)) return 'Please enter a valid email address.';
-        if (f.contact_method === 'phone' && !isValidPhMobile(f.phone)) return 'Please enter a valid mobile number, e.g. 0917 123 4567.';
-        if (!f.address_line.trim()) return 'Please enter your house number and street.';
-        if (!f.province_code || !f.city_code) return 'Please choose your province and city or municipality.';
-        if (this.inHomeCity && !this.matchedBarangay) return 'Please choose your barangay from the list.';
-        if (!/^\d{4}$/.test(f.postal_code.trim())) return 'Postal / ZIP code must be 4 digits.';
+        if (f.contact_method === 'email' && !isValidEmail(f.email)) { this.errorField = 'r-email'; return 'Please enter a valid email address.'; }
+        if (f.contact_method === 'phone' && !isValidPhMobile(f.phone)) { this.errorField = 'r-phone'; return 'Please enter a valid mobile number, e.g. 0917 123 4567.'; }
+        if (!f.address_line.trim()) { this.errorField = 'r-street'; return 'Please enter your house number and street.'; }
+        if (!f.province_code || !f.city_code) { this.errorField = !f.province_code ? 'r-prov' : 'r-city'; return 'Please choose your province and city or municipality.'; }
+        if (this.inHomeCity && !this.matchedBarangay) { this.errorField = 'r-brgy'; return 'Please choose your barangay from the list.'; }
+        if (!/^\d{4}$/.test(f.postal_code.trim())) { this.errorField = 'r-zip'; return 'Postal / ZIP code must be 4 digits.'; }
       }
       if (this.step === 2) {
-        if (!this.passwordStrongEnough) return 'Password must be at least 8 characters and include an uppercase letter, a number, and a special character.';
-        if (this.form.password !== this.form.confirm_password) return 'Passwords do not match.';
+        if (!this.passwordStrongEnough) { this.errorField = 'r-pw'; return 'Password must be at least 8 characters and include an uppercase letter, a number, and a special character.'; }
+        if (this.form.password !== this.form.confirm_password) { this.errorField = 'r-pw2'; return 'Passwords do not match.'; }
         if (!f.privacy_consent) return 'Please agree to the Data Privacy notice to continue.';
       }
       return '';
     },
+    triggerShake(field) {
+      if (!field) return;
+      this.shake[field] = false;
+      this.$nextTick(() => { this.shake[field] = true; });
+    },
+    onZipInput(event) {
+      const clean = digitsOnly(event.target.value).slice(0, 4);
+      if (clean !== event.target.value) this.triggerShake('r-zip');
+      this.form.postal_code = clean;
+    },
     next() {
       this.error = this.stepError();
-      if (!this.error) this.step++;
+      if (this.error) { this.triggerShake(this.errorField); return; }
+      this.step++;
     },
     back() {
       this.error = '';
@@ -126,7 +141,7 @@ export default {
     },
     async submit() {
       this.error = this.stepError();
-      if (this.error) return;
+      if (this.error) { this.triggerShake(this.errorField); return; }
       this.loading = true;
       try {
         const { confirm_password, ...payload } = this.form;
@@ -162,7 +177,8 @@ export default {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label :class="labelClass" for="r-first">First name</label>
-            <input id="r-first" v-model="form.first_name" type="text" autocomplete="given-name" placeholder="Juan" :class="inputClass" />
+            <input id="r-first" v-model="form.first_name" type="text" autocomplete="given-name" placeholder="Juan"
+              @animationend="shake['r-first'] = false" :class="[inputClass, shake['r-first'] ? 'pt-shake' : '']" />
           </div>
           <div>
             <label :class="labelClass" for="r-middle">Middle name <span class="text-slate-400 font-normal text-xs">(optional)</span></label>
@@ -171,11 +187,13 @@ export default {
         </div>
         <div>
           <label :class="labelClass" for="r-last">Last name</label>
-          <input id="r-last" v-model="form.last_name" type="text" autocomplete="family-name" placeholder="Dela Cruz" :class="inputClass" />
+          <input id="r-last" v-model="form.last_name" type="text" autocomplete="family-name" placeholder="Dela Cruz"
+            @animationend="shake['r-last'] = false" :class="[inputClass, shake['r-last'] ? 'pt-shake' : '']" />
         </div>
         <div>
           <label :class="labelClass" for="r-dob">Date of birth</label>
-          <input id="r-dob" v-model="form.birthdate" type="date" :min="minBirthdate" :max="maxBirthdate" autocomplete="bday" :class="inputClass" />
+          <input id="r-dob" v-model="form.birthdate" type="date" :min="minBirthdate" :max="maxBirthdate" autocomplete="bday"
+            @animationend="shake['r-dob'] = false" :class="[inputClass, shake['r-dob'] ? 'pt-shake' : '']" />
           <p class="text-xs text-slate-400 mt-1.5">You must be between 18 and 80 years old.</p>
         </div>
       </template>
@@ -194,18 +212,22 @@ export default {
                 class="px-3 py-1 rounded-full transition" :class="form.contact_method === 'phone' ? 'bg-white shadow text-[#1f7a3a]' : 'text-slate-500'">Mobile</button>
             </div>
           </div>
-          <input v-if="form.contact_method === 'email'" id="r-email" v-model="form.email" type="email" autocomplete="email" placeholder="you@email.com" :class="inputClass" />
-          <input v-else id="r-phone" v-model="form.phone" type="tel" autocomplete="tel" placeholder="0917 123 4567" :class="inputClass" />
+          <input v-if="form.contact_method === 'email'" id="r-email" v-model="form.email" type="email" autocomplete="email" placeholder="you@email.com"
+            @animationend="shake['r-email'] = false" :class="[inputClass, shake['r-email'] ? 'pt-shake' : '']" />
+          <input v-else id="r-phone" v-model="form.phone" type="tel" autocomplete="tel" placeholder="0917 123 4567"
+            @animationend="shake['r-phone'] = false" :class="[inputClass, shake['r-phone'] ? 'pt-shake' : '']" />
         </div>
         <div>
           <label :class="labelClass" for="r-street">House no. / Street</label>
-          <input id="r-street" v-model="form.address_line" type="text" autocomplete="address-line1" placeholder="Blk 4 Lot 18, Narra Drive" :class="inputClass" />
+          <input id="r-street" v-model="form.address_line" type="text" autocomplete="address-line1" placeholder="Blk 4 Lot 18, Narra Drive"
+            @animationend="shake['r-street'] = false" :class="[inputClass, shake['r-street'] ? 'pt-shake' : '']" />
         </div>
         <!-- Province and city come from the PSGC list rather than being typed: whether an account is
              in Dasmariñas decides what it can file, so it cannot rest on spelling. -->
         <div>
           <label :class="labelClass" for="r-prov">Province</label>
-          <select id="r-prov" v-model="form.province_code" @change="onProvinceChange" :class="inputClass">
+          <select id="r-prov" v-model="form.province_code" @change="onProvinceChange"
+            @animationend="shake['r-prov'] = false" :class="[inputClass, shake['r-prov'] ? 'pt-shake' : '']">
             <option value="">Choose a province…</option>
             <option v-for="pr in provinces" :key="pr.code" :value="pr.code">{{ pr.name }}</option>
           </select>
@@ -213,14 +235,17 @@ export default {
         <div class="grid grid-cols-[1fr_7rem] gap-3">
           <div>
             <label :class="labelClass" for="r-city">City / Municipality</label>
-            <select id="r-city" v-model="form.city_code" @change="onCityChange" :disabled="!form.province_code || loadingCities" :class="inputClass">
+            <select id="r-city" v-model="form.city_code" @change="onCityChange" :disabled="!form.province_code || loadingCities"
+              @animationend="shake['r-city'] = false" :class="[inputClass, shake['r-city'] ? 'pt-shake' : '']">
               <option value="">{{ loadingCities ? 'Loading…' : (form.province_code ? 'Choose…' : 'Province first') }}</option>
               <option v-for="c in cities" :key="c.code" :value="c.code">{{ c.name }}</option>
             </select>
           </div>
           <div>
             <label :class="labelClass" for="r-zip">Postal code</label>
-            <input id="r-zip" v-model="form.postal_code" type="text" inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="1870" :class="inputClass" />
+            <input id="r-zip" :value="form.postal_code" @input="onZipInput"
+              type="text" inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="1870"
+              @animationend="shake['r-zip'] = false" :class="[inputClass, shake['r-zip'] ? 'pt-shake' : '']" />
           </div>
         </div>
 
@@ -229,7 +254,8 @@ export default {
           <label :class="labelClass" for="r-brgy">Barangay</label>
           <input id="r-brgy" v-model="form.barangay" list="r-brgy-list" type="text" autocomplete="off"
             placeholder="Start typing to search…"
-            :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '']" />
+            @animationend="shake['r-brgy'] = false"
+            :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '', shake['r-brgy'] ? 'pt-shake' : '']" />
           <datalist id="r-brgy-list">
             <option v-for="b in barangays" :key="b.id" :value="b.name" />
           </datalist>
@@ -248,7 +274,8 @@ export default {
         <div>
           <label :class="labelClass" for="r-pw">Password</label>
           <div class="relative">
-            <input id="r-pw" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="••••••••••" :class="inputClass + ' pr-11'" />
+            <input id="r-pw" v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="••••••••••"
+              @animationend="shake['r-pw'] = false" :class="[inputClass + ' pr-11', shake['r-pw'] ? 'pt-shake' : '']" />
             <button type="button" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'"
               class="absolute inset-y-0 right-0 flex items-center px-4 rounded-r-xl text-slate-500 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1f7a3a]/40">
               <svg v-if="!showPassword" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -260,7 +287,8 @@ export default {
         <div>
           <label :class="labelClass" for="r-pw2">Confirm password</label>
           <input id="r-pw2" v-model="form.confirm_password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="••••••••••"
-            :aria-invalid="passwordMismatch" :class="inputClass" :style="passwordMismatch ? 'border-color:#f87171' : ''" />
+            @animationend="shake['r-pw2'] = false"
+            :aria-invalid="passwordMismatch" :class="[inputClass, shake['r-pw2'] ? 'pt-shake' : '']" :style="passwordMismatch ? 'border-color:#f87171' : ''" />
           <p class="h-5 mt-1.5 text-xs font-medium" aria-live="polite" :class="passwordMismatch ? 'text-red-600' : 'text-[#1f7a3a]'">
             {{ passwordMismatch ? '✕ Passwords don\\'t match' : passwordsMatch ? '✓ Passwords match' : '' }}
           </p>

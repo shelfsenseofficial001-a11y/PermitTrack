@@ -64,6 +64,24 @@ export function timeAgo(value) {
 export const isValidEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value).trim());
 export const isValidPhMobile = (value) => /^(\+?63|0)?9\d{9}$/.test(String(value).replace(/[\s-]/g, ''));
 
+// Strips anything but digits, for the numbers-only boxes (OTP codes, postal codes) that are
+// type="text" rather than type="number" — those don't block a pasted or typed letter on their
+// own, so the field has to clean up after itself.
+export const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
+
+// Null when a number field is fine as-is, otherwise the message to show under it. Covers the two
+// mistakes a type="number" input doesn't stop on its own: a minus sign (HTML's min="0" marks the
+// field :invalid but never blocks typing "-5"), and letters, which some browsers still let through
+// on paste. allowDecimal controls whether a fractional part (e.g. floor area in sqm) is fine.
+export function numberFieldError(value, { allowDecimal = false } = {}) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return null;
+  if (trimmed === '-' || trimmed.startsWith('-')) return 'Negative numbers aren’t allowed.';
+  const pattern = allowDecimal ? /^\d+(\.\d+)?$/ : /^\d+$/;
+  if (!pattern.test(trimmed)) return 'Numbers only, please.';
+  return null;
+}
+
 /**
  * The sign-in box takes either an email or a mobile number, so the error has to name the one the
  * person was clearly reaching for — telling someone who typed "asasasas" that it is not a valid

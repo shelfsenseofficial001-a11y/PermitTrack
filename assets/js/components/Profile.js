@@ -3,7 +3,7 @@ import BaseModal from './BaseModal.js?v=119';
 import AppShell from './AppShell.js?v=119';
 import { inputClass } from './AuthLayout.js?v=119';
 import { authState, loadCurrentUser } from '../store/auth.js?v=119';
-import { formatDate, timeAgo } from '../util.js?v=119';
+import { formatDate, timeAgo, digitsOnly } from '../util.js?v=119';
 import { openChangePassword } from '../store/ui.js?v=119';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'province_code', 'city_code', 'postal_code'];
@@ -36,7 +36,8 @@ export default {
       homeCityCode: '',   // PSGC code for Dasmariñas, from the server
       loadingCities: false,
       toast: '',
-      inputClass,
+      shakeZip: false,
+      inputClass, digitsOnly,
       minBirthdate: MIN_BIRTHDATE,
       maxBirthdate: MAX_BIRTHDATE,
     };
@@ -106,6 +107,14 @@ export default {
     clearTimeout(this.toastTimer);
   },
   methods: {
+    onZipInput(event) {
+      const clean = digitsOnly(event.target.value).slice(0, 4);
+      if (clean !== event.target.value) {
+        this.shakeZip = false;
+        this.$nextTick(() => { this.shakeZip = true; });
+      }
+      this.form.postal_code = clean;
+    },
     async loadLocations() {
       const [res, brgy] = await Promise.all([
         apiGet('locations.php?action=provinces'),
@@ -334,7 +343,8 @@ export default {
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-zip">Postal code</label>
-                  <input id="p-zip" v-model="form.postal_code" required inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="4 digits" :class="inputClass" />
+                  <input id="p-zip" :value="form.postal_code" @input="onZipInput" required inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="4 digits"
+                    @animationend="shakeZip = false" :class="[inputClass, shakeZip ? 'pt-shake' : '']" />
                 </div>
               </div>
 

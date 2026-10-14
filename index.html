@@ -204,6 +204,21 @@
     .file-pop { animation: none; }
   }
 
+  /* shake — a field that just rejected what was typed into it (bad email, a negative number,
+     letters in a numbers-only box). A short, sharp no rather than the gentler motion elsewhere,
+     so it reads as a correction. Re-triggerable: components remove and re-add the class so the
+     same mistake twice still shakes twice. */
+  @keyframes pt-shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+  }
+  .pt-shake { animation: pt-shake .4s cubic-bezier(.36,.07,.19,.97) both; }
+  @media (prefers-reduced-motion: reduce) {
+    .pt-shake { animation: none; }
+  }
+
   /* veil — the blurred "Switching accounts… / Signing out…" screen. Deliberately not slowed
      or stopped by reduce-motion: it marks a real change of who is signed in. */
   .veil-enter-active { transition: opacity .3s var(--ease-out); }
@@ -445,6 +460,31 @@
       radial-gradient(ellipse 35% 120% at 100% 0%, #f7cf1b 0%, #fbe36a 35%, rgba(251,227,106,0) 75%),
       radial-gradient(ellipse 30% 90% at 62% 70%, #f6fbd9 0%, rgba(246,251,217,0) 70%),
       linear-gradient(100deg, #1f7a3a 0%, #3f8f3a 28%, #a3d468 58%, #d9f09a 78%, #f7e27a 100%);
+  }
+
+  /* Clickable affordance — a baseline every interactive control gets automatically, on top of
+     whatever hover styling a component already defines. Buttons, links and role="button"
+     elements get a quick, subtle press (scale down + dim) on :active so every one of them reads
+     as pressable even where a component didn't hand-roll its own hover/active treatment, and a
+     faint hover lift so a mouse resting over a control confirms it's live. Disabled controls get
+     a not-allowed cursor and dimmed look as a fallback, in case a component forgot to say so itself. */
+  button:not(:disabled):not([aria-disabled="true"]), [role="button"]:not([aria-disabled="true"]), a[href] {
+    transition: transform .12s var(--ease-out), filter .12s var(--ease-out);
+  }
+  button:not(:disabled):not([aria-disabled="true"]):hover, [role="button"]:not([aria-disabled="true"]):hover {
+    filter: brightness(1.05);
+  }
+  button:not(:disabled):not([aria-disabled="true"]):active, [role="button"]:not([aria-disabled="true"]):active, a[href]:active {
+    transform: scale(.97);
+    filter: brightness(.96);
+  }
+  button:disabled, button[aria-disabled="true"], [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button:not(:disabled):not([aria-disabled="true"]):active, [role="button"]:not([aria-disabled="true"]):active, a[href]:active {
+      transform: none;
+    }
   }
 </style>
 <script type="importmap">

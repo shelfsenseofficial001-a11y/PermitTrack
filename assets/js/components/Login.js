@@ -16,6 +16,7 @@ export default {
       // halfway through typing their address. After that it follows every keystroke.
       identifierTouched: false,
       loading: false,
+      shakeIdentifier: false,
       inputClass, inputErrorClass, labelClass, primaryButtonClass,
     };
   },
@@ -40,7 +41,11 @@ export default {
     },
     async submit() {
       this.identifierTouched = true;
-      if (this.identifierProblem) return;
+      if (this.identifierProblem) {
+        this.shakeIdentifier = false;
+        this.$nextTick(() => { this.shakeIdentifier = true; });
+        return;
+      }
       this.error = '';
       this.loading = true;
       try {
@@ -70,11 +75,11 @@ export default {
       <div>
         <label :class="labelClass" for="login-id">Email or mobile number</label>
         <input id="login-id" v-model="form.identifier" type="text" required autocomplete="username"
-          @blur="identifierTouched = true"
+          @blur="identifierTouched = true" @animationend="shakeIdentifier = false"
           :aria-invalid="showIdentifierProblem ? 'true' : 'false'"
           :aria-describedby="showIdentifierProblem ? 'login-id-error' : null"
           placeholder="you@email.com or 0917 123 4567"
-          :class="showIdentifierProblem ? inputErrorClass : inputClass" />
+          :class="[showIdentifierProblem ? inputErrorClass : inputClass, shakeIdentifier ? 'pt-shake' : '']" />
         <p v-if="showIdentifierProblem" id="login-id-error" class="mt-1.5 text-sm text-red-600">{{ identifierProblem }}</p>
       </div>
       <div>

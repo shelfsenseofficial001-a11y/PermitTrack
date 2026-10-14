@@ -15,6 +15,7 @@ export default {
       resending: false,
       cooldown: 0,
       timer: null,
+      shakeCode: false,
       inputClass, labelClass, primaryButtonClass,
     };
   },
@@ -48,7 +49,12 @@ export default {
       }, 1000);
     },
     onInput(e) {
-      this.code = e.target.value.replace(/\D/g, '').slice(0, 6);
+      const clean = e.target.value.replace(/\D/g, '').slice(0, 6);
+      if (clean !== e.target.value.slice(0, 6)) {
+        this.shakeCode = false;
+        this.$nextTick(() => { this.shakeCode = true; });
+      }
+      this.code = clean;
       e.target.value = this.code;
       if (this.code.length === 6) this.submit();
     },
@@ -58,6 +64,8 @@ export default {
       this.notice = '';
       if (this.code.length !== 6) {
         this.error = 'Please enter the 6-digit code.';
+        this.shakeCode = false;
+        this.$nextTick(() => { this.shakeCode = true; });
         return;
       }
       this.loading = true;
@@ -109,8 +117,8 @@ export default {
         <div>
           <label :class="labelClass" for="v-code">Verification code</label>
           <input id="v-code" ref="codeInput" :value="code" @input="onInput" type="text" inputmode="numeric" autocomplete="one-time-code"
-            maxlength="6" placeholder="••••••"
-            :class="inputClass + ' text-center text-2xl font-semibold tracking-[0.6em] py-3'" />
+            maxlength="6" placeholder="••••••" @animationend="shakeCode = false"
+            :class="[inputClass + ' text-center text-2xl font-semibold tracking-[0.6em] py-3', shakeCode ? 'pt-shake' : '']" />
         </div>
 
         <p v-if="error" class="text-sm text-red-600" role="alert">{{ error }}</p>

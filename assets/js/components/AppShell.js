@@ -236,7 +236,7 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2.5">
-            <img src="assets/images/PermitTrackIcon.png?v=119" alt="" class="w-9 h-9 object-contain shrink-0" />
+            <img src="assets/images/CITY-HALL-LOGO.png" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
               <div class="text-[11px] text-ink-300">City of Dasmariñas</div>

@@ -1,7 +1,8 @@
 import { login, reloadAs } from '../store/auth.js?v=119';
-import { inputClass } from './AuthLayout.js?v=119';
+import { inputClass, inputErrorClass } from './AuthLayout.js?v=119';
 import BaseModal from './BaseModal.js?v=119';
 import DemoAccounts from './DemoAccounts.js?v=119';
+import { identifierError } from '../util.js?v=119';
 
 // "Add account": sign in to another account on top of the current page. The current account
 // stays signed in on this browser (see auth.php "accounts"), so the user can switch back.
@@ -15,8 +16,18 @@ export default {
       showPassword: false,
       error: '',
       loading: false,
-      inputClass,
+      identifierTouched: false,
+      shakeIdentifier: false,
+      inputClass, inputErrorClass,
     };
+  },
+  computed: {
+    identifierProblem() {
+      return identifierError(this.form.identifier);
+    },
+    showIdentifierProblem() {
+      return this.identifierTouched && !!this.identifierProblem;
+    },
   },
   mounted() {
     this.$nextTick(() => this.$refs.first && this.$refs.first.focus());
@@ -26,6 +37,12 @@ export default {
       if (!this.loading) this.$emit('close');
     },
     async submit() {
+      this.identifierTouched = true;
+      if (this.identifierProblem) {
+        this.shakeIdentifier = false;
+        this.$nextTick(() => { this.shakeIdentifier = true; });
+        return;
+      }
       this.error = '';
       this.loading = true;
       try {
@@ -68,8 +85,13 @@ export default {
         <div class="relative">
           <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <input id="add-account-id" ref="first" v-model="form.identifier" type="text" required autocomplete="username"
-            placeholder="you@email.com or 0917 123 4567" :class="inputClass + ' pl-10'" />
+            @blur="identifierTouched = true" @animationend="shakeIdentifier = false"
+            :aria-invalid="showIdentifierProblem ? 'true' : 'false'"
+            :aria-describedby="showIdentifierProblem ? 'add-account-id-error' : null"
+            placeholder="you@email.com or 0917 123 4567"
+            :class="[(showIdentifierProblem ? inputErrorClass : inputClass) + ' pl-10', shakeIdentifier ? 'pt-shake' : '']" />
         </div>
+        <p v-if="showIdentifierProblem" id="add-account-id-error" class="mt-1.5 text-sm text-red-600">{{ identifierProblem }}</p>
       </div>
       <div>
         <div class="flex items-center justify-between mb-1.5">

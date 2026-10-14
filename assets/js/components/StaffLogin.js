@@ -1,7 +1,8 @@
 import { login, homePathFor } from '../store/auth.js?v=119';
 import { enterSignedIn } from '../store/ui.js?v=119';
-import AuthLayout, { inputClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
+import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
 import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=119';
+import { isValidEmail } from '../util.js?v=119';
 
 export default {
   name: 'StaffLogin',
@@ -12,8 +13,18 @@ export default {
       showPassword: false,
       error: '',
       loading: false,
-      inputClass, labelClass, primaryButtonClass,
+      emailTouched: false,
+      shakeEmail: false,
+      inputClass, inputErrorClass, labelClass, primaryButtonClass,
     };
+  },
+  computed: {
+    emailProblem() {
+      return this.form.email && !isValidEmail(this.form.email) ? 'Invalid email address.' : '';
+    },
+    showEmailProblem() {
+      return this.emailTouched && !!this.emailProblem;
+    },
   },
   mounted() {
     const carried = takeDemoPrefill();
@@ -24,8 +35,15 @@ export default {
       this.form.email = identifier;
       this.form.password = password;
       this.error = '';
+      this.emailTouched = false;
     },
     async submit() {
+      this.emailTouched = true;
+      if (this.emailProblem) {
+        this.shakeEmail = false;
+        this.$nextTick(() => { this.shakeEmail = true; });
+        return;
+      }
       this.error = '';
       this.loading = true;
       try {
@@ -53,7 +71,13 @@ export default {
     <form @submit.prevent="submit" class="space-y-4">
       <div>
         <label :class="labelClass" for="s-email">Staff email</label>
-        <input id="s-email" v-model="form.email" type="email" required autocomplete="username" placeholder="name@permittrack.city" :class="inputClass" />
+        <input id="s-email" v-model="form.email" type="email" required autocomplete="username"
+          @blur="emailTouched = true" @animationend="shakeEmail = false"
+          :aria-invalid="showEmailProblem ? 'true' : 'false'"
+          :aria-describedby="showEmailProblem ? 's-email-error' : null"
+          placeholder="name@permittrack.city"
+          :class="[showEmailProblem ? inputErrorClass : inputClass, shakeEmail ? 'pt-shake' : '']" />
+        <p v-if="showEmailProblem" id="s-email-error" class="mt-1.5 text-sm text-red-600">{{ emailProblem }}</p>
       </div>
       <div>
         <label :class="labelClass" for="s-pw">Password</label>

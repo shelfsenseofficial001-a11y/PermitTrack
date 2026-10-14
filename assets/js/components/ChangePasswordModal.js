@@ -20,6 +20,7 @@ export default {
       error: '',
       done: false,
       loading: false,
+      shake: {},
       inputClass,
     };
   },
@@ -53,10 +54,20 @@ export default {
     close() {
       if (!this.forced && !this.loading) this.$emit('close');
     },
+    triggerShake(field) {
+      this.shake[field] = false;
+      this.$nextTick(() => { this.shake[field] = true; });
+    },
     async submit() {
       this.error = '';
       if (!this.valid) {
-        this.error = this.form.current === '' ? 'Enter your current password.' : 'Your new password does not meet the requirements yet.';
+        if (this.form.current === '') {
+          this.error = 'Enter your current password.';
+          this.triggerShake('cp-current');
+        } else {
+          this.error = 'Your new password does not meet the requirements yet.';
+          this.triggerShake(this.form.next !== this.form.confirm && this.form.confirm !== '' ? 'cp-confirm' : 'cp-new');
+        }
         return;
       }
       this.loading = true;
@@ -99,7 +110,8 @@ export default {
           <button type="button" @click="showCurrent = !showCurrent" :aria-pressed="showCurrent" aria-controls="cp-current"
             class="text-xs font-semibold text-slate-500 hover:text-brand-700 transition">{{ showCurrent ? 'Hide' : 'Show' }}</button>
         </div>
-        <input id="cp-current" ref="first" v-model="form.current" :type="showCurrent ? 'text' : 'password'" required autocomplete="current-password" :class="inputClass" />
+        <input id="cp-current" ref="first" v-model="form.current" :type="showCurrent ? 'text' : 'password'" required autocomplete="current-password"
+          @animationend="shake['cp-current'] = false" :class="[inputClass, shake['cp-current'] ? 'pt-shake' : '']" />
       </div>
 
       <div class="h-px bg-slate-100" aria-hidden="true"></div>
@@ -109,7 +121,8 @@ export default {
           <label class="block text-xs font-semibold text-slate-600" for="cp-new">New password</label>
           <button type="button" @click="show = !show" :aria-pressed="show" aria-controls="cp-new cp-confirm" class="text-xs font-semibold text-slate-500 hover:text-brand-700 transition">{{ show ? 'Hide' : 'Show' }}</button>
         </div>
-        <input id="cp-new" v-model="form.next" :type="show ? 'text' : 'password'" required autocomplete="new-password" :class="inputClass" />
+        <input id="cp-new" v-model="form.next" :type="show ? 'text' : 'password'" required autocomplete="new-password"
+          @animationend="shake['cp-new'] = false" :class="[inputClass, shake['cp-new'] ? 'pt-shake' : '']" />
         <!-- Strength meter: one segment per rule met -->
         <div class="flex gap-1 mt-2" aria-hidden="true">
           <span v-for="i in 5" :key="i" class="h-1 flex-1 rounded-full transition-colors duration-300"
@@ -118,7 +131,8 @@ export default {
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="cp-confirm">Confirm new password</label>
-        <input id="cp-confirm" v-model="form.confirm" :type="show ? 'text' : 'password'" required autocomplete="new-password" :class="inputClass" />
+        <input id="cp-confirm" v-model="form.confirm" :type="show ? 'text' : 'password'" required autocomplete="new-password"
+          @animationend="shake['cp-confirm'] = false" :class="[inputClass, shake['cp-confirm'] ? 'pt-shake' : '']" />
       </div>
 
       <ul class="flex flex-wrap gap-1.5" aria-label="Password requirements">
