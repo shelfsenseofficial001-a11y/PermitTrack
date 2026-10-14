@@ -9,7 +9,7 @@ use PHPMailer\PHPMailer\PHPMailer;
 /*
  * Outgoing email (SMTP) and SMS. Drivers are picked in config.local.php:
  *   mail: 'log' | 'smtp'
- *   sms:  'log' | 'semaphore' | 'twilio'
+ *   sms:  'log' | 'semaphore' | 'twilio' | 'philsms'
  * The 'log' driver writes messages to storage/outbox.log instead of sending them,
  * so the app works locally before real credentials are set up.
  */
@@ -55,6 +55,15 @@ function send_sms(string $to, string $message): void
                 'Body' => $message,
             ], $sid . ':' . ($cfg['auth_token'] ?? ''));
             return;
+        case 'philsms':
+            // https://dashboard.philsms.com/developers/documentation — Philippine SMS gateway;
+            // recipient is digits only (no '+'), auth is a bearer API token.
+            http_post_json('https://dashboard.philsms.com/api/v3/sms/send', [
+                'recipient' => preg_replace('/\D+/', '', $to),
+                'sender_id' => $cfg['sender_id'] ?? 'PhilSMS',
+                'message' => $message,
+            ], $cfg['api_token'] ?? '');
+            return;
         default:
             notify_log('sms', $to, '', $message);
     }
@@ -72,6 +81,30 @@ function http_post_form(string $url, array $fields, ?string $basicAuth = null): 
     if ($basicAuth !== null) {
         curl_setopt($ch, CURLOPT_USERPWD, $basicAuth);
     }
+    $response = curl_exec($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    if ($response === false || $status >= 400) {
+        throw new RuntimeException("SMS provider request failed ($status) $error");
+    }
+    return (string)$response;
+}
+
+function http_post_json(string $url, array $payload, string $bearerToken): string
+{
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Bearer ' . $bearerToken,
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+    ]);
     $response = curl_exec($ch);
     $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $error = curl_error($ch);

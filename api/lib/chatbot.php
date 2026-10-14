@@ -121,7 +121,7 @@ function chat_t(string $key, string $lang, ...$args): string
 const CHAT_OFF_TOPIC_VARIANTS = [
     'en' => [
         ['text' => "Ha! If I knew that, I'd have my own game show. Permits, though? I'm a whiz — want to see which ones you can apply for?",
-         'suggestions' => ['Which permits can I apply for?', 'What can I do as a Normal User?']],
+         'suggestions' => ['Which permits can I apply for?', 'What can I do as an Unregistered User?']],
         ['text' => "That's above my pay grade (I get paid in cookies). But ask me how to track an application and watch me shine!",
          'suggestions' => ['How do I track my application?', 'What are barangay clearances?']],
         ['text' => "Sorry, my brain is 100% permits and paperwork. Need a hand getting verified, or registering a business?",
@@ -131,7 +131,7 @@ const CHAT_OFF_TOPIC_VARIANTS = [
     ],
     'tl' => [
         ['text' => "Haha! Kung alam ko 'yan, may sarili na akong game show. Pero sa permits? Eksperto ako — gusto mo bang makita kung anong permit ang pwede mo?",
-         'suggestions' => ['Anong mga permit ang maaari kong i-apply?', 'Ano ang magagawa ko bilang Normal User?']],
+         'suggestions' => ['Anong mga permit ang maaari kong i-apply?', 'Ano ang magagawa ko bilang Unregistered User?']],
         ['text' => "Lagpas na 'yan sa sweldo ko (cookies lang ang bayad sa'kin). Pero tanungin mo ako kung paano subaybayan ang aplikasyon, at magpapakitang-gilas ako!",
          'suggestions' => ['Paano ko masusubaybayan ang aking aplikasyon?', 'Ano ang mga barangay clearance?']],
         ['text' => "Sorry, puro permits at papeles lang ang laman ng utak ko. Kailangan mo ba ng tulong sa pag-verify o sa pagrehistro ng negosyo?",
@@ -296,9 +296,9 @@ function chat_faq_answer(array $faq, string $lang): string
 /** Starter chips shown when the chat opens. */
 function chat_starter_suggestions(?array $user, string $lang = CHAT_DEFAULT_LANG): array
 {
-    $picksEn = ['What can I do as a Normal User?', 'Which permits can I apply for?', 'How does the permit review process work?', 'What are barangay clearances?'];
-    $picksTl = ['Ano ang magagawa ko bilang Normal User?', 'Anong mga permit ang maaari kong i-apply?', 'Paano gumagana ang proseso ng pagsusuri ng permit?', 'Ano ang mga barangay clearance?'];
-    if ($user && $user['role'] === 'applicant' && $user['levels'] !== ['Normal User']) {
+    $picksEn = ['What can I do as an Unregistered User?', 'Which permits can I apply for?', 'How does the permit review process work?', 'What are barangay clearances?'];
+    $picksTl = ['Ano ang magagawa ko bilang Unregistered User?', 'Anong mga permit ang maaari kong i-apply?', 'Paano gumagana ang proseso ng pagsusuri ng permit?', 'Ano ang mga barangay clearance?'];
+    if ($user && $user['role'] === 'applicant' && $user['levels'] !== ['Unregistered User']) {
         $picksEn = ["What's my status?", 'How do I track my application?', 'Which permits can I apply for?', 'How does the permit review process work?'];
         $picksTl = ['Ano ang status ko?', 'Paano ko masusubaybayan ang aking aplikasyon?', 'Anong mga permit ang maaari kong i-apply?', 'Paano gumagana ang proseso ng pagsusuri ng permit?'];
     }

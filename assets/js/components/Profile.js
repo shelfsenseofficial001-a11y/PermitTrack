@@ -1,10 +1,11 @@
-import { apiGet, apiPost } from '../api/client.js?v=119';
-import BaseModal from './BaseModal.js?v=119';
-import AppShell from './AppShell.js?v=119';
-import { inputClass } from './AuthLayout.js?v=119';
-import { authState, loadCurrentUser } from '../store/auth.js?v=119';
-import { formatDate, timeAgo, digitsOnly } from '../util.js?v=119';
-import { openChangePassword } from '../store/ui.js?v=119';
+import { apiGet, apiPost } from '../api/client.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import { inputClass } from './AuthLayout.js?v=142';
+import { authState, loadCurrentUser } from '../store/auth.js?v=142';
+import { formatDate, timeAgo, digitsOnly } from '../util.js?v=142';
+import { openChangePassword } from '../store/ui.js?v=142';
 
 const FIELDS = ['first_name', 'middle_name', 'last_name', 'birthdate', 'address_line', 'barangay', 'province_code', 'city_code', 'postal_code'];
 
@@ -22,7 +23,7 @@ const REQUIRED = ['first_name', 'last_name', 'birthdate', 'address_line', 'provi
 
 export default {
   name: 'Profile',
-  components: { AppShell, BaseModal },
+  components: { AppShell, BaseModal, SelectMenu },
   data() {
     return {
       form: {},
@@ -226,8 +227,8 @@ export default {
           <div class="flex flex-wrap gap-1.5 mt-3">
             <span v-for="level in levels" :key="level"
               class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full ring-1 ring-inset"
-              :class="level === 'Normal User' ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-brand-50 text-brand-700 ring-brand-200'">
-              <svg v-if="level !== 'Normal User'" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              :class="level === 'Unregistered User' ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-brand-50 text-brand-700 ring-brand-200'">
+              <svg v-if="level !== 'Unregistered User'" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
               {{ level }}
             </span>
           </div>
@@ -324,13 +325,9 @@ export default {
                 <!-- Only inside Dasmariñas: this is the link that routes a permit to a barangay
                      secretariat, so it is matched against the 75 rather than typed freely. -->
                 <div v-if="inHomeCity">
-                  <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
-                  <input id="p-brgy" v-model="form.barangay" list="p-brgy-list" autocomplete="off"
-                    placeholder="Start typing to search…"
-                    :class="[inputClass, form.barangay && !matchedBarangay ? '!border-red-300' : '']" />
-                  <datalist id="p-brgy-list">
-                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
-                  </datalist>
+                  <label id="p-brgy-label" class="block text-xs font-semibold text-slate-600 mb-1.5" for="p-brgy">Barangay</label>
+                  <SelectMenu id="p-brgy" :labelledby="'p-brgy-label'" v-model="form.barangay" placeholder="Choose a barangay…"
+            :options="barangays.map((b) => ({ value: b.name, label: b.name }))" />
                   <p v-if="form.barangay && !matchedBarangay" class="text-xs text-red-600 mt-1">
                     Not one of the {{ barangays.length }} barangays of Dasmariñas.
                   </p>

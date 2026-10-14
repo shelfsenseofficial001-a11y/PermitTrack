@@ -1,7 +1,7 @@
-import { permitIconClass } from '../util.js?v=119';
-import ChatLauncher from './ChatLauncher.js?v=119';
-import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=119';
-import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=119';
+import { permitIconClass } from '../util.js?v=142';
+import ChatLauncher from './ChatLauncher.js?v=142';
+import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=142';
+import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=142';
 
 // The public front door. Everything on it describes what PermitTrack really does — the offices a
 // permit actually passes through, the real permit catalogue and its real requirements — so nothing
@@ -696,7 +696,7 @@ export default {
                 <div class="text-xs text-ink-300 truncate">{{ accountUser.email || accountUser.phone }}</div>
                 <div class="flex flex-wrap gap-1 mt-2">
                   <span v-for="level in accountUser.levels" :key="level"
-                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Normal User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
+                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Unregistered User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
                 </div>
               </div>
               <router-link to="/dashboard" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">

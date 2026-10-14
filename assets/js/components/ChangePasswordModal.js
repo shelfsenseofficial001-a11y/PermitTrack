@@ -1,7 +1,7 @@
-import { changePassword } from '../store/auth.js?v=119';
-import { askSignOut } from '../store/ui.js?v=119';
-import { inputClass } from './AuthLayout.js?v=119';
-import BaseModal from './BaseModal.js?v=119';
+import { changePassword, authState } from '../store/auth.js?v=142';
+import { askSignOut } from '../store/ui.js?v=142';
+import { inputClass } from './AuthLayout.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
 
 // Change password as a dialog over the current page. With `forced` (a temporary password
 // set by an Admin), it cannot be dismissed — the only ways out are a new password or signing out.
@@ -25,6 +25,10 @@ export default {
     };
   },
   computed: {
+    // An account made through Google has no password yet, so its first one needs no current one
+    needsCurrent() {
+      return !authState.user || Number(authState.user.has_password) !== 0;
+    },
     // Live checklist, so the rules are visible before the user hits Save
     rules() {
       const p = this.form.next;
@@ -41,7 +45,7 @@ export default {
       return this.rules.slice(0, 5).filter((r) => r.ok).length;
     },
     valid() {
-      return this.form.current !== '' && this.rules.every((r) => r.ok);
+      return (this.form.current !== '' || !this.needsCurrent) && this.rules.every((r) => r.ok);
     },
   },
   mounted() {
@@ -61,7 +65,7 @@ export default {
     async submit() {
       this.error = '';
       if (!this.valid) {
-        if (this.form.current === '') {
+        if (this.form.current === '' && this.needsCurrent) {
           this.error = 'Enter your current password.';
           this.triggerShake('cp-current');
         } else {
@@ -89,8 +93,8 @@ export default {
   },
   template: `
   <BaseModal
-    :title="done ? 'Password updated' : (forced ? 'Set your password' : 'Change password')"
-    :subtitle="done ? '' : (forced ? 'You signed in with a temporary password from an Admin. Choose your own to continue.' : 'Enter your current password, then choose a new one.')"
+    :title="done ? 'Password updated' : (forced || !needsCurrent ? 'Set your password' : 'Change password')"
+    :subtitle="done ? '' : (forced ? 'You signed in with a temporary password from an Admin. Choose your own to continue.' : !needsCurrent ? 'You sign in with Google. Add a password to also sign in with your email.' : 'Enter your current password, then choose a new one.')"
     :eyebrow="done ? '' : (forced ? 'Action required' : 'Account security')"
     :tone="forced && !done ? 'sun' : 'brand'"
     :dismissible="!forced && !done"
@@ -104,7 +108,7 @@ export default {
     <p v-if="done" class="text-sm text-slate-500 leading-relaxed" role="status">Use your new password the next time you sign in.</p>
 
     <form v-else id="cp-form" @submit.prevent="submit" class="space-y-4" novalidate>
-      <div>
+      <div v-if="needsCurrent">
         <div class="flex items-center justify-between mb-1.5">
           <label class="block text-xs font-semibold text-slate-600" for="cp-current">{{ forced ? 'Temporary password' : 'Current password' }}</label>
           <button type="button" @click="showCurrent = !showCurrent" :aria-pressed="showCurrent" aria-controls="cp-current"
@@ -114,14 +118,14 @@ export default {
           @animationend="shake['cp-current'] = false" :class="[inputClass, shake['cp-current'] ? 'pt-shake' : '']" />
       </div>
 
-      <div class="h-px bg-slate-100" aria-hidden="true"></div>
+      <div v-if="needsCurrent" class="h-px bg-slate-100" aria-hidden="true"></div>
 
       <div>
         <div class="flex items-center justify-between mb-1.5">
           <label class="block text-xs font-semibold text-slate-600" for="cp-new">New password</label>
           <button type="button" @click="show = !show" :aria-pressed="show" aria-controls="cp-new cp-confirm" class="text-xs font-semibold text-slate-500 hover:text-brand-700 transition">{{ show ? 'Hide' : 'Show' }}</button>
         </div>
-        <input id="cp-new" v-model="form.next" :type="show ? 'text' : 'password'" required autocomplete="new-password"
+        <input id="cp-new" :ref="needsCurrent ? undefined : 'first'" v-model="form.next" :type="show ? 'text' : 'password'" required autocomplete="new-password"
           @animationend="shake['cp-new'] = false" :class="[inputClass, shake['cp-new'] ? 'pt-shake' : '']" />
         <!-- Strength meter: one segment per rule met -->
         <div class="flex gap-1 mt-2" aria-hidden="true">
@@ -157,7 +161,7 @@ export default {
         <button v-if="!forced" type="button" @click="close" class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-200/60 transition">Cancel</button>
         <button type="submit" form="cp-form" :disabled="loading"
           class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-5 py-2.5 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">
-          {{ loading ? 'Saving…' : (forced ? 'Set password' : 'Update password') }}
+          {{ loading ? 'Saving…' : (forced || !needsCurrent ? 'Set password' : 'Update password') }}
         </button>
       </div>
     </template>

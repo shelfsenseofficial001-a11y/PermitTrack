@@ -1,6 +1,6 @@
-import { authState } from '../store/auth.js?v=119';
-import { apiGet } from '../api/client.js?v=119';
-import { openChangePassword, askSignOut } from '../store/ui.js?v=119';
+import { authState } from '../store/auth.js?v=142';
+import { apiGet } from '../api/client.js?v=142';
+import { openChangePassword, askSignOut } from '../store/ui.js?v=142';
 
 // How often the Messages badge checks for new questions from applicants
 const MESSAGES_POLL_MS = 30000;
@@ -24,7 +24,7 @@ export default {
     trayTabs() {
       const p = this.$route.path;
       const tabs = [
-        { key: 'queue', to: '/reviewer', label: 'My Queue', active: p.startsWith('/reviewer') },
+        { key: 'queue', to: '/reviewer', label: 'Permits', active: p.startsWith('/reviewer') },
         { key: 'residents', to: '/staff/residency', label: 'Residents', badge: this.pendingResidency, active: p.startsWith('/staff/residency') },
         { key: 'businesses', to: '/staff/businesses', label: 'Businesses', badge: this.pendingBusinesses, active: p.startsWith('/staff/businesses') },
         { key: 'messages', to: '/staff/messages', label: 'Messages', badge: this.unreadMessages, active: p.startsWith('/staff/messages') },
@@ -88,7 +88,7 @@ export default {
             </div>
           </router-link>
           <nav class="hidden md:flex items-center gap-5 text-sm font-medium whitespace-nowrap">
-            <router-link to="/reviewer" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">My Queue</router-link>
+            <router-link to="/reviewer" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">Permits</router-link>
             <router-link to="/staff/residency" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" title="Resident Verifications">
               Residents
               <span v-if="pendingResidency" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="pendingResidency + ' waiting'">{{ pendingResidency }}</span>

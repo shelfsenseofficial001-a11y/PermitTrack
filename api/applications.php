@@ -175,6 +175,10 @@ if ($action === 'detail' && $method === 'GET') {
     if ($user['role'] === 'applicant' && (int)$app['applicant_id'] !== (int)$user['id']) {
         fail('Forbidden', 403);
     }
+    // Staff see a permit once it reaches their office, not before — see staff_can_access_application().
+    if ($user['role'] !== 'applicant' && !staff_can_access_application($user, $id)) {
+        fail('This application has not reached your office yet.', 403);
+    }
 
     $applicantStmt = db()->prepare(
         'SELECT full_name, email, phone, resident_status, address_line, barangay, city, postal_code FROM users WHERE id = ?'
@@ -199,7 +203,29 @@ if ($action === 'detail' && $method === 'GET') {
 
     $docsStmt = db()->prepare('SELECT * FROM application_documents WHERE application_id = ? ORDER BY id');
     $docsStmt->execute([$id]);
-    $app['documents'] = $docsStmt->fetchAll();
+    $documents = $docsStmt->fetchAll();
+
+    // Say which office rules on each document. documents.php enforces this; the reviewer screen
+    // reads it so it can offer Approve/Reject only where they would actually be accepted, rather
+    // than showing every reviewer buttons that answer 403. Null for pre-pipeline applications,
+    // which stay open to any staff account.
+    foreach ($documents as &$doc) {
+        $ownerDept = document_owner_department($id, $doc['office_code'] ?: 'BARANGAY');
+        $doc['owner_department_id'] = $ownerDept ? (int)$ownerDept['id'] : null;
+        $doc['owner_department_name'] = $ownerDept['name'] ?? null;
+        $doc['owner_step_status'] = $ownerDept['status'] ?? null;
+    }
+    unset($doc);
+
+    // Where the permit is sitting, so the reviewer screen can work out which stage a document is at
+    // for this viewer: the barangay's intake pass, or the owning office's decision. Mirrors the
+    // $stage rule in documents.php.
+    $currentStep = current_pipeline_step($id);
+    $app['current_department_id'] = $currentStep ? (int)$currentStep['department_id'] : null;
+    $app['intake_department_id'] = $currentStep && $currentStep['office_code'] === 'BARANGAY'
+        ? (int)$currentStep['department_id']
+        : null;
+    $app['documents'] = $documents;
 
     // Empty array = this application predates the pipeline (filed via the old 'create' action).
     $app['pipeline'] = pipeline_progress_for($id);
@@ -238,7 +264,7 @@ if ($action === 'update' && $method === 'POST') {
         ->execute([$address !== '' ? $address : 'N/A', $description !== '' ? $description : null, $app['id']]);
 
     db()->prepare(
-        "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'edited', ?)"
     )->execute([$app['id'], $user['id'], 'Applicant updated the application details.']);
 
     respond(['ok' => true]);
@@ -266,7 +292,7 @@ if ($action === 'withdraw' && $method === 'POST') {
         $pdo->prepare("UPDATE application_pipeline_progress SET status = 'skipped' WHERE application_id = ? AND status IN ('current','pending')")
             ->execute([$app['id']]);
         $pdo->prepare(
-            "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+            "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'withdrawn', ?)"
         )->execute([$app['id'], $user['id'], 'Applicant withdrew this application.']);
         $pdo->commit();
     } catch (Throwable $e) {
@@ -276,6 +302,52 @@ if ($action === 'withdraw' && $method === 'POST') {
 
     respond(['ok' => true]);
 }
+// The one-time pickup-vs-delivery choice, offered once a permit is Approved. Pickup needs
+// nothing further; delivery snapshots an address and the current flat fee onto the application
+// and starts staff's own delivery_status tracking at 'preparing'.
+if ($action === 'set_delivery' && $method === 'POST') {
+    $user = require_role('applicant');
+    $in = json_input();
+    $app = own_application((int)($in['id'] ?? 0), $user);
+
+    if ($app['status'] !== 'Approved') {
+        fail('This permit is not approved yet.', 409);
+    }
+    if (!empty($app['delivery_method'])) {
+        fail('Pickup or delivery has already been chosen for this permit.', 409);
+    }
+
+    $method2 = (string)($in['delivery_method'] ?? '');
+    if (!in_array($method2, ['pickup', 'delivery'], true)) {
+        fail('Choose pickup or delivery.');
+    }
+
+    $address = null;
+    $fee = null;
+    $status = null;
+    if ($method2 === 'delivery') {
+        $address = trim((string)($in['delivery_address'] ?? ''));
+        if ($address === '') {
+            fail('Please give an address to deliver to.');
+        }
+        $fee = DELIVERY_FEE;
+        $status = 'preparing';
+    }
+
+    db()->prepare(
+        'UPDATE applications SET delivery_method = ?, delivery_address = ?, delivery_fee = ?, delivery_status = ?, delivery_requested_at = NOW() WHERE id = ?'
+    )->execute([$method2, $address, $fee, $status, $app['id']]);
+
+    $body = $method2 === 'pickup'
+        ? 'Applicant chose to pick up this permit at the office.'
+        : 'Applicant asked for this permit to be delivered to: ' . $address . ' (₱' . number_format((float)DELIVERY_FEE, 2) . ' delivery fee).';
+    db()->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
+    )->execute([$app['id'], $user['id'], $body]);
+
+    respond(['ok' => true]);
+}
+
 if ($action === 'create_v2' && $method === 'POST') {
     $user = require_role('applicant');
     if (!can_apply($user)) {
@@ -474,7 +546,7 @@ if ($action === 'create_v2' && $method === 'POST') {
         }
 
         $activityStmt = $pdo->prepare(
-            "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+            "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'submitted', ?)"
         );
         $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
 
@@ -493,7 +565,7 @@ if ($action === 'create_v2' && $method === 'POST') {
 
 if ($action === 'create' && $method === 'POST') {
     $user = require_role('applicant');
-    // Normal Users can browse only; applying needs a verified label
+    // Unregistered Users can browse only; applying needs a verified label
     if (!can_apply($user)) {
         fail('Only verified Residents or Business Owners can apply for permits. Verify your account first.', 403);
     }
@@ -583,7 +655,7 @@ if ($action === 'create' && $method === 'POST') {
     }
 
     $activityStmt = $pdo->prepare(
-        "INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)"
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'submitted', ?)"
     );
     $activityStmt->execute([$appId, $user['id'], 'Application submitted.']);
 

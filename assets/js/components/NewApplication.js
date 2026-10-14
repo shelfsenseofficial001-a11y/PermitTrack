@@ -1,13 +1,23 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=119';
-import AppShell from './AppShell.js?v=119';
-import BaseModal from './BaseModal.js?v=119';
-import { authState } from '../store/auth.js?v=119';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=119';
+import { apiGet, apiPostForm } from '../api/client.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import SelectMenu from './SelectMenu.js?v=142';
+import FaceVerifyModal from './FaceVerifyModal.js?v=142';
+import { authState } from '../store/auth.js?v=142';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=142';
+import { documentInstructions } from '../docInstructions.js?v=142';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
 // these two have to move together.
 const MAX_UPLOAD_MB = 5;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+// The one document name a government ID always carries (see "Valid Government ID" across
+// permit_type_documents). Face verification only makes sense against a photo — PDFs and HEIC
+// scans are not something a browser can draw to a canvas and run detection on — so this field
+// alone gets a narrower, image-only accept list.
+const ID_DOC_NAME = 'Valid Government ID';
+const ID_DOC_ACCEPT = 'image/jpeg,image/png,image/webp';
 
 const TRACK_LABELS = {
   construction: 'Construction & Property',
@@ -29,7 +39,7 @@ const STEPS = [
 
 export default {
   name: 'NewApplication',
-  components: { AppShell, BaseModal },
+  components: { AppShell, BaseModal, SelectMenu, FaceVerifyModal },
   data() {
     return {
       // Which permits are being filed. One each in single mode, any number in multiple mode;
@@ -45,6 +55,9 @@ export default {
       },
       files: {},      // fieldKey -> File
       fileErrors: {}, // fieldKey -> message, when the chosen file was rejected
+      faceVerifiedDocs: {}, // fieldKey -> true, once a live selfie has matched that ID photo
+      pendingFaceVerify: null, // { key, file } while FaceVerifyModal is open for an ID field
+      docHelpOpen: {}, // fieldKey -> true, while that document's "How do I get this?" is expanded
       error: '',
       submitting: false,
       authState,
@@ -110,6 +123,9 @@ export default {
     },
     // The typed name matched against the table. Null until it is one of the 75 — the permit is
     // routed by this, so a near-miss has to fail rather than guess.
+    barangayOptions() {
+      return this.barangays.map((b) => ({ value: b.name, label: b.name }));
+    },
     matchedBarangay() {
       const typed = this.form.barangay.trim().toLowerCase();
       if (!typed) return null;
@@ -437,10 +453,22 @@ export default {
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
       return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     },
+    isIdDoc(docName) {
+      return docName === ID_DOC_NAME;
+    },
+    documentInstructions,
+    toggleDocHelp(docName) {
+      const key = this.fieldKey(docName);
+      this.docHelpOpen[key] = !this.docHelpOpen[key];
+    },
+    docAccept(docName) {
+      return this.isIdDoc(docName) ? ID_DOC_ACCEPT : this.uploadAccept;
+    },
     onFile(docName, event) {
       const key = this.fieldKey(docName);
       const file = event.target.files[0] || null;
       this.fileErrors[key] = '';
+      delete this.faceVerifiedDocs[key];
       if (!file) {
         this.files[key] = null;
         return;
@@ -459,12 +487,28 @@ export default {
         event.target.value = '';
         return;
       }
+      if (this.isIdDoc(docName)) {
+        // Held out of `files` (so it can't be submitted) until a live selfie matches it.
+        this.pendingFaceVerify = { key, file };
+        event.target.value = '';
+        return;
+      }
       this.files[key] = file;
+    },
+    onFaceVerified() {
+      const { key, file } = this.pendingFaceVerify;
+      this.files[key] = file;
+      this.faceVerifiedDocs[key] = true;
+      this.pendingFaceVerify = null;
+    },
+    cancelFaceVerify() {
+      this.pendingFaceVerify = null;
     },
     clearFile(docName) {
       const key = this.fieldKey(docName);
       this.files[key] = null;
       this.fileErrors[key] = '';
+      delete this.faceVerifiedDocs[key];
     },
     async submit() {
       this.error = '';
@@ -523,7 +567,7 @@ export default {
 
       <div v-if="!canApply" class="flex items-start gap-3 bg-sun-50 border border-sun-200 rounded-2xl px-4 py-3 mb-6">
         <svg class="w-5 h-5 text-sun-700 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-        <p class="text-sm text-sun-700">You're browsing as a <strong>Normal User</strong>. To apply for a permit, verify your account as a Resident or Business Owner from your dashboard.</p>
+        <p class="text-sm text-sun-700">You're browsing as an <strong>Unregistered User</strong>. To apply for a permit, verify your account as a Resident or Business Owner from your dashboard.</p>
       </div>
 
       <div v-if="canApply" ref="wizard" class="mt-5">
@@ -578,8 +622,10 @@ export default {
             <div v-if="step === 'choose'" class="space-y-4">
               <div class="flex flex-col sm:flex-row gap-2.5">
                 <label class="flex-1 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 focus-within:border-brand-600 focus-within:ring-4 focus-within:ring-brand-600/15 transition">
-                  <svg class="w-4 h-4 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input v-model="query" type="search" placeholder="Search permits — e.g. fence, business, clearance" aria-label="Search permits"
+                  <button type="button" @click="$refs.searchInput.focus()" aria-label="Search" class="shrink-0 p-1.5 -ml-1.5 text-slate-400 hover:text-brand-600 transition">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                  </button>
+                  <input ref="searchInput" v-model="query" type="search" placeholder="Search permits — e.g. fence, business, clearance" aria-label="Search permits"
                     class="flex-1 min-w-0 py-2.5 text-sm outline-none bg-transparent" />
                 </label>
                 <div class="shrink-0 inline-flex rounded-xl bg-slate-100 p-1 self-start sm:self-auto" role="group" aria-label="How many permits to file">
@@ -814,17 +860,13 @@ export default {
                     class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
                     :class="flashing === 'prop-address' ? 'ring-4 ring-sun-300' : ''" />
                 </div>
-                <!-- Typed against the barangays table, not free text: this is what sends the permit to
+                <!-- Picked from the barangays table, not free text: this is what sends the permit to
                      a barangay secretariat, and it is the property's barangay, not the applicant's. -->
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1" for="prop-brgy">Barangay</label>
-                  <input id="prop-brgy" v-model="form.barangay" list="prop-brgy-list" type="text"
-                    placeholder="Start typing to search…" autocomplete="off"
-                    class="w-full rounded-xl border bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
-                    :class="[form.barangay.trim() && !matchedBarangay ? 'border-red-300' : 'border-slate-300', flashing === 'prop-brgy' ? 'ring-4 ring-sun-300' : '']" />
-                  <datalist id="prop-brgy-list">
-                    <option v-for="b in barangays" :key="b.id" :value="b.name" />
-                  </datalist>
+                  <label id="prop-brgy-label" class="block text-xs font-semibold text-slate-600 mb-1" for="prop-brgy">Barangay</label>
+                  <SelectMenu id="prop-brgy" labelledby="prop-brgy-label" v-model="form.barangay" :options="barangayOptions"
+                    placeholder="Choose a barangay…"
+                    :class="['rounded-xl', flashing === 'prop-brgy' ? 'ring-4 ring-sun-300' : '']" />
                   <p v-if="form.barangay.trim() && !matchedBarangay" class="text-xs text-red-600 mt-1">
                     Not one of the {{ barangays.length }} barangays of Dasmariñas — pick one from the list.
                   </p>
@@ -868,7 +910,12 @@ export default {
                         <span class="block text-xs mt-0.5"
                           :class="fileErrors[fieldKey(doc)] ? 'text-red-600' : files[fieldKey(doc)] ? 'text-emerald-600' : 'text-slate-400'">
                           {{ files[fieldKey(doc)] ? formatSize(files[fieldKey(doc)].size) + ' · tap to replace'
+                            : isIdDoc(doc) ? "Tap to upload · a live selfie confirms it's you · max " + maxUploadMb + ' MB'
                             : 'Tap to upload · max ' + maxUploadMb + ' MB' + ((docUsedBy[doc] || []).length > 1 ? ' · used for ' + docUsedBy[doc].length + ' permits' : '') }}
+                        </span>
+                        <span v-if="faceVerifiedDocs[fieldKey(doc)]" class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mt-1">
+                          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
+                          Face verified
                         </span>
                       </span>
 
@@ -876,12 +923,22 @@ export default {
                         class="shrink-0 p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-100 transition" :aria-label="'Remove ' + doc">
                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                       </button>
-                      <input type="file" class="hidden" :accept="uploadAccept" @change="onFile(doc, $event)" />
+                      <input type="file" class="hidden" :accept="docAccept(doc)" @change="onFile(doc, $event)" />
                     </label>
                     <p v-if="fileErrors[fieldKey(doc)]" class="text-xs text-red-600 mt-1 px-1">{{ fileErrors[fieldKey(doc)] }}</p>
+                    <button v-if="documentInstructions(doc)" type="button" @click="toggleDocHelp(doc)"
+                      class="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-brand-700 mt-1 px-1 transition">
+                      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                      How do I get this?
+                    </button>
+                    <transition name="expand">
+                      <p v-if="docHelpOpen[fieldKey(doc)]" class="text-xs text-slate-500 leading-relaxed mt-1.5 px-1">{{ documentInstructions(doc) }}</p>
+                    </transition>
                   </div>
                 </div>
                 <p class="text-xs text-slate-400 mt-2">{{ uploadTypesLabel }} — up to {{ maxUploadMb }} MB each.</p>
+
+                <FaceVerifyModal v-if="pendingFaceVerify" :id-file="pendingFaceVerify.file" @verified="onFaceVerified" @close="cancelFaceVerify" />
               </section>
 
               <!-- What's left, each one a link straight to it -->

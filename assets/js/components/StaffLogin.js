@@ -1,8 +1,8 @@
-import { login, homePathFor } from '../store/auth.js?v=119';
-import { enterSignedIn } from '../store/ui.js?v=119';
-import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=119';
-import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=119';
-import { isValidEmail } from '../util.js?v=119';
+import { login, homePathFor } from '../store/auth.js?v=142';
+import { enterSignedIn } from '../store/ui.js?v=142';
+import AuthLayout, { inputClass, inputErrorClass, labelClass, primaryButtonClass } from './AuthLayout.js?v=142';
+import DemoAccounts, { takeDemoPrefill } from './DemoAccounts.js?v=142';
+import { isValidEmail } from '../util.js?v=142';
 
 export default {
   name: 'StaffLogin',

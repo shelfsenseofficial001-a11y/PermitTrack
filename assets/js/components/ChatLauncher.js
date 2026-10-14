@@ -1,10 +1,10 @@
-import { apiGet, apiPost } from '../api/client.js?v=119';
-import { authState } from '../store/auth.js?v=119';
-import { uiState } from '../store/ui.js?v=119';
-import { timeAgo } from '../util.js?v=119';
-import ChatWidget from './ChatWidget.js?v=119';
-import GibsPeek from './GibsPeek.js?v=119';
-import LogoMark from './LogoMark.js?v=119';
+import { apiGet, apiPost } from '../api/client.js?v=142';
+import { authState } from '../store/auth.js?v=142';
+import { uiState } from '../store/ui.js?v=142';
+import { timeAgo } from '../util.js?v=142';
+import ChatWidget from './ChatWidget.js?v=142';
+import GibsPeek from './GibsPeek.js?v=142';
+import LogoMark from './LogoMark.js?v=142';
 
 /**
  * The one chat button in the corner. It opens a panel with three tabs:

@@ -1,11 +1,11 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=119';
-import AppShell from './AppShell.js?v=119';
-import StatusStepper from './StatusStepper.js?v=119';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=119';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=119';
-import Loader from './Loader.js?v=119';
-import BaseModal from './BaseModal.js?v=119';
-import ThreadCard from './ThreadCard.js?v=119';
+import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=142';
+import AppShell from './AppShell.js?v=142';
+import StatusStepper from './StatusStepper.js?v=142';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel, DELIVERY_STATUS_STEPS, deliveryStatusLabel, formatPeso, DELIVERY_FEE } from '../util.js?v=142';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=142';
+import Loader from './Loader.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import ThreadCard from './ThreadCard.js?v=142';
 
 export default {
   name: 'PermitDetail',
@@ -29,6 +29,13 @@ export default {
       confirmDiscard: false,
       discarding: false,
       discardError: '',
+      // Pickup vs. delivery, offered once the permit is Approved and not yet chosen.
+      deliveryChoice: '', // 'pickup' | 'delivery', picked before the address field shows
+      deliveryAddress: '',
+      deliverySaving: false,
+      deliveryError: '',
+      deliveryFee: DELIVERY_FEE,
+      deliverySteps: DELIVERY_STATUS_STEPS,
     };
   },
   async mounted() {
@@ -52,17 +59,27 @@ export default {
     editNeedsAddress() {
       return !!(this.app && this.app.property_address && this.app.property_address !== 'N/A');
     },
+    deliveryStepIndex() {
+      return DELIVERY_STATUS_STEPS.findIndex((s) => s.value === (this.app && this.app.delivery_status));
+    },
   },
   methods: {
     permitLabel,
+    rejectReasonLabel,
     toggleReviewerHints,
     permitNumber,
     permitIconClass,
     formatDate,
     formatDateTime,
     downloadUrl,
-    async refresh() {
-      this.loading = true;
+    deliveryStatusLabel,
+    formatPeso,
+    // `silent` skips the full-page Loader: used after an in-place action (editing, discarding,
+    // re-uploading a document, choosing pickup/delivery) where the page is already showing and
+    // swapping it out for the Loader's much shorter layout, then back, is what was making the
+    // scroll position jump. Only the very first load needs the Loader — there's nothing to show yet.
+    async refresh(silent = false) {
+      if (!silent) this.loading = true;
       const id = this.$route.params.id;
       const [detailRes, activityRes] = await Promise.all([
         apiGet(`applications.php?action=detail&id=${id}`),
@@ -70,7 +87,7 @@ export default {
       ]);
       this.app = detailRes.application;
       this.activity = activityRes.activity;
-      this.loading = false;
+      if (!silent) this.loading = false;
     },
     // Pipeline apps (27-type flow) carry pipeline rows; legacy apps (5-type flow) have none.
     // See BREAKING_CHANGES.md #3.
@@ -104,7 +121,7 @@ export default {
           project_description: this.editForm.project_description,
         });
         this.editing = false;
-        await this.refresh();
+        await this.refresh(true);
       } catch (e) {
         this.editError = e.message;
       } finally {
@@ -118,7 +135,7 @@ export default {
       try {
         await apiPost('applications.php?action=withdraw', { id: this.app.id });
         this.confirmDiscard = false;
-        await this.refresh();
+        await this.refresh(true);
       } catch (e) {
         this.discardError = e.message;
       } finally {
@@ -147,12 +164,34 @@ export default {
       this.reuploadingId = doc.id;
       try {
         await apiPostForm('documents.php?action=reupload', fd);
-        await this.refresh();
+        await this.refresh(true);
       } catch (e) {
         this.docError = e.message;
       } finally {
         this.reuploadingId = null;
         event.target.value = '';
+      }
+    },
+    async chooseDelivery(method) {
+      if (this.deliverySaving) return;
+      this.deliveryError = '';
+      if (method === 'delivery' && !this.deliveryAddress.trim()) {
+        this.deliveryChoice = 'delivery';
+        this.deliveryError = 'Please give an address to deliver to.';
+        return;
+      }
+      this.deliverySaving = true;
+      try {
+        await apiPost('applications.php?action=set_delivery', {
+          id: this.app.id,
+          delivery_method: method,
+          delivery_address: this.deliveryAddress,
+        });
+        await this.refresh(true);
+      } catch (e) {
+        this.deliveryError = e.message;
+      } finally {
+        this.deliverySaving = false;
       }
     },
   },
@@ -190,7 +229,10 @@ export default {
               Discard
             </button>
           </template>
-          <span class="text-xs font-bold px-3 py-1.5 rounded-full" :class="app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
+          <span class="text-xs font-bold px-3 py-1.5 rounded-full"
+            :class="app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
+              : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600'
+              : 'bg-amber-100 text-amber-800'">{{ app.status }}</span>
         </div>
       </div>
 
@@ -249,6 +291,59 @@ export default {
         <StatusStepper :stages="app.stages" :active-index="app.stage_index" :rejected="app.status === 'Rejected'" />
       </div>
 
+      <!-- Pickup vs. delivery, once the permit is Approved. Shown until a choice is made; after
+           that, just the choice (and, for delivery, staff's own progress on it). -->
+      <div v-if="app.status === 'Approved'" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+        <h2 class="font-bold text-ink-700 mb-1">Getting your permit</h2>
+
+        <template v-if="!app.delivery_method">
+          <p class="text-sm text-slate-500 mb-4">Pick up at the office, or have it delivered for {{ formatPeso(deliveryFee) }}.</p>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <button type="button" @click="deliveryChoice = 'pickup'"
+              class="text-left rounded-xl border-2 p-4 transition"
+              :class="deliveryChoice === 'pickup' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
+              <div class="font-semibold text-slate-700">Pick up at the office</div>
+              <div class="text-xs text-slate-400 mt-1">Bring a valid ID to claim it. No fee.</div>
+            </button>
+            <button type="button" @click="deliveryChoice = 'delivery'"
+              class="text-left rounded-xl border-2 p-4 transition"
+              :class="deliveryChoice === 'delivery' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
+              <div class="font-semibold text-slate-700">Deliver to my address</div>
+              <div class="text-xs text-slate-400 mt-1">{{ formatPeso(deliveryFee) }} delivery fee.</div>
+            </button>
+          </div>
+          <div v-if="deliveryChoice === 'delivery'" class="mt-4">
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="delivery-address">Delivery address</label>
+            <textarea id="delivery-address" v-model="deliveryAddress" rows="2"
+              class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
+              placeholder="Where should it be delivered?"></textarea>
+          </div>
+          <button v-if="deliveryChoice" type="button" @click="chooseDelivery(deliveryChoice)" :disabled="deliverySaving"
+            class="mt-4 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-5 py-2.5 rounded-xl transition">
+            {{ deliverySaving ? 'Saving…' : deliveryChoice === 'pickup' ? 'Confirm pickup' : 'Confirm delivery' }}
+          </button>
+          <p v-if="deliveryError" class="text-sm text-red-600 mt-3">{{ deliveryError }}</p>
+        </template>
+
+        <template v-else-if="app.delivery_method === 'pickup'">
+          <p class="text-sm text-slate-600">You chose to pick this up at the office. Bring a valid ID to claim it.</p>
+        </template>
+
+        <template v-else>
+          <p class="text-sm text-slate-500 mb-4">Being delivered to <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span> — {{ formatPeso(app.delivery_fee) }} delivery fee.</p>
+          <ol class="flex flex-wrap gap-3">
+            <li v-for="(step, i) in deliverySteps" :key="step.value" class="flex items-center gap-2 text-sm">
+              <span class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                :class="i <= deliveryStepIndex ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-400'">
+                <svg v-if="i < deliveryStepIndex || app.delivery_status === 'delivered'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+                <template v-else>{{ i + 1 }}</template>
+              </span>
+              <span :class="i <= deliveryStepIndex ? 'font-semibold text-slate-700' : 'text-slate-400'">{{ step.label }}</span>
+            </li>
+          </ol>
+        </template>
+      </div>
+
       <div class="grid lg:grid-cols-2 gap-6 mt-6">
         <div class="bg-white rounded-xl border border-slate-200 p-6">
           <h2 class="font-bold text-ink-700 mb-4">Submitted Documents</h2>
@@ -261,7 +356,13 @@ export default {
                 <div class="min-w-0">
                   <div class="text-sm font-semibold text-slate-800 truncate">{{ doc.doc_name }}</div>
                   <div class="text-xs" :class="doc.status === 'Verified' ? 'text-emerald-600' : doc.status === 'Needs Re-upload' ? 'text-red-500' : 'text-slate-400'">
-                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs Update — see reviewer note' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                    {{ doc.status === 'Verified' ? 'Verified' : doc.status === 'Needs Re-upload' ? 'Needs a new copy' : doc.status === 'Intake Approved' ? 'Checked by your barangay, with the city office' : doc.status === 'Pending Review' ? 'Uploaded, pending review' : 'Not uploaded yet' }}
+                  </div>
+                  <!-- What is actually wrong with it, rather than sending them to hunt the activity feed -->
+                  <div v-if="doc.status === 'Needs Re-upload' && doc.reject_reason"
+                       class="mt-1.5 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 text-xs leading-snug">
+                    <span class="font-semibold text-red-700">{{ rejectReasonLabel(doc.reject_reason) }}</span>
+                    <span v-if="doc.reject_notes" class="text-slate-600"> — {{ doc.reject_notes }}</span>
                   </div>
                   <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
                 </div>

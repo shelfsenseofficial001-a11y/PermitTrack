@@ -63,7 +63,7 @@ INSERT IGNORE INTO faq_entries (category, question, answer, keywords, link_path,
  'business documents,business requirements,dti,sec,cda,tin,secretary''s certificate,board resolution,spa,barangay clearance,business clearance,requirements business', '/businesses/new', 'Register a business', 70),
 
 ('Permits', 'Which permits can I apply for?',
- 'It depends on your account:\n- Verified Residents can file Building/Renovation and Special Event permits as individuals.\n- Business Owners can file Business License, Food Service, Sign, Building/Renovation and Special Event permits for a verified business.\nNormal Users can browse permits but need to verify first.',
+ 'It depends on your account:\n- Verified Residents can file Building/Renovation and Special Event permits as individuals.\n- Business Owners can file Business License, Food Service, Sign, Building/Renovation and Special Event permits for a verified business.\nUnregistered Users can browse permits but need to verify first.',
  'which permits,what permits,permit types,kinds of permits,list of permits,available permits,can i apply,eligible,eligibility,anong permit', '/applications/new', 'See permits', 80),
 
 ('Permits', 'How do I track my application?',

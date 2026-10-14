@@ -1,12 +1,13 @@
-import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=119';
-import { apiGet, apiPost } from '../api/client.js?v=119';
-import ChatLauncher from './ChatLauncher.js?v=119';
-import AddAccountModal from './AddAccountModal.js?v=119';
-import BaseModal from './BaseModal.js?v=119';
-import { formatDateTime } from '../util.js?v=119';
-import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=119';
-import Loader from './Loader.js?v=119';
-import NotificationToasts from './NotificationToasts.js?v=119';
+import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=142';
+import ChatLauncher from './ChatLauncher.js?v=142';
+import AddAccountModal from './AddAccountModal.js?v=142';
+import BaseModal from './BaseModal.js?v=142';
+import { formatDateTime } from '../util.js?v=142';
+import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=142';
+import Loader from './Loader.js?v=142';
+import NotificationToasts from './NotificationToasts.js?v=142';
+import NotificationIcon from './NotificationIcon.js?v=142';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -16,7 +17,7 @@ const MAX_TOASTS = 3;
 
 export default {
   name: 'AppShell',
-  components: { ChatLauncher, AddAccountModal, BaseModal, Loader, NotificationToasts },
+  components: { ChatLauncher, AddAccountModal, BaseModal, Loader, NotificationToasts, NotificationIcon },
   props: {
     // For a page with its own sticky action bar along the bottom: lifts the Ask button above it
     liftChat: { type: Boolean, default: false },
@@ -289,11 +290,7 @@ export default {
               <div v-else class="max-h-[min(24rem,calc(100dvh-14rem))] md:max-h-96 overflow-y-auto scroll-dark pr-0.5">
                 <button v-for="n in notifications" :key="n.id" type="button" role="menuitem" @click="openNotification(n)"
                   class="w-full text-left flex gap-3 px-3 py-2.5 rounded-xl hover:bg-white/10 transition">
-                  <span class="mt-0.5 w-7 h-7 rounded-full shrink-0 flex items-center justify-center"
-                    :class="n.kind === 'message' ? 'bg-sun-300/20 text-sun-300' : 'bg-brand-500/20 text-brand-300'">
-                    <svg v-if="n.kind === 'message'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>
-                    <svg v-else class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                  </span>
+                  <NotificationIcon :item="n" size="sm" dark class="mt-0.5" />
                   <span class="min-w-0 flex-1">
                     <span class="flex items-start gap-2">
                       <span class="block font-semibold text-white leading-snug flex-1">{{ n.title }}</span>
@@ -324,7 +321,7 @@ export default {
                 <div class="text-xs text-ink-300 truncate">{{ authState.user && (authState.user.email || authState.user.phone) }}</div>
                 <div class="flex flex-wrap gap-1 mt-2">
                   <span v-for="level in (authState.user ? authState.user.levels : [])" :key="level"
-                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Normal User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
+                    class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="level === 'Unregistered User' ? 'bg-white/10 text-ink-200' : 'bg-sun-300 text-ink-700'">{{ level }}</span>
                 </div>
               </div>
               <router-link to="/account" role="menuitem" @click="menuOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">

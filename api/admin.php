@@ -255,7 +255,7 @@ if ($action === 'users' && $method === 'GET') {
         if ((int)$u['approved_businesses'] > 0) {
             $labels[] = 'Business Owner';
         }
-        $u['levels'] = $labels ?: ['Normal User'];
+        $u['levels'] = $labels ?: ['Unregistered User'];
         return $u;
     }, $stmt->fetchAll());
     respond(['users' => $rows]);

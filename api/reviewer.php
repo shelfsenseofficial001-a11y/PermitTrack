@@ -77,6 +77,33 @@ if ($action === 'counts' && $method === 'GET') {
     respond(['new' => (int)$new, 'in_progress' => (int)$inProgress, 'awaiting_applicant' => (int)$awaiting]);
 }
 
+// Approved permits drop out of 'queue'/'pipeline_queue' entirely (status NOT IN 'Approved'/
+// current-step-only) — this is the only place a permit waiting on delivery turns back up, so
+// an office actually has a way to find it again once it's left the review queues behind.
+if ($action === 'delivery_queue' && $method === 'GET') {
+    $user = require_role('staff');
+    $rows = db()->query(
+        "SELECT a.*, u.full_name AS applicant_name, pt.name AS permit_type_name
+         FROM applications a JOIN users u ON u.id = a.applicant_id
+         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
+         WHERE a.delivery_method = 'delivery' AND a.delivery_status IS NOT NULL AND a.delivery_status <> 'delivered'
+         ORDER BY a.delivery_requested_at ASC"
+    )->fetchAll();
+
+    if ($user['role'] !== 'admin') {
+        $legacyTypes = reviewable_permit_types($user);
+        $rows = array_values(array_filter($rows, function (array $app) use ($user, $legacyTypes) {
+            $barangayDeptId = $app['barangay_id'] !== null ? resolve_office_department('BARANGAY', (int)$app['barangay_id']) : null;
+            if ($barangayDeptId !== null) {
+                return $barangayDeptId === (int)($user['department_id'] ?? 0);
+            }
+            return $legacyTypes === null || in_array($app['permit_type'], $legacyTypes, true);
+        }));
+    }
+
+    respond(['applications' => $rows]);
+}
+
 if ($action === 'decision' && $method === 'POST') {
     $user = require_role('staff');
     $in = json_input();
@@ -106,8 +133,9 @@ if ($action === 'decision' && $method === 'POST') {
     $update = $pdo->prepare('UPDATE applications SET status = ?, assigned_reviewer_id = COALESCE(assigned_reviewer_id, ?) WHERE id = ?');
     $update->execute([$status, $user['id'], $appId]);
 
-    $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)");
-    $activity->execute([$appId, $user['id'], 'Status updated to "' . $status . '" by ' . $user['full_name'] . '.']);
+    $statusEvent = $status === 'Approved' ? 'approved' : ($status === 'Rejected' ? 'rejected' : 'status');
+    $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', ?, ?)");
+    $activity->execute([$appId, $user['id'], $statusEvent, 'Status updated to "' . $status . '" by ' . $user['full_name'] . '.']);
 
     if ($notes !== '') {
         // A note is a message to the applicant: it lands in the application's thread in Messages.
@@ -122,7 +150,7 @@ if ($action === 'decision' && $method === 'POST') {
         'Under Review' => 'is now under review by City Staff.',
         'Inspection Scheduled' => 'has an inspection scheduled. Someone should be on site.',
         'Inspector Notes' => 'has inspector notes waiting for you.',
-        'Approved' => 'has been approved. You can view it in PermitTrack.',
+        'Approved' => 'has been approved. Open it in PermitTrack to choose pickup or delivery.',
         'Rejected' => 'was not approved. Open it in PermitTrack to see why.',
     ];
     $tail = $messages[$status] ?? ('moved to "' . $status . '".');
@@ -211,16 +239,31 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     // Rejecting stays available at any point — that is how a bad application gets stopped early.
     if ($decision === 'approved') {
         $officeCode = office_code_for_department((int)$user['department_id']);
-        $pendingStmt = db()->prepare(
-            "SELECT COUNT(*) FROM application_documents
-              WHERE application_id = ?
-                AND COALESCE(office_code, 'BARANGAY') = ?
-                AND status <> 'Verified'"
-        );
-        $pendingStmt->execute([$appId, $officeCode]);
-        $pending = (int)$pendingStmt->fetchColumn();
-        if ($pending > 0) {
-            fail('Review the ' . $pending . ' document(s) your office is responsible for before approving this step.', 409);
+        if ($officeCode === 'BARANGAY') {
+            // Intake covers the whole submission, not just the barangay's own paperwork: the city
+            // offices do not see any of it until this step is signed off, so anything still
+            // unchecked would travel on unseen.
+            $pendingStmt = db()->prepare(
+                "SELECT COUNT(*) FROM application_documents
+                  WHERE application_id = ? AND status NOT IN ('Intake Approved', 'Verified')"
+            );
+            $pendingStmt->execute([$appId]);
+            $pending = (int)$pendingStmt->fetchColumn();
+            if ($pending > 0) {
+                fail('Check the ' . $pending . ' remaining document(s) at intake before forwarding this application.', 409);
+            }
+        } else {
+            $pendingStmt = db()->prepare(
+                "SELECT COUNT(*) FROM application_documents
+                  WHERE application_id = ?
+                    AND COALESCE(office_code, 'BARANGAY') = ?
+                    AND status <> 'Verified'"
+            );
+            $pendingStmt->execute([$appId, $officeCode]);
+            $pending = (int)$pendingStmt->fetchColumn();
+            if ($pending > 0) {
+                fail('Review the ' . $pending . ' document(s) your office is responsible for before approving this step.', 409);
+            }
         }
     }
 
@@ -232,8 +275,10 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
         $update = $pdo->prepare('UPDATE applications SET status = ?, assigned_reviewer_id = COALESCE(assigned_reviewer_id, ?) WHERE id = ?');
         $update->execute([$resultStatus, $user['id'], $appId]);
 
-        $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, body) VALUES (?, ?, 'status_change', ?)");
-        $activity->execute([$appId, $user['id'], $current['step_label'] . ' — ' . ucfirst($decision) . ' by ' . $user['full_name'] . '.']);
+        // A rejected step rejects the permit; an approved one either moves it on or issues it.
+        $stepEvent = $decision === 'rejected' ? 'rejected' : ($resultStatus === 'Approved' ? 'approved' : 'status');
+        $activity = $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', ?, ?)");
+        $activity->execute([$appId, $user['id'], $stepEvent, $current['step_label'] . ' — ' . ucfirst($decision) . ' by ' . $user['full_name'] . '.']);
         if ($notes !== '') {
             post_application_message($appId, (int)$app['applicant_id'], (int)$user['id'], $notes);
         }
@@ -245,7 +290,7 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     }
 
     $tail = match ($resultStatus) {
-        'Approved' => 'has been approved. You can view it in PermitTrack.',
+        'Approved' => 'has been approved. Open it in PermitTrack to choose pickup or delivery.',
         'Rejected' => 'was not approved at the ' . $current['step_label'] . ' stage. Open it in PermitTrack to see why.',
         default => 'has moved to the next stage: ' . 'pending review.',
     };
@@ -257,6 +302,72 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     );
 
     respond(['ok' => true, 'status' => $resultStatus]);
+}
+
+// Staff's own tracking of the physical handoff, once the applicant has chosen delivery. Separate
+// from applications.status, which stays 'Approved' throughout — this only ever moves forward,
+// Preparing -> Out for delivery -> Delivered.
+if ($action === 'delivery_status' && $method === 'POST') {
+    $user = require_role('staff');
+    $in = json_input();
+    $appId = (int)($in['application_id'] ?? 0);
+    $status = (string)($in['delivery_status'] ?? '');
+
+    $order = ['preparing', 'out_for_delivery', 'delivered'];
+    if (!in_array($status, $order, true)) {
+        fail('Invalid delivery status.');
+    }
+
+    $stmt = db()->prepare('SELECT * FROM applications WHERE id = ?');
+    $stmt->execute([$appId]);
+    $app = $stmt->fetch();
+    if (!$app) {
+        fail('Application not found.', 404);
+    }
+    if ($app['delivery_method'] !== 'delivery' || empty($app['delivery_status'])) {
+        fail('This permit is not set for delivery.', 409);
+    }
+
+    // The barangay secretariat handles delivery — it's the office closest to the applicant and
+    // the one every pipeline already routes through, not whichever city office happened to issue
+    // the permit. On the old single-stage flow, which never had a barangay step at all, fall back
+    // to whichever department's permit_types cover it (the same rule 'decision' authorizes with).
+    // Admins are exempt, same as everywhere else.
+    if ($user['role'] !== 'admin') {
+        $barangayDeptId = $app['barangay_id'] !== null ? resolve_office_department('BARANGAY', (int)$app['barangay_id']) : null;
+        if ($barangayDeptId !== null) {
+            if ($barangayDeptId !== (int)($user['department_id'] ?? 0)) {
+                fail('Delivery for this permit is handled by the applicant\'s barangay secretariat, not your office.', 403);
+            }
+        } else {
+            $legacyTypes = reviewable_permit_types($user);
+            if ($legacyTypes !== null && !in_array($app['permit_type'], $legacyTypes, true)) {
+                fail($app['permit_type'] . ' permits are handled by another department.', 403);
+            }
+        }
+    }
+
+    // Forward only — Delivered is the end of the line, and a step can't be skipped or reversed
+    // by typing a different value into the same request.
+    if (array_search($status, $order, true) <= array_search($app['delivery_status'], $order, true)) {
+        fail('Delivery status can only move forward, from ' . DELIVERY_STATUS_LABELS[$app['delivery_status']] . '.', 409);
+    }
+
+    db()->prepare('UPDATE applications SET delivery_status = ?, delivery_updated_at = NOW() WHERE id = ?')
+        ->execute([$status, $appId]);
+
+    db()->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
+    )->execute([$appId, $user['id'], 'Delivery status: ' . DELIVERY_STATUS_LABELS[$status] . ' (' . $user['full_name'] . ').']);
+
+    notify_user(
+        (int)$app['applicant_id'],
+        'Your permit delivery: ' . DELIVERY_STATUS_LABELS[$status],
+        'Your permit at ' . $app['property_address'] . ' — delivery status: ' . DELIVERY_STATUS_LABELS[$status] . '.'
+            . ($status === 'delivered' ? ' If you did not receive it, message your office.' : '')
+    );
+
+    respond(['ok' => true]);
 }
 
 fail('Unknown action.', 404);
