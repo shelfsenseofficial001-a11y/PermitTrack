@@ -16,17 +16,36 @@
 -- deleted and re-inserted by name lookup, same as 020.
 -- ---------------------------------------------------------------------------
 
-INSERT INTO permit_types (name, track, resident_eligible, business_eligible, is_active)
-SELECT v.name, v.track, v.resident_eligible, v.business_eligible, 1
+INSERT INTO permit_types (name, description, track, resident_eligible, business_eligible, is_active)
+SELECT v.name, v.description, v.track, v.resident_eligible, v.business_eligible, 1
   FROM (
-        SELECT 'Food Service (Sanitary) Renewal' AS name, 'business' AS track, 0 AS resident_eligible, 1 AS business_eligible
-  UNION SELECT 'Liquor/Tobacco License Renewal', 'business', 0, 1
-  UNION SELECT 'Market Stall/Vending Permit Renewal', 'business', 0, 1
-  UNION SELECT 'MTOP/TODA Permit Renewal', 'business', 0, 1
-  UNION SELECT 'Sign Permit Renewal', 'business', 0, 1
-  UNION SELECT 'Barangay Clearance for Tricycles (TODA) Renewal', 'barangay_standalone', 1, 0
+        SELECT 'Food Service (Sanitary) Renewal' AS name,
+               'The yearly renewal of your sanitary permit and food establishment clearance. Re-checks staff health cards, water potability test results, and fire safety inspection.' AS description,
+               'business' AS track, 0 AS resident_eligible, 1 AS business_eligible
+  UNION SELECT 'Liquor/Tobacco License Renewal',
+               'The yearly renewal of your liquor and tobacco retailing authority, re-validating police clearance and premises compliance alongside your business permit.',
+               'business', 0, 1
+  UNION SELECT 'Market Stall/Vending Permit Renewal',
+               'The yearly renewal of your public market stall lease or ambulant vending authority, with fees re-assessed and cleared through the City Treasurer.',
+               'business', 0, 1
+  UNION SELECT 'MTOP/TODA Permit Renewal',
+               'The yearly renewal of your Motorized Tricycle Operator''s Permit (MTOP) franchise, verifying continued route compliance, driver licensing, and vehicle registration.',
+               'business', 0, 1
+  UNION SELECT 'Sign Permit Renewal',
+               'The yearly renewal of your outdoor advertising, signboard or billboard permit, verifying structural safety and zoning compliance for existing signage.',
+               'business', 0, 1
+  UNION SELECT 'Barangay Clearance for Tricycles (TODA) Renewal',
+               'The yearly barangay endorsement for continuing tricycle operations within the barangay. Required before renewing your city MTOP/TODA franchise.',
+               'barangay_standalone', 1, 0
        ) v
  WHERE NOT EXISTS (SELECT 1 FROM permit_types WHERE name = v.name);
+
+UPDATE permit_types SET description = 'The yearly renewal of your sanitary permit and food establishment clearance. Re-checks staff health cards, water potability test results, and fire safety inspection.' WHERE name = 'Food Service (Sanitary) Renewal' AND (description IS NULL OR description = '');
+UPDATE permit_types SET description = 'The yearly renewal of your liquor and tobacco retailing authority, re-validating police clearance and premises compliance alongside your business permit.' WHERE name = 'Liquor/Tobacco License Renewal' AND (description IS NULL OR description = '');
+UPDATE permit_types SET description = 'The yearly renewal of your public market stall lease or ambulant vending authority, with fees re-assessed and cleared through the City Treasurer.' WHERE name = 'Market Stall/Vending Permit Renewal' AND (description IS NULL OR description = '');
+UPDATE permit_types SET description = 'The yearly renewal of your Motorized Tricycle Operator''s Permit (MTOP) franchise, verifying continued route compliance, driver licensing, and vehicle registration.' WHERE name = 'MTOP/TODA Permit Renewal' AND (description IS NULL OR description = '');
+UPDATE permit_types SET description = 'The yearly renewal of your outdoor advertising, signboard or billboard permit, verifying structural safety and zoning compliance for existing signage.' WHERE name = 'Sign Permit Renewal' AND (description IS NULL OR description = '');
+UPDATE permit_types SET description = 'The yearly barangay endorsement for continuing tricycle operations within the barangay. Required before renewing your city MTOP/TODA franchise.' WHERE name = 'Barangay Clearance for Tricycles (TODA) Renewal' AND (description IS NULL OR description = '');
 
 -- ---------------------------------------------------------------------------
 -- Food Service (Sanitary) Renewal — same route as Food Service
