@@ -192,3 +192,21 @@ export function permitLabel(name) {
   if (!n) return '';
   return /\bpermit$/i.test(n) ? n : n + ' Permit';
 }
+
+// Base permit type name -> its renewal permit type name. Mirrors RENEWABLE_PERMITS in
+// api/lib/pipeline.php — construction-type permits and personal certificates are never renewable.
+// Due every year by January 20 (section 2 of the spec this was built from).
+export const RENEWABLE_PERMITS = {
+  'Business License': 'Business Permit Renewal',
+  'Food Service': 'Food Service (Sanitary) Renewal',
+  'Liquor/Tobacco License': 'Liquor/Tobacco License Renewal',
+  'Market Stall/Vending Permit': 'Market Stall/Vending Permit Renewal',
+  'MTOP/TODA Permit': 'MTOP/TODA Permit Renewal',
+  'Sign Permit': 'Sign Permit Renewal',
+  'Barangay Business Clearance (New)': 'Barangay Business Clearance (Renewal)',
+  'Barangay Clearance for Tricycles (TODA)': 'Barangay Clearance for Tricycles (TODA) Renewal',
+};
+
+export function isRenewableBaseType(name) {
+  return Object.prototype.hasOwnProperty.call(RENEWABLE_PERMITS, name || '');
+}

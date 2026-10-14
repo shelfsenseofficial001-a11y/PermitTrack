@@ -114,6 +114,37 @@ if ($action === 'permit_types' && $method === 'GET') {
     ]);
 }
 
+// What the "Renew" button on an approved permit needs: the renewal permit type to pre-select,
+// and whether there's actually a prior approved application to pre-fill from (there always is —
+// this is only offered from that permit's own card — but the endpoint re-checks rather than
+// trusting the button).
+if ($action === 'renewal_info' && $method === 'GET') {
+    $user = require_role('applicant');
+    $id = (int)($_GET['application_id'] ?? 0);
+    $app = own_application($id, $user);
+    if ($app['status'] !== 'Approved') {
+        fail('Only an approved permit can be renewed.', 409);
+    }
+    $baseName = $app['permit_type_name'] ?: $app['permit_type'];
+    $renewalName = RENEWABLE_PERMITS[$baseName] ?? null;
+    if (!$renewalName) {
+        fail('This permit type is not renewable.', 409);
+    }
+    $typeStmt = db()->prepare('SELECT id, name FROM permit_types WHERE name = ? AND is_active = 1');
+    $typeStmt->execute([$renewalName]);
+    $renewalType = $typeStmt->fetch();
+    if (!$renewalType) {
+        fail('This permit\'s renewal type is not set up yet.', 500);
+    }
+    respond([
+        'renewal_permit_type_id' => (int)$renewalType['id'],
+        'renewal_permit_type_name' => $renewalType['name'],
+        'property_address' => $app['property_address'],
+        'barangay_id' => $app['barangay_id'] !== null ? (int)$app['barangay_id'] : null,
+        'business_id' => $app['business_id'] !== null ? (int)$app['business_id'] : null,
+    ]);
+}
+
 if ($action === 'list' && $method === 'GET') {
     $user = require_role('applicant');
     $stmt = db()->prepare(
@@ -410,6 +441,17 @@ if ($action === 'create_v2' && $method === 'POST') {
     $conditionsRaw = json_decode((string)($_POST['conditions'] ?? '{}'), true);
     $conditions = is_array($conditionsRaw) ? array_map('boolval', $conditionsRaw) : [];
 
+    // Renewing an approved permit (section 2): the prior application's own outputs pre-fill this
+    // one's required documents instead of asking the applicant to upload from scratch.
+    $renewApplicationId = (int)($_POST['renew_application_id'] ?? 0);
+    $renewalPriorApp = null;
+    if ($renewApplicationId) {
+        $renewalPriorApp = latest_approved_application_for_renewal_by_id($renewApplicationId, (int)$user['id']);
+        if (!$renewalPriorApp) {
+            fail('That permit could not be found to renew.', 404);
+        }
+    }
+
     $typeStmt = db()->prepare('SELECT * FROM permit_types WHERE id = ? AND is_active = 1');
     $permitTypes = [];
     foreach ($permitTypeIds as $id) {
@@ -523,7 +565,7 @@ if ($action === 'create_v2' && $method === 'POST') {
 
         instantiate_pipeline($appId, $permitTypeId, $conditions, $barangayId);
 
-        $requiredDocs = required_documents_for_type($permitTypeId);
+        $requiredDocs = required_documents_for_type($permitTypeId, $conditions);
         if ($requiredDocs) {
             $uploadDir = __DIR__ . '/../uploads/' . $appId;
             if (!is_dir($uploadDir)) {
@@ -538,6 +580,11 @@ if ($action === 'create_v2' && $method === 'POST') {
                 $handlers[$h['doc_name']] = $h['office_code'];
             }
 
+        // Renewal (section 2): pre-fill from the prior approved application's own outputs rather
+        // than asking the applicant to upload everything again from scratch.
+        if ($renewalPriorApp) {
+            prefill_renewal_documents($appId, $renewalPriorApp, $requiredDocs, $handlers);
+        } else {
             $docStmt = $pdo->prepare(
                 'INSERT INTO application_documents (application_id, doc_name, office_code, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
@@ -575,6 +622,7 @@ if ($action === 'create_v2' && $method === 'POST') {
                 }
                 $docStmt->execute([$appId, $docName, $handlers[$docName] ?? null, $filePath, $originalName, $status, $uploadedAt]);
             }
+        }
         }
 
         $activityStmt = $pdo->prepare(

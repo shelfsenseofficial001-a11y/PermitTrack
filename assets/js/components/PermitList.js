@@ -1,7 +1,7 @@
 import { apiGet, apiPost, apiPostForm, viewUrl } from '../api/client.js?v=168';
 import StatusStepper from './StatusStepper.js?v=168';
 import PipelineStepper from './PipelineStepper.js?v=168';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=168';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel, isRenewableBaseType} from '../util.js?v=168';
 import Loader from './Loader.js?v=168';
 import BaseModal from './BaseModal.js?v=168';
 import ThreadCard from './ThreadCard.js?v=168';
@@ -84,6 +84,7 @@ export default {
     formatDate,
     formatDateTime,
     viewUrl,
+    isRenewableBaseType,
     // Only construction and business permits carry an address; the rest store 'N/A', so the
     // address field is left out of the edit form for them. Matches $needsAddress in applications.php.
     hasEditableAddress(app) {
@@ -383,8 +384,15 @@ export default {
         </div>
         </template>
 
-        <div v-if="showDetailsLink" class="flex justify-end mt-6">
-          <router-link :to="'/applications/' + app.id"
+        <div class="flex justify-end items-center gap-2 mt-6">
+          <!-- Renewable base permit, approved, with a renewal type set up (section 2) -->
+          <router-link v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type_name || app.permit_type)"
+            :to="'/applications/new?renew=' + app.id"
+            class="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-sm">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            Renew
+          </router-link>
+          <router-link v-if="showDetailsLink" :to="'/applications/' + app.id"
             class="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 border border-brand-200 bg-white hover:bg-brand-50 hover:border-brand-300 px-4 py-2 rounded-xl transition">
             View Details
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>

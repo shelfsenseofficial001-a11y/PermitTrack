@@ -5,6 +5,131 @@ declare(strict_types=1);
 // from migration 008) drive application_pipeline_progress (per-application state,
 // from migration 009). See BREAKING_CHANGES.md before changing anything here.
 
+/**
+ * Base permit type name -> its renewal permit type name (section 2). Renewable base permits:
+ * Business License, Food Service, Liquor/Tobacco, Market Stall/Vending, MTOP/TODA, Sign,
+ * Barangay Business Clearance, Barangay Clearance for Tricycles — due every year by January 20.
+ * Construction-type permits and personal certificates are never renewable. Mirrors
+ * RENEWABLE_PERMITS in assets/js/util.js.
+ */
+const RENEWABLE_PERMITS = [
+    'Business License' => 'Business Permit Renewal',
+    'Food Service' => 'Food Service (Sanitary) Renewal',
+    'Liquor/Tobacco License' => 'Liquor/Tobacco License Renewal',
+    'Market Stall/Vending Permit' => 'Market Stall/Vending Permit Renewal',
+    'MTOP/TODA Permit' => 'MTOP/TODA Permit Renewal',
+    'Sign Permit' => 'Sign Permit Renewal',
+    'Barangay Business Clearance (New)' => 'Barangay Business Clearance (Renewal)',
+    'Barangay Clearance for Tricycles (TODA)' => 'Barangay Clearance for Tricycles (TODA) Renewal',
+];
+
+/**
+ * Finds the applicant's most recent Approved application of $basePermitTypeName (the permit this
+ * renewal is for), with its documents — or null if they have none. Used both to offer the "Renew"
+ * button (there must be something to renew) and to pre-fill the renewal's required documents.
+ */
+function latest_approved_application_for_renewal(int $applicantId, string $basePermitTypeName): ?array
+{
+    $stmt = db()->prepare(
+        "SELECT a.* FROM applications a JOIN permit_types pt ON pt.id = a.permit_type_id
+          WHERE a.applicant_id = ? AND pt.name = ? AND a.status = 'Approved'
+          ORDER BY a.updated_at DESC LIMIT 1"
+    );
+    $stmt->execute([$applicantId, $basePermitTypeName]);
+    $app = $stmt->fetch();
+    if (!$app) {
+        return null;
+    }
+    $docsStmt = db()->prepare("SELECT * FROM application_documents WHERE application_id = ? AND file_path IS NOT NULL ORDER BY id");
+    $docsStmt->execute([$app['id']]);
+    $app['documents'] = $docsStmt->fetchAll();
+    return $app;
+}
+
+/** Same as latest_approved_application_for_renewal(), but looked up by the specific prior
+ * application id the "Renew" button was clicked on (and still owned by $applicantId, still Approved). */
+function latest_approved_application_for_renewal_by_id(int $priorApplicationId, int $applicantId): ?array
+{
+    $stmt = db()->prepare("SELECT * FROM applications WHERE id = ? AND applicant_id = ? AND status = 'Approved'");
+    $stmt->execute([$priorApplicationId, $applicantId]);
+    $app = $stmt->fetch();
+    if (!$app) {
+        return null;
+    }
+    $docsStmt = db()->prepare("SELECT * FROM application_documents WHERE application_id = ? AND file_path IS NOT NULL ORDER BY id");
+    $docsStmt->execute([$app['id']]);
+    $app['documents'] = $docsStmt->fetchAll();
+    return $app;
+}
+
+/**
+ * Pre-fills a freshly-created renewal application's required documents from the prior approved
+ * application's own outputs — the spec's "re-upload every file you received as output from your
+ * original approved permit". This system has no separate generated-certificate artifact, so the
+ * practical proxy is the prior application's own submitted (and since-verified) files: a
+ * "Previous <X>" required doc is matched by name against the old application's documents, falling
+ * back to the next not-yet-used verified document when nothing matches by name. Anything left
+ * unmatched simply stays 'Missing' and the applicant uploads it like any other required document.
+ */
+function prefill_renewal_documents(int $newApplicationId, array $priorApp, array $requiredDocs, array $handlers): void
+{
+    $priorDocs = $priorApp['documents'];
+    $used = [];
+    $pdo = db();
+    $docStmt = $pdo->prepare(
+        'INSERT INTO application_documents (application_id, doc_name, office_code, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+
+    foreach ($requiredDocs as $docName) {
+        $match = null;
+        // "Previous X" / "Updated X" / "Official Receipt of last year's ..." all name what they're
+        // standing in for — strip the common prefixes and look for that phrase in the old doc_name.
+        $core = preg_replace('/^(Previous|Updated)\s+/i', '', $docName);
+        $core = preg_replace('/\s*\([^)]*\)\s*$/', '', $core); // drop a trailing "(Food Service)" qualifier
+        foreach ($priorDocs as $i => $old) {
+            if (isset($used[$i])) {
+                continue;
+            }
+            if (stripos($old['doc_name'], $core) !== false || stripos($core, $old['doc_name']) !== false) {
+                $match = $i;
+                break;
+            }
+        }
+        if ($match === null) {
+            foreach ($priorDocs as $i => $old) {
+                if (!isset($used[$i]) && $old['status'] === 'Verified') {
+                    $match = $i;
+                    break;
+                }
+            }
+        }
+
+        if ($match !== null) {
+            $used[$match] = true;
+            $old = $priorDocs[$match];
+            // Copy the file itself so the old application keeps its own, untouched.
+            $srcPath = __DIR__ . '/../../' . $old['file_path'];
+            $destDir = __DIR__ . '/../../uploads/' . $newApplicationId;
+            if (!is_dir($destDir)) {
+                mkdir($destDir, 0777, true);
+            }
+            $newRelPath = null;
+            if (is_file($srcPath)) {
+                $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', (string)$old['original_filename']);
+                copy($srcPath, $destDir . '/' . $safeName);
+                $newRelPath = 'uploads/' . $newApplicationId . '/' . $safeName;
+            }
+            $docStmt->execute([
+                $newApplicationId, $docName, $handlers[$docName] ?? null,
+                $newRelPath, $old['original_filename'], $newRelPath ? 'Pending Review' : 'Missing',
+                $newRelPath ? date('Y-m-d H:i:s') : null,
+            ]);
+        } else {
+            $docStmt->execute([$newApplicationId, $docName, $handlers[$docName] ?? null, null, null, 'Missing', null]);
+        }
+    }
+}
+
 /** Every active permit type, with its base pipeline steps, branch questions, and required documents. */
 function permit_types_catalog(): array
 {

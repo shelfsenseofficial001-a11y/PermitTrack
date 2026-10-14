@@ -77,6 +77,8 @@ export default {
       filingLine: 0,    // which line of the filing overlay is showing
       catLeft: false,   // categories run past the left edge
       catRight: false,  // …and past the right
+      renewApplicationId: null, // set from ?renew=<id> — the prior approved application being renewed
+      renewInfo: null,          // { renewal_permit_type_name, ... } once loaded
     };
   },
   computed: {
@@ -202,6 +204,9 @@ export default {
       return map;
     },
     missingDocs() {
+      // Renewing: the prior approved application's own files pre-fill these server-side, so
+      // nothing is "missing" here even though the applicant hasn't chosen a file in this browser.
+      if (this.renewApplicationId) return [];
       return this.requiredDocs.filter((d) => !this.files[this.fieldKey(d)]);
     },
     hasFileErrors() {
@@ -295,6 +300,29 @@ export default {
       // free to change, because the property is not always where you live.
       const mine = this.barangays.find((b) => b.id === this.catalog.default_barangay_id);
       if (mine) this.form.barangay = mine.name;
+
+      // Renewing an approved permit (section 2, "Renew" button in My Permits): pre-select the
+      // renewal permit type and pre-fill the filing details, then skip straight to the questions.
+      const renewId = this.$route.query.renew;
+      if (renewId) {
+        try {
+          this.renewInfo = await apiGet('applications.php?action=renewal_info&application_id=' + renewId);
+          this.renewApplicationId = Number(renewId);
+          const t = this.catalog.permit_types.find((x) => x.id === this.renewInfo.renewal_permit_type_id);
+          if (t) {
+            this.selectedIds = [t.id];
+            if (this.renewInfo.business_id) this.form.business_id = String(this.renewInfo.business_id);
+            if (this.renewInfo.property_address && this.renewInfo.property_address !== 'N/A') {
+              this.form.property_address = this.renewInfo.property_address;
+            }
+            const brgy = this.barangays.find((b) => b.id === this.renewInfo.barangay_id);
+            if (brgy) this.form.barangay = brgy.name;
+            this.step = 'questions';
+          }
+        } catch (e) {
+          this.error = e.message;
+        }
+      }
       this.$nextTick(this.updateCatScroll);
     }
     // The row's width changes with the window, and so does which end has more to show
@@ -553,6 +581,7 @@ export default {
         const conditions = {};
         Object.entries(this.form.conditions).forEach(([k, v]) => { conditions[k] = v === 'yes'; });
         fd.append('conditions', JSON.stringify(conditions));
+        if (this.renewApplicationId) fd.append('renew_application_id', String(this.renewApplicationId));
         Object.entries(this.files).forEach(([key, file]) => {
           if (file) fd.append(key, file);
         });
@@ -616,6 +645,10 @@ export default {
             <p class="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">Step {{ stepIndex + 1 }} of {{ steps.length }}</p>
             <h2 class="mt-1 text-xl sm:text-2xl font-extrabold tracking-tight text-ink-700">{{ currentStep.title }}</h2>
             <p class="mt-1 text-sm text-slate-500">{{ currentStep.hint }}</p>
+            <div v-if="renewApplicationId" class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full px-3 py-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              Renewing — your prior permit's files are pre-filled where we found a match
+            </div>
 
             <!-- After the first step, what's being filed stays in view -->
             <div v-if="step !== 'choose' && hasSelection" class="mt-4 flex flex-wrap items-center gap-1.5">
