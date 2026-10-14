@@ -45,6 +45,12 @@ export default {
       deliveryError: '',
       deliveryFee: DELIVERY_FEE,
       deliverySteps: DELIVERY_STATUS_STEPS,
+      // Section 5: per-node delivery choice state
+      nodeDeliverySavingId: null,
+      nodeDeliveryAddressFor: null, // step id whose address textarea is open
+      nodeDeliveryAddress: '',
+      nodeDeliveryError: '',
+      nodeDeliveryErrorMsg: '',
     };
   },
   async mounted() {
@@ -229,6 +235,32 @@ export default {
         this.deliverySaving = false;
       }
     },
+    async chooseNodeDelivery(step, method) {
+      if (this.nodeDeliverySavingId) return;
+      this.nodeDeliveryError = '';
+      if (method === 'delivery' && !this.nodeDeliveryAddress.trim()) {
+        this.nodeDeliveryAddressFor = step.id;
+        this.nodeDeliveryError = String(step.id);
+        this.nodeDeliveryErrorMsg = 'Please give an address to deliver to.';
+        return;
+      }
+      this.nodeDeliverySavingId = step.id;
+      try {
+        await apiPost('applications.php?action=set_node_delivery', {
+          step_id: step.id,
+          delivery_method: method,
+          delivery_address: this.nodeDeliveryAddress,
+        });
+        this.nodeDeliveryAddressFor = null;
+        this.nodeDeliveryAddress = '';
+        await this.refresh(true);
+      } catch (e) {
+        this.nodeDeliveryError = String(step.id);
+        this.nodeDeliveryErrorMsg = e.message;
+      } finally {
+        this.nodeDeliverySavingId = null;
+      }
+    },
   },
   template: `
   <AppShell>
@@ -354,19 +386,25 @@ export default {
         <h2 class="font-bold text-ink-700 mb-1">Getting your permit</h2>
 
         <template v-if="!app.delivery_method">
-          <p class="text-sm text-slate-500 mb-4">Pick up at the office, or have it delivered for {{ formatPeso(deliveryFee) }}.</p>
-          <div class="grid sm:grid-cols-2 gap-3">
+          <p class="text-sm text-slate-500 mb-4">Soft copies are always downloadable above. For a hard copy — pickup at the office, pickup at your barangay hall, or delivery to an address — all free.</p>
+          <div class="grid sm:grid-cols-3 gap-3">
             <button type="button" @click="deliveryChoice = 'pickup'"
               class="text-left rounded-xl border-2 p-4 transition"
               :class="deliveryChoice === 'pickup' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
               <div class="font-semibold text-slate-700">Pick up at the office</div>
-              <div class="text-xs text-slate-400 mt-1">Bring a valid ID to claim it. No fee.</div>
+              <div class="text-xs text-slate-400 mt-1">Bring a valid ID to claim it.</div>
+            </button>
+            <button type="button" @click="deliveryChoice = 'barangay_pickup'"
+              class="text-left rounded-xl border-2 p-4 transition"
+              :class="deliveryChoice === 'barangay_pickup' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
+              <div class="font-semibold text-slate-700">Pick up at my barangay hall</div>
+              <div class="text-xs text-slate-400 mt-1">Closer than the issuing office.</div>
             </button>
             <button type="button" @click="deliveryChoice = 'delivery'"
               class="text-left rounded-xl border-2 p-4 transition"
               :class="deliveryChoice === 'delivery' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
               <div class="font-semibold text-slate-700">Deliver to my address</div>
-              <div class="text-xs text-slate-400 mt-1">{{ formatPeso(deliveryFee) }} delivery fee.</div>
+              <div class="text-xs text-slate-400 mt-1">Free.</div>
             </button>
           </div>
           <div v-if="deliveryChoice === 'delivery'" class="mt-4">
@@ -377,7 +415,7 @@ export default {
           </div>
           <button v-if="deliveryChoice" type="button" @click="chooseDelivery(deliveryChoice)" :disabled="deliverySaving"
             class="mt-4 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-5 py-2.5 rounded-xl transition">
-            {{ deliverySaving ? 'Saving…' : deliveryChoice === 'pickup' ? 'Confirm pickup' : 'Confirm delivery' }}
+            {{ deliverySaving ? 'Saving…' : deliveryChoice === 'delivery' ? 'Confirm delivery' : 'Confirm pickup' }}
           </button>
           <p v-if="deliveryError" class="text-sm text-red-600 mt-3">{{ deliveryError }}</p>
         </template>
@@ -387,7 +425,10 @@ export default {
         </template>
 
         <template v-else>
-          <p class="text-sm text-slate-500 mb-4">Being delivered to <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span> — {{ formatPeso(app.delivery_fee) }} delivery fee.</p>
+          <p class="text-sm text-slate-500 mb-4">
+            <template v-if="app.delivery_method === 'barangay_pickup'">Being prepared for pickup at <span class="font-semibold text-slate-700">your barangay hall</span>.</template>
+            <template v-else>Being delivered to <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span>.</template>
+          </p>
           <ol class="flex flex-wrap gap-3">
             <li v-for="(step, i) in deliverySteps" :key="step.value" class="flex items-center gap-2 text-sm">
               <span class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
@@ -398,6 +439,34 @@ export default {
               <span :class="i <= deliveryStepIndex ? 'font-semibold text-slate-700' : 'text-slate-400'">{{ step.label }}</span>
             </li>
           </ol>
+        </template>
+      </div>
+
+      <!-- Section 5: a node that just finished and produced output files offers the same choice,
+           one office at a time, instead of only at the very end. -->
+      <div v-for="step in (app.pipeline || []).filter(s => s.has_output)" :key="'node-delivery-' + step.id"
+        class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+        <h2 class="font-bold text-ink-700 mb-1">Files from {{ step.step_label }}</h2>
+        <template v-if="!step.delivery_method">
+          <p class="text-sm text-slate-500 mb-3">{{ step.department_name }} has finished its part. Soft copies of its files are downloadable above now; for a hard copy, choose one — all free.</p>
+          <div class="grid sm:grid-cols-3 gap-2.5">
+            <button type="button" @click="chooseNodeDelivery(step, 'pickup')" :disabled="nodeDeliverySavingId === step.id"
+              class="text-sm font-semibold text-left rounded-xl border-2 border-slate-200 hover:border-brand-300 p-3 transition">Pick up at the office</button>
+            <button type="button" @click="chooseNodeDelivery(step, 'barangay_pickup')" :disabled="nodeDeliverySavingId === step.id"
+              class="text-sm font-semibold text-left rounded-xl border-2 border-slate-200 hover:border-brand-300 p-3 transition">Pick up at my barangay hall</button>
+            <button type="button" @click="nodeDeliveryAddressFor = step.id" :disabled="nodeDeliverySavingId === step.id"
+              class="text-sm font-semibold text-left rounded-xl border-2 border-slate-200 hover:border-brand-300 p-3 transition">Deliver to my address</button>
+          </div>
+          <div v-if="nodeDeliveryAddressFor === step.id" class="mt-3 flex gap-2">
+            <textarea v-model="nodeDeliveryAddress" rows="2" placeholder="Where should it be delivered?"
+              class="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"></textarea>
+            <button type="button" @click="chooseNodeDelivery(step, 'delivery')" :disabled="nodeDeliverySavingId === step.id"
+              class="shrink-0 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2 rounded-xl transition self-start">Confirm</button>
+          </div>
+          <p v-if="nodeDeliveryError === step.id + ''" class="text-sm text-red-600 mt-2">{{ nodeDeliveryErrorMsg }}</p>
+        </template>
+        <template v-else>
+          <p class="text-sm text-slate-600">{{ step.delivery_method === 'delivery' ? 'Being delivered to ' + step.delivery_address : step.delivery_method === 'barangay_pickup' ? 'Pickup at your barangay hall' : 'Pickup at the office' }} — {{ step.delivery_status ? deliveryStatusLabel(step.delivery_status) : '' }}</p>
         </template>
       </div>
 

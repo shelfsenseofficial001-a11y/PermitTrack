@@ -86,7 +86,7 @@ if ($action === 'delivery_queue' && $method === 'GET') {
         "SELECT a.*, u.full_name AS applicant_name, pt.name AS permit_type_name
          FROM applications a JOIN users u ON u.id = a.applicant_id
          LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
-         WHERE a.delivery_method = 'delivery' AND a.delivery_status IS NOT NULL AND a.delivery_status <> 'delivered'
+         WHERE a.delivery_method IN ('delivery', 'barangay_pickup') AND a.delivery_status IS NOT NULL AND a.delivery_status <> 'delivered'
          ORDER BY a.delivery_requested_at ASC"
     )->fetchAll();
 
@@ -372,7 +372,7 @@ if ($action === 'delivery_status' && $method === 'POST') {
     if (!$app) {
         fail('Application not found.', 404);
     }
-    if ($app['delivery_method'] !== 'delivery' || empty($app['delivery_status'])) {
+    if (!in_array($app['delivery_method'], ['delivery', 'barangay_pickup'], true) || empty($app['delivery_status'])) {
         fail('This permit is not set for delivery.', 409);
     }
 
@@ -414,6 +414,57 @@ if ($action === 'delivery_status' && $method === 'POST') {
         'Your permit at ' . $app['property_address'] . ' — delivery status: ' . DELIVERY_STATUS_LABELS[$status] . '.'
             . ($status === 'delivered' ? ' If you did not receive it, message your office.' : '')
     );
+
+    respond(['ok' => true]);
+}
+
+// Section 5: the per-node counterpart to 'delivery_status' above — tracking the handoff of just
+// one finished office's files, for a hard-copy choice made before the whole application is done.
+if ($action === 'node_delivery_status' && $method === 'POST') {
+    $user = require_role('staff');
+    $in = json_input();
+    $stepId = (int)($in['step_id'] ?? 0);
+    $status = (string)($in['delivery_status'] ?? '');
+
+    $order = ['preparing', 'out_for_delivery', 'delivered'];
+    if (!in_array($status, $order, true)) {
+        fail('Invalid delivery status.');
+    }
+
+    $stmt = db()->prepare('SELECT * FROM application_pipeline_progress WHERE id = ?');
+    $stmt->execute([$stepId]);
+    $step = $stmt->fetch();
+    if (!$step) {
+        fail('Step not found.', 404);
+    }
+    if (!in_array($step['delivery_method'], ['delivery', 'barangay_pickup'], true) || empty($step['delivery_status'])) {
+        fail('No delivery choice has been made for this step yet.', 409);
+    }
+    if ($user['role'] !== 'admin' && (int)$step['department_id'] !== (int)($user['department_id'] ?? 0)) {
+        fail('This step is handled by another office.', 403);
+    }
+    if (array_search($status, $order, true) <= array_search($step['delivery_status'], $order, true)) {
+        fail('Delivery status can only move forward, from ' . DELIVERY_STATUS_LABELS[$step['delivery_status']] . '.', 409);
+    }
+
+    db()->prepare('UPDATE application_pipeline_progress SET delivery_status = ?, delivery_updated_at = NOW() WHERE id = ?')
+        ->execute([$status, $stepId]);
+
+    $appStmt = db()->prepare('SELECT applicant_id, property_address FROM applications WHERE id = ?');
+    $appStmt->execute([(int)$step['application_id']]);
+    $app = $appStmt->fetch();
+
+    db()->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
+    )->execute([(int)$step['application_id'], $user['id'], $step['step_label'] . ' files — delivery status: ' . DELIVERY_STATUS_LABELS[$status] . ' (' . $user['full_name'] . ').']);
+
+    if ($app) {
+        notify_user(
+            (int)$app['applicant_id'],
+            'Your permit: ' . DELIVERY_STATUS_LABELS[$status],
+            'Files from ' . $step['step_label'] . ' on your permit at ' . $app['property_address'] . ' — delivery status: ' . DELIVERY_STATUS_LABELS[$status] . '.'
+        );
+    }
 
     respond(['ok' => true]);
 }

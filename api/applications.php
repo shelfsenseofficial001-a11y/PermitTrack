@@ -301,6 +301,20 @@ if ($action === 'detail' && $method === 'GET') {
     // Empty array = this application predates the pipeline (filed via the old 'create' action).
     $app['pipeline'] = pipeline_progress_for($id);
 
+    // Section 5: a finished node that actually produced output (it owns at least one Verified
+    // document) offers the applicant a delivery choice for just that node's files, the same three
+    // ways as the whole-application choice below — soft copy (download in the portal, always
+    // available, nothing to choose), or pickup/delivery/barangay pickup if they want a hard copy.
+    foreach ($app['pipeline'] as &$step) {
+        $outStmt = db()->prepare(
+            "SELECT COUNT(*) FROM application_documents
+              WHERE application_id = ? AND COALESCE(office_code, 'BARANGAY') = ? AND status = 'Verified'"
+        );
+        $outStmt->execute([$id, $step['office_code']]);
+        $step['has_output'] = $step['status'] === 'approved' && (int)$outStmt->fetchColumn() > 0;
+    }
+    unset($step);
+
     // Payment (section 3): present whenever this application has a fee, regardless of status, so
     // the detail page can show what was paid (or still owed) after the fact too.
     $payStmt = db()->prepare(
@@ -399,32 +413,86 @@ if ($action === 'set_delivery' && $method === 'POST') {
     }
 
     $method2 = (string)($in['delivery_method'] ?? '');
-    if (!in_array($method2, ['pickup', 'delivery'], true)) {
-        fail('Choose pickup or delivery.');
+    if (!in_array($method2, ['pickup', 'delivery', 'barangay_pickup'], true)) {
+        fail('Choose pickup, delivery, or barangay pickup.');
     }
 
+    // Delivery is free (section 5) — DELIVERY_FEE is 0.00; the column itself stays so permits
+    // approved before that change still show what was actually charged on them.
     $address = null;
-    $fee = null;
     $status = null;
     if ($method2 === 'delivery') {
         $address = trim((string)($in['delivery_address'] ?? ''));
         if ($address === '') {
             fail('Please give an address to deliver to.');
         }
-        $fee = DELIVERY_FEE;
         $status = 'preparing';
+    } elseif ($method2 === 'barangay_pickup') {
+        $status = 'preparing'; // still tracked — the barangay hall has to receive it before you can
     }
 
     db()->prepare(
         'UPDATE applications SET delivery_method = ?, delivery_address = ?, delivery_fee = ?, delivery_status = ?, delivery_requested_at = NOW() WHERE id = ?'
-    )->execute([$method2, $address, $fee, $status, $app['id']]);
+    )->execute([$method2, $address, DELIVERY_FEE, $status, $app['id']]);
 
-    $body = $method2 === 'pickup'
-        ? 'Applicant chose to pick up this permit at the office.'
-        : 'Applicant asked for this permit to be delivered to: ' . $address . ' (₱' . number_format((float)DELIVERY_FEE, 2) . ' delivery fee).';
+    $body = match ($method2) {
+        'pickup' => 'Applicant chose to pick up this permit at the office.',
+        'barangay_pickup' => 'Applicant chose to pick up this permit at their barangay hall.',
+        default => 'Applicant asked for this permit to be delivered to: ' . $address . ' (free).',
+    };
     db()->prepare(
         "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
     )->execute([$app['id'], $user['id'], $body]);
+
+    respond(['ok' => true]);
+}
+
+// Section 5: the per-node counterpart to 'set_delivery' below — a finished node's own files,
+// rather than waiting for the whole application to reach Approved. Soft copy needs no action here
+// at all (viewing/downloading already works via documents.php for anything Verified); this only
+// ever records a hard-copy choice.
+if ($action === 'set_node_delivery' && $method === 'POST') {
+    $user = require_role('applicant');
+    $in = json_input();
+    $stepId = (int)($in['step_id'] ?? 0);
+
+    $stmt = db()->prepare(
+        'SELECT p.*, a.applicant_id FROM application_pipeline_progress p
+           JOIN applications a ON a.id = p.application_id
+          WHERE p.id = ?'
+    );
+    $stmt->execute([$stepId]);
+    $step = $stmt->fetch();
+    if (!$step || (int)$step['applicant_id'] !== (int)$user['id']) {
+        fail('Step not found.', 404);
+    }
+    if ($step['status'] !== 'approved') {
+        fail('This step has not finished yet.', 409);
+    }
+    if (!empty($step['delivery_method'])) {
+        fail('A delivery choice has already been made for this step.', 409);
+    }
+
+    $method2 = (string)($in['delivery_method'] ?? '');
+    if (!in_array($method2, ['pickup', 'delivery', 'barangay_pickup'], true)) {
+        fail('Choose pickup, delivery, or barangay pickup.');
+    }
+    $address = null;
+    $status = 'preparing';
+    if ($method2 === 'delivery') {
+        $address = trim((string)($in['delivery_address'] ?? ''));
+        if ($address === '') {
+            fail('Please give an address to deliver to.');
+        }
+    }
+
+    db()->prepare(
+        'UPDATE application_pipeline_progress SET delivery_method = ?, delivery_address = ?, delivery_status = ?, delivery_requested_at = NOW() WHERE id = ?'
+    )->execute([$method2, $address, $status, $stepId]);
+
+    db()->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
+    )->execute([(int)$step['application_id'], $user['id'], 'Applicant chose how to receive ' . $step['step_label'] . '\'s files: ' . DELIVERY_METHOD_LABELS[$method2] . '.']);
 
     respond(['ok' => true]);
 }

@@ -162,7 +162,7 @@ export default {
             </div>
             <div class="min-w-0">
               <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ permitLabel(app.permit_type || app.permit_type_name) }}</div>
-              <div class="text-sm text-slate-500 mt-0.5 truncate">To {{ app.delivery_address }} &middot; {{ formatPeso(app.delivery_fee) }}</div>
+              <div class="text-sm text-slate-500 mt-0.5 truncate">{{ app.delivery_method === 'barangay_pickup' ? 'Pickup at barangay hall' : 'To ' + app.delivery_address }}</div>
             </div>
           </div>
           <div class="flex items-center gap-3 shrink-0">

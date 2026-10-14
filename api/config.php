@@ -373,16 +373,25 @@ const USER_REPORT_CATEGORIES = [
     'falsified_ownership' => 'Falsified Lease/Property Ownership',
 ];
 
-// Flat fee for having an approved permit delivered instead of picked up at the office. Snapshotted
-// onto the application the moment delivery is chosen (see applications.php 'set_delivery' action),
-// so changing this later never rewrites what an applicant already agreed to pay.
-const DELIVERY_FEE = 150.00;
+// Delivery is free (section 5) — kept as a named constant, rather than a bare 0 scattered through
+// applications.php/reviewer.php, so the one place this could change later is obvious. The
+// applications.delivery_fee column is NOT dropped (migration 042 zeroes it instead): existing
+// reviewer/applicant screens still read it to show what was charged on permits approved before
+// this migration.
+const DELIVERY_FEE = 0.00;
 
 /** The wording the UI shows for a delivery_status value. Keep in step with assets/js/util.js. */
 const DELIVERY_STATUS_LABELS = [
     'preparing'        => 'Preparing',
     'out_for_delivery' => 'Out for delivery',
     'delivered'        => 'Delivered',
+];
+
+/** The wording for a delivery_method value. Keep in step with DELIVERY_METHOD_LABELS in assets/js/util.js. */
+const DELIVERY_METHOD_LABELS = [
+    'pickup'          => 'Pick up at the office',
+    'delivery'        => 'Delivered to an address',
+    'barangay_pickup' => 'Pick up at your barangay hall',
 ];
 
 function required_documents_for(string $permitType): array

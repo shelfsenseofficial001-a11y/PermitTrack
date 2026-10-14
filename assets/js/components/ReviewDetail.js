@@ -87,6 +87,12 @@ export default {
     canActOnNode() {
       return this.canActOnCurrentStep && this.unreviewedOwnedDocs.length === 0;
     },
+    // Used by the template (which can't reach the imported authState module directly — only
+    // what's on `this`) to show a node's own delivery controls only to the office that holds it.
+    myDepartmentId() {
+      const u = authState.user;
+      return u && u.department_id !== null && u.department_id !== undefined ? Number(u.department_id) : null;
+    },
     // The barangay holding step one. It may send any document back, but approving stays with the
     // office that owns it — mirrors the $isIntake rule in documents.php.
     isIntakeReviewer() {
@@ -425,6 +431,22 @@ export default {
         this.deliverySaving = false;
       }
     },
+    async setNodeDeliveryStatus(step, status) {
+      if (this.deliverySaving) return;
+      this.deliveryError = '';
+      this.deliverySaving = true;
+      try {
+        await apiPost('reviewer.php?action=node_delivery_status', {
+          step_id: step.id,
+          delivery_status: status,
+        });
+        await this.refresh(true);
+      } catch (e) {
+        this.deliveryError = e.message;
+      } finally {
+        this.deliverySaving = false;
+      }
+    },
   },
   template: `
   <StaffShell>
@@ -573,9 +595,12 @@ export default {
 
           <!-- Staff's own tracking of the physical handoff, once the applicant has chosen delivery.
                Nothing shows for pickup, or before the choice is made. -->
-          <div v-if="app.delivery_method === 'delivery'" class="bg-white rounded-2xl border border-brand-100 p-6">
+          <div v-if="app.delivery_method === 'delivery' || app.delivery_method === 'barangay_pickup'" class="bg-white rounded-2xl border border-brand-100 p-6">
             <h2 class="font-bold text-ink-700 mb-1">Delivery</h2>
-            <p class="text-sm text-slate-500 mb-4">To <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span> — {{ formatPeso(app.delivery_fee) }} fee.</p>
+            <p class="text-sm text-slate-500 mb-4">
+              <template v-if="app.delivery_method === 'barangay_pickup'">Pickup at the applicant's barangay hall.</template>
+              <template v-else>To <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span>.</template>
+            </p>
             <div v-if="!canManageDelivery" class="rounded-xl bg-sun-50 border border-sun-200 px-4 py-3 text-sm text-sun-700">
               Delivery for this permit is handled by <strong>{{ deliveryHandlingStep ? deliveryHandlingStep.department_name : "the applicant's barangay secretariat" }}</strong> — not your office.
             </div>
@@ -591,6 +616,29 @@ export default {
               </button>
             </div>
             <p v-if="deliveryError" class="text-sm text-red-600 mt-2">{{ deliveryError }}</p>
+          </div>
+
+          <!-- Section 5: per-node delivery — a node can produce a hard-copy choice before the
+               whole application is Approved. Only shown for this office's own node(s). -->
+          <div v-for="step in (app.pipeline || []).filter(s => s.delivery_method && Number(s.department_id) === myDepartmentId)"
+            :key="'node-delivery-' + step.id" class="bg-white rounded-2xl border border-brand-100 p-6">
+            <h2 class="font-bold text-ink-700 mb-1">Delivery — {{ step.step_label }}</h2>
+            <p class="text-sm text-slate-500 mb-4">
+              <template v-if="step.delivery_method === 'delivery'">To <span class="font-semibold text-slate-700">{{ step.delivery_address }}</span>.</template>
+              <template v-else-if="step.delivery_method === 'barangay_pickup'">Pickup at the applicant's barangay hall.</template>
+              <template v-else>Pickup at the office.</template>
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button v-for="(s, i) in deliverySteps" :key="s.value" type="button"
+                :disabled="deliverySaving || i <= deliverySteps.findIndex(x => x.value === step.delivery_status)"
+                @click="setNodeDeliveryStatus(step, s.value)"
+                class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition disabled:cursor-default"
+                :class="i < deliverySteps.findIndex(x => x.value === step.delivery_status) ? 'bg-brand-50 border-brand-200 text-brand-700'
+                  : i === deliverySteps.findIndex(x => x.value === step.delivery_status) ? 'bg-brand-600 border-brand-600 text-white'
+                  : 'border-slate-300 text-slate-600 hover:bg-meadow hover:border-brand-300 disabled:opacity-60'">
+                {{ s.label }}
+              </button>
+            </div>
           </div>
         </div>
 

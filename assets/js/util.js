@@ -191,7 +191,14 @@ export const DELIVERY_STATUS_STEPS = [
   { value: 'out_for_delivery', label: 'Out for delivery' },
   { value: 'delivered', label: 'Delivered' },
 ];
-export const DELIVERY_FEE = 150.00;
+// Delivery is free (section 5) — kept as a constant for the one place this could change later.
+export const DELIVERY_FEE = 0.00;
+
+export const DELIVERY_METHOD_LABELS = {
+  pickup: 'Pick up at the office',
+  delivery: 'Delivered to an address',
+  barangay_pickup: 'Pick up at your barangay hall',
+};
 
 export function deliveryStatusLabel(value) {
   const found = DELIVERY_STATUS_STEPS.find((s) => s.value === value);
