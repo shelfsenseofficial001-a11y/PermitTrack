@@ -49,10 +49,13 @@ SELECT CONCAT('Barangay ', b.name, ' - Payments'), CONCAT('BRGY-PAY-', b.id), b.
   FROM barangays b
  WHERE NOT EXISTS (SELECT 1 FROM departments d WHERE d.barangay_id = b.id AND d.purpose = 'payment');
 
+-- Same bcrypt hash migration 008 seeded every other demo staff account with (password Test1234!,
+-- matching testing.demo_password in api/config.php) -- not the different hash in the stale
+-- database/schema.sql seed comment, which is for a password this install doesn't use.
 INSERT INTO users (role, account_type, department_id, email, password_hash, full_name, onboarding_completed, email_verified_at)
 SELECT 'staff', 'resident', d.id,
        CONCAT('payments.', LOWER(REPLACE(REPLACE(REPLACE(b.name, ' ', '-'), UNHEX('C3B1'), 'n'), '.', '')), '@dasmarinas.gov.ph.demo'),
-       '$2y$10$hmPWXOOOOcky2Ev1RKOi/.6ZJUJiQvGWB4Zaf1PDMPUd87yLsMtHu',
+       '$2y$10$R9ZNpONSujrmY7PQv9makuFpgzBeJkz9aCpqO9h/OjCQ40Ij3.ocy',
        CONCAT('Barangay Payments - ', b.name), 1, NOW()
   FROM departments d JOIN barangays b ON b.id = d.barangay_id AND d.purpose = 'payment'
  WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.department_id = d.id AND u.role = 'staff');
@@ -65,7 +68,7 @@ SELECT 'Municipal Treasury (Payments)', 'TREASURY_PAY', NULL,
 
 INSERT INTO users (role, account_type, department_id, email, password_hash, full_name, onboarding_completed, email_verified_at)
 SELECT 'staff', 'resident', d.id, 'treasury.payments@dasmarinas.gov.ph.demo',
-       '$2y$10$hmPWXOOOOcky2Ev1RKOi/.6ZJUJiQvGWB4Zaf1PDMPUd87yLsMtHu',
+       '$2y$10$R9ZNpONSujrmY7PQv9makuFpgzBeJkz9aCpqO9h/OjCQ40Ij3.ocy',
        'Municipal Treasury - Payments', 1, NOW()
   FROM departments d WHERE d.code = 'TREASURY_PAY'
     AND NOT EXISTS (SELECT 1 FROM users u WHERE u.department_id = d.id AND u.role = 'staff');
