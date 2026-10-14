@@ -27,7 +27,7 @@ const MESSAGES = {
   generic: ['Loading…'],
 };
 
-import LogoMark from './LogoMark.js?v=142';
+import LogoMark from './LogoMark.js?v=168';
 
 export default {
   name: 'Loader',

@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import GibsMascot from './GibsMascot.js?v=142';
-import GibsPeek from './GibsPeek.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import GibsMascot from './GibsMascot.js?v=168';
+import GibsPeek from './GibsPeek.js?v=168';
 
 // The Gibs P. assistant: an "Ask" button (with Gibs peeking above it) that opens a two-pane dialog —
 // Gibs on a stage on the left, the chat on the right (stacked on phones). Answers come from
@@ -196,8 +196,8 @@ export default {
 
   <!-- Phones get the whole screen; from md up the panel rises out of the Ask button in the corner,
        so the page behind it stays readable and the chip it belongs to is still in view. -->
-  <transition enter-from-class="opacity-0 md:translate-y-3 md:scale-[0.97]" enter-active-class="transition duration-200 ease-out motion-reduce:transition-none"
-    leave-to-class="opacity-0 md:translate-y-2 md:scale-[0.98]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none">
+  <transition enter-from-class="opacity-0 md:translate-y-3 md:scale-[0.97]" enter-active-class="transition duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+    leave-to-class="opacity-0 md:translate-y-2 md:scale-[0.98]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none motion-reduce:duration-0">
     <div v-if="open"
       class="font-inter gibs-shell z-50 flex bg-ink-900/45 backdrop-blur-[3px] md:bg-transparent md:backdrop-blur-none md:origin-bottom-right"
       :class="liftForFab || liftForBar ? 'is-lifted' : ''" @click.self="close">

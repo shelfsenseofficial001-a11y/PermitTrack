@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/config.php';
 require __DIR__ . '/lib/pipeline.php';   // document_owner_department(), document_owner_step()
+require_once __DIR__ . '/lib/support.php';  // send_file_viewer(), BROWSER_VIEWABLE_MIME
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -219,8 +220,25 @@ if ($action === 'download' && $method === 'GET') {
         fail('File not found.', 404);
     }
 
-    header('Content-Type: application/octet-stream');
-    header('Content-Disposition: attachment; filename="' . basename($doc['original_filename'] ?? $doc['file_path']) . '"');
+    // "View" opens this in a new tab, so a file a browser can show is sent to be shown, not saved.
+    // The type comes from the file's own contents rather than anything the uploader named it, and
+    // only these four are ever sent inline; anything else (a HEIC photo, say) still downloads.
+    $mime = function_exists('mime_content_type') ? (string)mime_content_type($fullPath) : '';
+    $name = preg_replace('/[^A-Za-z0-9._ -]/', '_', basename($doc['original_filename'] ?? $doc['file_path']));
+    // ?view=1 is the link's "View": the file inside a page that is named for the document and
+    // carries PermitTrack's icon, rather than a bare image titled "documents.php (745×795)".
+    if (($_GET['view'] ?? '') === '1' && in_array($mime, BROWSER_VIEWABLE_MIME, true)) {
+        send_file_viewer((string)($doc['doc_name'] ?: $name), raw_file_url(), $mime);
+    }
+    if (in_array($mime, BROWSER_VIEWABLE_MIME, true)) {
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . $name . '"');
+    } else {
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $name . '"');
+    }
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store');
     header('Content-Length: ' . filesize($fullPath));
     readfile($fullPath);
     exit;

@@ -1,7 +1,11 @@
-import { permitIconClass } from '../util.js?v=142';
-import ChatLauncher from './ChatLauncher.js?v=142';
-import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=142';
-import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=142';
+import { permitIconClass } from '../util.js?v=168';
+import ChatLauncher from './ChatLauncher.js?v=168';
+import IdGuide from './IdGuide.js?v=168';
+import LanguageSelect from './LanguageSelect.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import { apiGet } from '../api/client.js?v=168';
+import { authState, listAccounts, switchAccount, reloadAs } from '../store/auth.js?v=168';
+import { askSignOut, beginTransition, endTransition } from '../store/ui.js?v=168';
 
 // The public front door. Everything on it describes what PermitTrack really does — the offices a
 // permit actually passes through, the real permit catalogue and its real requirements — so nothing
@@ -114,6 +118,14 @@ const FEATURES = [
   { title: 'Answers on demand', text: 'The built-in Ask assistant knows every permit’s requirements, and your own status.', icon: 'spark' },
 ];
 
+// The categories permit_types.track holds, named the way a visitor would
+const CATALOG_TRACKS = {
+  construction: 'Building & construction',
+  business: 'Business',
+  personal: 'Personal & barangay certificates',
+  barangay_standalone: 'Barangay clearances',
+};
+
 const FAQS = [
   { q: 'Who can apply for a permit?',
     a: 'Anyone can create an account and browse every permit and its requirements. To apply, verify as a Resident (two proofs of residence, reviewed by City Staff) or add a business you already run, which City Staff approves against its DTI, SEC or CDA certificate.' },
@@ -131,7 +143,7 @@ const FAQS = [
 
 export default {
   name: 'Landing',
-  components: { ChatLauncher },
+  components: { ChatLauncher, IdGuide, BaseModal, LanguageSelect },
   data() {
     return {
       stage: 0,
@@ -157,11 +169,20 @@ export default {
         { id: 'how-it-works', label: 'How it works' },
         { id: 'features', label: 'Features' },
         { id: 'permits', label: 'Permits' },
+        { id: 'ids', label: 'Get an ID' },
         { id: 'faq', label: 'FAQ' },
       ],
       heroStages: HERO_STAGES,
       journey: JOURNEY,
       permits: PERMITS,
+      // The all-permits dialog opened from the tile under the permits section. The list comes from
+      // the API on first open (permit_types: who each one is for), not from the PERMITS sample above.
+      permitsOpen: false,
+      catalog: null,
+      catalogLoading: false,
+      catalogError: '',
+      catalogFilter: 'all',
+      catalogQuery: '',
       features: FEATURES,
       faqs: FAQS,
       featMotion: readMotion('feat'),
@@ -202,6 +223,29 @@ export default {
     },
     initials() {
       return initialsOf((this.accountUser && this.accountUser.full_name) || '');
+    },
+
+    // ---- The all-permits dialog ----
+    catalogCounts() {
+      const list = this.catalog || [];
+      return { all: list.length, citizen: list.filter((p) => p.citizen).length, business: list.filter((p) => p.business).length };
+    },
+    // The list for the chosen audience and search, in the order the API sent it, grouped by category
+    catalogGroups() {
+      const q = this.catalogQuery.trim().toLowerCase();
+      const wanted = (this.catalog || []).filter((p) =>
+        (this.catalogFilter === 'all' || p[this.catalogFilter])
+        && (!q || (p.name + ' ' + (p.description || '')).toLowerCase().includes(q)));
+      const groups = [];
+      for (const p of wanted) {
+        let g = groups.find((x) => x.track === p.track);
+        if (!g) {
+          g = { track: p.track, label: CATALOG_TRACKS[p.track] || p.track, permits: [] };
+          groups.push(g);
+        }
+        g.permits.push(p);
+      }
+      return groups;
     },
 
     // ---- Features demos: each returns the still frame when the switch is off ----
@@ -444,6 +488,22 @@ export default {
   methods: {
     permitIconClass,
     initialsOf,
+    // The "view all permits" dialog. The list is fetched the first time it opens and kept.
+    async openPermits() {
+      this.permitsOpen = true;
+      this.catalogFilter = 'all';
+      this.catalogQuery = '';
+      if (this.catalog || this.catalogLoading) return;
+      this.catalogLoading = true;
+      this.catalogError = '';
+      try {
+        this.catalog = (await apiGet('applications.php?action=catalog')).permits;
+      } catch (e) {
+        this.catalogError = e.message || 'Could not load the permits. Please try again.';
+      } finally {
+        this.catalogLoading = false;
+      }
+    },
     // Which frame of a card's loop its section's tick lands on. speed = ticks per frame.
     featFrame(speed, count) {
       return Math.floor(this.featTick / speed) % count;
@@ -671,13 +731,16 @@ export default {
           <img src="assets/images/CITY-HALL-LOGO.png" alt="" class="w-9 h-9 object-contain" />
           <span class="leading-tight text-left">
             <span class="block text-[15px] font-bold text-ink-700">PermitTrack</span>
-            <span class="block text-[11px] text-slate-500">City of Dasmariñas</span>
+            <span class="block text-[11px] text-slate-500">{{ $tx('lp.cityOf', 'City of Dasmariñas') }}</span>
           </span>
         </button>
         <nav class="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600" aria-label="Page sections">
-          <button v-for="l in navLinks" :key="l.id" type="button" @click="go(l.id)" class="hover:text-ink-700 transition">{{ l.label }}</button>
+          <button v-for="l in navLinks" :key="l.id" type="button" @click="go(l.id)" class="hover:text-ink-700 transition">{{ $tx('lp.nav.' + l.id, l.label) }}</button>
         </nav>
         <div class="flex items-center gap-2 shrink-0">
+          <!-- From md up it sits beside the account buttons; on phones it is in the menu instead,
+               where there is room for it and a dropdown would be clipped by the sheet -->
+          <LanguageSelect :dark="false" class="hidden md:block" />
           <!-- Signed in, the two sign-up buttons give way to the account menu. The app's own pages
                are in here because this page has no nav of its own to put them in. -->
           <div v-if="accountUser" ref="account" class="relative">
@@ -701,24 +764,24 @@ export default {
               </div>
               <router-link to="/dashboard" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
                 <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
-                Dashboard
+                {{ $tx('lp.dashboard', 'Dashboard') }}
               </router-link>
               <router-link to="/permits" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
                 <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/></svg>
-                My Permits
+                {{ $tx('lp.myPermits', 'My Permits') }}
               </router-link>
               <router-link to="/applications/new" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
                 <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                {{ accountUser.can_apply ? 'New Application' : 'Browse Permits' }}
+                {{ accountUser.can_apply ? $tx('lp.newApplication', 'New Application') : $tx('lp.browsePermits', 'Browse Permits') }}
               </router-link>
               <div class="h-px bg-white/10 my-1"></div>
               <router-link to="/account" role="menuitem" @click="accountOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
                 <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                My account
+                {{ $tx('lp.myAccount', 'My account') }}
               </router-link>
               <button type="button" role="menuitem" @click="doLogout" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-red-300 hover:bg-red-500/15">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-                Sign out
+                {{ $tx('lp.signOut', 'Sign out') }}
               </button>
             </div>
             </transition>
@@ -731,7 +794,7 @@ export default {
             <div v-if="otherAccounts.length" ref="signIn" class="relative hidden md:block">
               <button type="button" @click="signInOpen = !signInOpen" :aria-expanded="signInOpen" aria-haspopup="menu"
                 class="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">
-                Sign in
+                {{ $tx('lp.signIn', 'Sign in') }}
                 <svg class="w-4 h-4 text-slate-400 transition-transform" :class="signInOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
               </button>
 
@@ -752,14 +815,14 @@ export default {
                 <router-link to="/login" role="menuitem" @click="signInOpen = false"
                   class="flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-white hover:bg-white/10">
                   <span class="w-3.5 text-center text-lg leading-none text-ink-300">+</span>
-                  Add account
+                  {{ $tx('lp.addAccount', 'Add account') }}
                 </router-link>
               </div>
               </transition>
             </div>
 
-            <router-link v-else to="/login" class="hidden md:inline-flex text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">Log in</router-link>
-            <router-link to="/register" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">Get started</router-link>
+            <router-link v-else to="/login" class="hidden md:inline-flex text-sm font-semibold text-ink-700 px-4 py-2 rounded-xl hover:bg-ink-700/5 transition">{{ $tx('lp.login', 'Log in') }}</router-link>
+            <router-link to="/register" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">{{ $tx('lp.getStarted', 'Get started') }}</router-link>
           </template>
           <button type="button" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen" aria-controls="mobile-menu"
             :aria-label="menuOpen ? 'Close menu' : 'Open menu'"
@@ -781,15 +844,16 @@ export default {
             <nav class="p-2" aria-label="Page sections">
               <button v-for="l in navLinks" :key="l.id" type="button" @click="go(l.id)"
                 class="w-full flex items-center justify-between px-2 py-3.5 rounded-xl text-[15px] font-semibold text-ink-700 hover:bg-meadow active:bg-meadow transition">
-                {{ l.label }}
+                {{ $tx('lp.nav.' + l.id, l.label) }}
                 <svg class="w-4 h-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
               </button>
             </nav>
+            <div class="px-4 pb-3"><LanguageSelect segmented /></div>
             <div v-if="accountUser" class="border-t border-brand-100 bg-slate-50/70 p-4 grid gap-2.5">
-              <router-link to="/dashboard" @click="closeMenu" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">Dashboard</router-link>
-              <router-link to="/permits" @click="closeMenu" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">My Permits</router-link>
-              <router-link to="/applications/new" @click="closeMenu" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">{{ accountUser.can_apply ? 'New Application' : 'Browse Permits' }}</router-link>
-              <router-link to="/account" @click="closeMenu" class="text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">My account →</router-link>
+              <router-link to="/dashboard" @click="closeMenu" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">{{ $tx('lp.dashboard', 'Dashboard') }}</router-link>
+              <router-link to="/permits" @click="closeMenu" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">{{ $tx('lp.myPermits', 'My Permits') }}</router-link>
+              <router-link to="/applications/new" @click="closeMenu" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">{{ accountUser.can_apply ? $tx('lp.newApplication', 'New Application') : $tx('lp.browsePermits', 'Browse Permits') }}</router-link>
+              <router-link to="/account" @click="closeMenu" class="text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">{{ $tx('lp.myAccountArrow', 'My account →') }}</router-link>
             </div>
             <div v-else class="border-t border-brand-100 bg-slate-50/70 p-4 grid grid-cols-2 gap-2.5">
               <div v-if="otherAccounts.length" class="col-span-2 grid gap-1.5 mb-1">
@@ -802,9 +866,9 @@ export default {
                   </span>
                 </button>
               </div>
-              <router-link to="/login" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">{{ otherAccounts.length ? 'Add account' : 'Log in' }}</router-link>
-              <router-link to="/register" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">Get started</router-link>
-              <router-link to="/staff/login" class="col-span-2 text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">City staff? Sign in to the Staff Portal →</router-link>
+              <router-link to="/login" class="text-center text-sm font-semibold text-ink-700 bg-white ring-1 ring-slate-200 hover:bg-slate-50 py-3 rounded-xl transition">{{ otherAccounts.length ? $tx('lp.addAccount', 'Add account') : $tx('lp.login', 'Log in') }}</router-link>
+              <router-link to="/register" class="text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl transition">{{ $tx('lp.getStarted', 'Get started') }}</router-link>
+              <router-link to="/staff/login" class="col-span-2 text-center text-xs font-semibold text-slate-500 hover:text-brand-700 pt-1 transition">{{ $tx('lp.staffSignIn', 'City staff? Sign in to the Staff Portal →') }}</router-link>
             </div>
           </div>
         </div>
@@ -822,12 +886,12 @@ export default {
       <div class="relative max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] gap-14 lg:gap-10 items-center">
         <div>
           <h1 class="text-[2.75rem] leading-[1.02] sm:text-6xl lg:text-[4.1rem] font-extrabold tracking-[-0.035em] text-ink-700">
-            Track your permit
-            <span class="block">like a <span class="bg-[linear-gradient(transparent_60%,#fde97a_60%,#fde97a_92%,transparent_92%)] px-1 -mx-1">package.</span></span>
+            {{ $tx('lp.hero.l1', 'Track your permit') }}
+            <span class="block">{{ $tx('lp.hero.l2', 'like a') }} <span class="bg-[linear-gradient(transparent_60%,#fde97a_60%,#fde97a_92%,transparent_92%)] px-1 -mx-1">{{ $tx('lp.hero.l2b', 'package.') }}</span></span>
           </h1>
 
           <p class="mt-6 text-lg text-slate-600 leading-relaxed max-w-xl">
-            Apply for city permits and licenses online, then follow every step &mdash; from submitted to approved &mdash; with an alert the moment anything moves.
+            {{ $tx('lp.hero.p', 'Apply for city permits and licenses online, then follow every step — from submitted to approved — with an alert the moment anything moves.') }}
           </p>
 
           <!-- Two equal buttons in one row. Phones use the nav's short labels so equal halves fit even
@@ -835,23 +899,23 @@ export default {
           <div class="mt-8 grid grid-cols-2 gap-2.5 sm:gap-3 sm:w-fit">
             <router-link to="/register"
               class="group inline-flex items-center justify-center gap-2 text-sm sm:text-[15px] font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 sm:px-6 py-3.5 rounded-2xl transition shadow-[0_16px_32px_-12px_rgba(31,122,58,0.7)] whitespace-nowrap">
-              <span class="sm:hidden">Get started</span>
-              <span class="hidden sm:inline">Start your application</span>
+              <span class="sm:hidden">{{ $tx('lp.hero.startShort', 'Get started') }}</span>
+              <span class="hidden sm:inline">{{ $tx('lp.hero.start', 'Start your application') }}</span>
               <svg class="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </router-link>
             <router-link to="/login"
               class="inline-flex items-center justify-center text-sm sm:text-[15px] font-semibold text-ink-700 bg-white hover:bg-slate-50 ring-1 ring-slate-200 px-4 sm:px-6 py-3.5 rounded-2xl transition whitespace-nowrap">
-              <span class="sm:hidden">Log in</span>
-              <span class="hidden sm:inline">I already have an account</span>
+              <span class="sm:hidden">{{ $tx('lp.hero.loginShort', 'Log in') }}</span>
+              <span class="hidden sm:inline">{{ $tx('lp.hero.have', 'I already have an account') }}</span>
             </router-link>
           </div>
 
           <ul class="mt-9 flex flex-wrap gap-x-6 gap-y-2.5 text-sm text-slate-600">
-            <li v-for="p in ['Real-time status', 'Email, SMS & in-app alerts', 'No trips to City Hall']" :key="p" class="flex items-center gap-2">
+            <li v-for="(p, pi) in ['Real-time status', 'Email, SMS & in-app alerts', 'No trips to City Hall']" :key="p" class="flex items-center gap-2">
               <span class="w-5 h-5 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
               </span>
-              {{ p }}
+              {{ $tx('lp.hero.b' + (pi + 1), p) }}
             </li>
           </ul>
         </div>
@@ -937,12 +1001,12 @@ export default {
       <div class="pt-gradient-wide absolute inset-0 opacity-25" aria-hidden="true"></div>
       <div ref="statsBand" class="relative max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 grid lg:grid-cols-[1.2fr_1fr] gap-10 items-center reveal">
         <h2 class="text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] leading-[1.05]">
-          Stop calling City Hall.<br><span class="text-sun-300">Start tracking.</span>
+          {{ $tx('lp.band.l1', 'Stop calling City Hall.') }}<br><span class="text-sun-300">{{ $tx('lp.band.l2', 'Start tracking.') }}</span>
         </h2>
         <dl class="grid grid-cols-3 gap-4 sm:gap-6">
           <div v-for="(f, i) in stats" :key="f.l" class="border-l border-white/15 pl-4">
             <dt class="text-4xl sm:text-5xl font-extrabold text-sun-300 tracking-tight tabular-nums">{{ statCounts[i] }}</dt>
-            <dd class="text-xs sm:text-sm text-ink-200 mt-1 leading-snug">{{ f.l }}</dd>
+            <dd class="text-xs sm:text-sm text-ink-200 mt-1 leading-snug">{{ $tx('lp.stat.' + i, f.l) }}</dd>
           </div>
         </dl>
       </div>
@@ -952,11 +1016,10 @@ export default {
     <section id="how-it-works" class="scroll-mt-16 py-14 sm:py-20">
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
         <div class="max-w-2xl reveal">
-          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">How it works</span>
-          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Every office.<br>Named as you pass it.</h2>
+          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">{{ $tx('lp.how.label', 'How it works') }}</span>
+          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">{{ $tx('lp.how.h1', 'Every office.') }}<br>{{ $tx('lp.how.h2', 'Named as you pass it.') }}</h2>
           <p class="mt-4 text-lg text-slate-600 leading-relaxed">
-            A Building Permit, all six stops of it. Other permits are shorter — a Certificate of
-            Residency is a single stop at your barangay.
+            {{ $tx('lp.how.p', 'A Building Permit, all six stops of it. Other permits are shorter — a Certificate of Residency is a single stop at your barangay.') }}
           </p>
         </div>
 
@@ -1035,9 +1098,9 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
         <div class="flex flex-wrap items-end justify-between gap-6">
           <div class="max-w-2xl reveal">
-            <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">Features</span>
-            <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Everything about your permit.<br>One place.</h2>
-            <p class="mt-4 text-lg text-slate-600 leading-relaxed">No more lost forms, missed calls, or “come back next week.” Here is what changes when your permit lives online.</p>
+            <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">{{ $tx('lp.feat.label', 'Features') }}</span>
+            <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">{{ $tx('lp.feat.h1', 'Everything about your permit.') }}<br>{{ $tx('lp.feat.h2', 'One place.') }}</h2>
+            <p class="mt-4 text-lg text-slate-600 leading-relaxed">{{ $tx('lp.feat.p', 'No more lost forms, missed calls, or “come back next week.” Here is what changes when your permit lives online.') }}</p>
           </div>
           <!-- Off, every card holds a single still frame -->
           <button type="button" role="switch" :aria-checked="featMotion" @click="featMotion = !featMotion"
@@ -1253,8 +1316,8 @@ export default {
             </div>
 
             <div class="px-7 pb-7 pt-5 text-center">
-              <h3 class="text-lg font-bold text-ink-700">{{ f.title }}</h3>
-              <p class="mt-2 text-[15px] text-slate-600 leading-relaxed">{{ f.text }}</p>
+              <h3 class="text-lg font-bold text-ink-700">{{ $tx('lp.feat.' + i + '.t', f.title) }}</h3>
+              <p class="mt-2 text-[15px] text-slate-600 leading-relaxed">{{ $tx('lp.feat.' + i + '.d', f.text) }}</p>
             </div>
           </article>
         </div>
@@ -1266,13 +1329,13 @@ export default {
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
         <div class="flex flex-wrap items-end justify-between gap-6 reveal">
           <div class="max-w-2xl">
-            <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">Permits</span>
-            <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Know what to bring.<br>Before you go anywhere.</h2>
-            <p class="mt-4 text-lg text-slate-600 leading-relaxed">Every permit lists its requirements up front, so there are no surprises and no second trips.</p>
+            <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">{{ $tx('lp.permits.label', 'Permits') }}</span>
+            <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">{{ $tx('lp.permits.h1', 'Know what to bring.') }}<br>{{ $tx('lp.permits.h2', 'Before you go anywhere.') }}</h2>
+            <p class="mt-4 text-lg text-slate-600 leading-relaxed">{{ $tx('lp.permits.p', 'Every permit lists its requirements up front, so there are no surprises and no second trips.') }}</p>
           </div>
           <div class="flex items-center gap-4 text-sm text-slate-600">
-            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-brand-500"></span>Residents</span>
-            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-sun-400"></span>Businesses</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-brand-500"></span>{{ $tx('lp.permits.residents', 'Residents') }}</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-sun-400"></span>{{ $tx('lp.permits.businesses', 'Businesses') }}</span>
           </div>
         </div>
 
@@ -1285,14 +1348,14 @@ export default {
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
               </span>
               <div class="flex gap-1.5">
-                <span v-if="p.residents" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200">Residents</span>
-                <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-sun-50 text-sun-700 ring-1 ring-inset ring-sun-200">Businesses</span>
+                <span v-if="p.residents" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200">{{ $tx('lp.permits.residents', 'Residents') }}</span>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-sun-50 text-sun-700 ring-1 ring-inset ring-sun-200">{{ $tx('lp.permits.businesses', 'Businesses') }}</span>
               </div>
             </div>
             <h3 class="mt-5 text-xl font-bold text-ink-700">{{ p.type }}</h3>
             <p class="mt-1.5 text-sm text-slate-500 leading-relaxed">{{ p.blurb }}</p>
             <div class="mt-5 pt-5 border-t border-slate-100">
-              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-3">You'll need</div>
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-3">{{ $tx('lp.permits.youllNeed', "You'll need") }}</div>
               <ul class="space-y-2">
                 <li v-for="d in p.docs" :key="d" class="flex items-start gap-2.5 text-sm text-slate-700">
                   <svg class="w-4 h-4 text-brand-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -1306,14 +1369,30 @@ export default {
           <div class="reveal flex flex-col justify-between rounded-3xl bg-ink-700 text-white p-7 relative overflow-hidden" style="transition-delay: 160ms">
             <div class="pt-gradient absolute -right-24 -bottom-24 w-72 h-72 rounded-full blur-2xl opacity-40" aria-hidden="true"></div>
             <div class="relative">
-              <h3 class="text-2xl font-extrabold tracking-tight leading-tight">Not sure which one you need?</h3>
-              <p class="mt-3 text-sm text-ink-200 leading-relaxed">Create a free account to browse every permit in detail, or ask the built-in assistant.</p>
+              <h3 class="text-2xl font-extrabold tracking-tight leading-tight">{{ $tx('lp.permits.tileTitle', 'See every permit you can request.') }}</h3>
+              <p class="mt-3 text-sm text-ink-200 leading-relaxed">{{ $tx('lp.permits.tileBody', 'Registered citizens and business owners can request different permits. Browse the full list and see who each one is for.') }}</p>
             </div>
-            <router-link to="/register" class="relative mt-8 self-start inline-flex items-center gap-2 text-sm font-semibold text-ink-700 bg-sun-300 hover:bg-sun-200 px-5 py-2.5 rounded-xl transition">
-              Browse all permits
+            <button type="button" @click="openPermits" aria-haspopup="dialog" class="relative mt-8 self-start inline-flex items-center gap-2 text-sm font-semibold text-ink-700 bg-sun-300 hover:bg-sun-200 px-5 py-2.5 rounded-xl transition">
+              {{ $tx('lp.permits.tileButton', 'View all permits') }}
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </router-link>
+            </button>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GET AN ID ============ -->
+    <!-- Verifying an account takes a government photo ID. For anyone who does not have one yet, how
+         to get four of the IDs PermitTrack accepts, step by step (components/IdGuide.js). -->
+    <section id="ids" class="scroll-mt-16 py-14 sm:py-20 bg-brand-50/60 border-y border-brand-100">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6">
+        <div class="text-center max-w-2xl mx-auto reveal">
+          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">{{ $tx('lp.ids.label', 'Get an ID') }}</span>
+          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">{{ $tx('lp.ids.h1', 'No ID yet?') }}<br>{{ $tx('lp.ids.h2', 'Here’s how to get one.') }}</h2>
+          <p class="mt-4 text-lg text-slate-600 leading-relaxed">{{ $tx('lp.ids.p', 'Verifying your account takes a valid government ID. Pick one below and follow the steps — each is explained and pictured.') }}</p>
+        </div>
+        <div class="mt-10">
+          <IdGuide />
         </div>
       </div>
     </section>
@@ -1323,15 +1402,15 @@ export default {
       :class="stepsMotion ? 'demo-live' : 'demo-still'">
       <div class="max-w-6xl mx-auto px-4 sm:px-6">
         <div class="text-center max-w-2xl mx-auto reveal">
-          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">Get started</span>
-          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Verify once.<br>Apply anytime.</h2>
-          <p class="mt-4 text-lg text-slate-600 leading-relaxed">Three steps stand between you and your first tracked permit.</p>
+          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">{{ $tx('lp.start.label', 'Get started') }}</span>
+          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">{{ $tx('lp.start.h1', 'Verify once.') }}<br>{{ $tx('lp.start.h2', 'Apply anytime.') }}</h2>
+          <p class="mt-4 text-lg text-slate-600 leading-relaxed">{{ $tx('lp.start.p', 'Three steps stand between you and your first tracked permit.') }}</p>
         </div>
         <!-- Off, every step holds a single still frame -->
         <div class="mt-6 flex justify-center">
           <button type="button" role="switch" :aria-checked="stepsMotion" @click="stepsMotion = !stepsMotion"
             class="inline-flex items-center gap-3 text-sm font-semibold text-ink-700 rounded-full bg-meadow/70 ring-1 ring-brand-100 pl-4 pr-1.5 py-1.5 hover:ring-brand-300 transition">
-            Animations
+            {{ $tx('lp.start.animations', 'Animations') }}
             <span class="relative w-10 h-6 rounded-full transition-colors duration-200" :class="stepsMotion ? 'bg-brand-600' : 'bg-slate-300'" aria-hidden="true">
               <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200" :class="stepsMotion ? 'translate-x-4' : ''"></span>
             </span>
@@ -1340,9 +1419,9 @@ export default {
 
         <div class="mt-10 grid md:grid-cols-3 gap-5">
           <div v-for="(s, i) in [
-              { t: 'Create your account', d: 'Sign up with your email or mobile number and confirm it with a 6-digit code.' },
-              { t: 'Verify who you are', d: 'Residents upload two proofs of residence. Business owners register their business. City Staff approve it once.' },
-              { t: 'Apply and track', d: 'Pick a permit, upload the listed documents, and follow it from one office to the next.' },
+              { t: $tx('lp.start.0.t', 'Create your account'), d: $tx('lp.start.0.d', 'Sign up with your email or mobile number and confirm it with a 6-digit code.') },
+              { t: $tx('lp.start.1.t', 'Verify who you are'), d: $tx('lp.start.1.d', 'Residents upload two proofs of residence. Business owners register their business. City Staff approve it once.') },
+              { t: $tx('lp.start.2.t', 'Apply and track'), d: $tx('lp.start.2.d', 'Pick a permit, upload the listed documents, and follow it from one office to the next.') },
             ]" :key="s.t" class="reveal relative rounded-3xl ring-1 ring-brand-100 bg-meadow/60 p-7" :style="{ transitionDelay: (i * 90) + 'ms' }">
             <span class="text-6xl font-extrabold tracking-tighter text-brand-200 leading-none">0{{ i + 1 }}</span>
             <h3 class="mt-4 text-lg font-bold text-ink-700">{{ s.t }}</h3>
@@ -1470,16 +1549,16 @@ export default {
     <section id="faq" ref="faq" class="scroll-mt-16 py-14 sm:py-20">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-[1fr_1.5fr] gap-10 lg:gap-16">
         <div class="reveal">
-          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">FAQ</span>
-          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">Questions, answered.</h2>
-          <p class="mt-4 text-lg text-slate-600 leading-relaxed">Still wondering? Once you're signed in, the <span class="font-semibold text-ink-700">Ask</span> button answers questions about any permit, any time.</p>
+          <span class="text-xs font-bold uppercase tracking-[0.18em] text-brand-700">{{ $tx('lp.faq.label', 'FAQ') }}</span>
+          <h2 class="mt-3 text-4xl sm:text-5xl font-extrabold tracking-[-0.03em] text-ink-700 leading-[1.05]">{{ $tx('lp.faq.h', 'Questions, answered.') }}</h2>
+          <p class="mt-4 text-lg text-slate-600 leading-relaxed">{{ $tx('lp.faq.p1', "Still wondering? Once you're signed in, the") }} <span class="font-semibold text-ink-700">Ask</span> {{ $tx('lp.faq.p2', 'button answers questions about any permit, any time.') }}</p>
         </div>
         <div class="divide-y divide-brand-100 border-y border-brand-100 reveal">
           <div v-for="(f, i) in faqs" :key="f.q">
             <h3>
               <button type="button" @click="toggleFaq(i)" :aria-expanded="isFaqOpen(i)" :aria-controls="'faq-' + i"
                 class="w-full flex items-center justify-between gap-4 py-5 text-left group">
-                <span class="text-base sm:text-lg font-semibold text-ink-700 group-hover:text-brand-700 transition">{{ f.q }}</span>
+                <span class="text-base sm:text-lg font-semibold text-ink-700 group-hover:text-brand-700 transition">{{ $tx('lp.faq.' + i + '.q', f.q) }}</span>
                 <span class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition"
                   :class="isFaqOpen(i) ? 'bg-ink-700 text-sun-300 rotate-45' : 'bg-white ring-1 ring-brand-200 text-ink-700'">
                   <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -1491,7 +1570,7 @@ export default {
             <transition :css="false" @enter="faqEnter" @leave="faqLeave">
               <div v-show="isFaqOpen(i)" :id="'faq-' + i">
                 <p class="pb-5 pr-12 text-[15px] text-slate-600 leading-relaxed">
-                  {{ f.a }}
+                  {{ $tx('lp.faq.' + i + '.a', f.a) }}
                   <router-link v-if="i === faqs.length - 1" to="/staff/login" class="font-semibold text-brand-700 hover:underline ml-1">Go to the Staff Portal →</router-link>
                 </p>
               </div>
@@ -1505,18 +1584,18 @@ export default {
     <section class="px-4 sm:px-6 pb-14 sm:pb-20">
       <div class="reveal relative max-w-6xl mx-auto overflow-hidden rounded-[32px] pt-gradient-wide px-7 sm:px-14 py-12 sm:py-16 shadow-[0_40px_90px_-40px_rgba(31,122,58,0.8)]">
         <div class="relative max-w-2xl">
-          <p class="text-sm font-semibold text-white/85">Your permit, always in sight.</p>
+          <p class="text-sm font-semibold text-white/85">{{ $tx('lp.cta.p1', 'Your permit, always in sight.') }}</p>
           <h2 class="mt-3 text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-[-0.04em] text-white leading-[0.98]">
-            Online,<br><span class="text-sun-300">not in line.</span>
+            {{ $tx('lp.cta.h1', 'Online,') }}<br><span class="text-sun-300">{{ $tx('lp.cta.h2', 'not in line.') }}</span>
           </h2>
-          <p class="mt-6 text-lg text-white/85 leading-relaxed max-w-lg">Apply from home, track every step, and hear the moment your permit moves.</p>
+          <p class="mt-6 text-lg text-white/85 leading-relaxed max-w-lg">{{ $tx('lp.cta.p2', 'Apply from home, track every step, and hear the moment your permit moves.') }}</p>
           <div class="mt-9 flex flex-wrap gap-3">
             <router-link to="/register"
               class="inline-flex items-center gap-2 text-[15px] font-semibold text-ink-700 bg-sun-300 hover:bg-sun-200 px-6 py-3.5 rounded-2xl transition shadow-[0_16px_32px_-12px_rgba(0,0,0,0.45)]">
-              Create your account
+              {{ $tx('lp.cta.create', 'Create your account') }}
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </router-link>
-            <router-link to="/login" class="inline-flex items-center text-[15px] font-semibold text-white ring-1 ring-white/40 hover:bg-white/10 px-6 py-3.5 rounded-2xl transition">Log in</router-link>
+            <router-link to="/login" class="inline-flex items-center text-[15px] font-semibold text-white ring-1 ring-white/40 hover:bg-white/10 px-6 py-3.5 rounded-2xl transition">{{ $tx('lp.login', 'Log in') }}</router-link>
           </div>
         </div>
       </div>
@@ -1530,23 +1609,23 @@ export default {
             <img src="assets/images/CITY-HALL-LOGO.png" alt="" class="w-9 h-9 object-contain" />
             <span class="leading-tight">
               <span class="block text-[15px] font-bold text-white">PermitTrack</span>
-              <span class="block text-[11px] text-ink-300">City of Dasmariñas</span>
+              <span class="block text-[11px] text-ink-300">{{ $tx('lp.cityOf', 'City of Dasmariñas') }}</span>
             </span>
           </div>
-          <p class="mt-5 text-lg font-semibold text-white max-w-xs leading-snug">Track your permit like a package.</p>
+          <p class="mt-5 text-lg font-semibold text-white max-w-xs leading-snug">{{ $tx('lp.footer.tagline', 'Track your permit like a package.') }}</p>
         </div>
         <div>
-          <h3 class="text-xs font-bold uppercase tracking-[0.16em] text-ink-300">Explore</h3>
+          <h3 class="text-xs font-bold uppercase tracking-[0.16em] text-ink-300">{{ $tx('lp.footer.explore', 'Explore') }}</h3>
           <ul class="mt-4 space-y-2.5 text-sm">
-            <li v-for="l in navLinks" :key="l.id"><button type="button" @click="go(l.id)" class="hover:text-white transition">{{ l.label }}</button></li>
+            <li v-for="l in navLinks" :key="l.id"><button type="button" @click="go(l.id)" class="hover:text-white transition">{{ $tx('lp.nav.' + l.id, l.label) }}</button></li>
           </ul>
         </div>
         <div>
-          <h3 class="text-xs font-bold uppercase tracking-[0.16em] text-ink-300">Account</h3>
+          <h3 class="text-xs font-bold uppercase tracking-[0.16em] text-ink-300">{{ $tx('lp.footer.account', 'Account') }}</h3>
           <ul class="mt-4 space-y-2.5 text-sm">
-            <li><router-link to="/register" class="hover:text-white transition">Create an account</router-link></li>
-            <li><router-link to="/login" class="hover:text-white transition">Log in</router-link></li>
-            <li><router-link to="/staff/login" class="hover:text-white transition">Staff Portal</router-link></li>
+            <li><router-link to="/register" class="hover:text-white transition">{{ $tx('lp.footer.create', 'Create an account') }}</router-link></li>
+            <li><router-link to="/login" class="hover:text-white transition">{{ $tx('lp.login', 'Log in') }}</router-link></li>
+            <li><router-link to="/staff/login" class="hover:text-white transition">{{ $tx('lp.footer.staff', 'Staff Portal') }}</router-link></li>
           </ul>
         </div>
       </div>
@@ -1554,16 +1633,16 @@ export default {
         <!-- Text stays left, and phones get extra room below it: at the very bottom of the page the
              floating "Back to top" rests in the bottom-right corner, and nothing should hide behind it -->
         <div class="max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-24 sm:pb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-ink-300">
-          <span>© {{ year }} City of Dasmariñas · PermitTrack</span>
-          <span class="text-sun-300 font-semibold">Online, not in line.</span>
+          <span>{{ $tx('lp.footer.copy', '© {year} City of Dasmariñas · PermitTrack', { year }) }}</span>
+          <span class="text-sun-300 font-semibold">{{ $tx('lp.footer.slogan', 'Online, not in line.') }}</span>
         </div>
       </div>
     </footer>
 
     <!-- Floating "Back to top": rises into view past the hero, hidden while the mobile menu is open -->
     <transition
-      enter-from-class="opacity-0 translate-y-6" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none"
-      leave-to-class="opacity-0 translate-y-6" leave-active-class="transition duration-200 ease-in motion-reduce:transition-none">
+      enter-from-class="opacity-0 translate-y-6" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+      leave-to-class="opacity-0 translate-y-6" leave-active-class="transition duration-200 ease-in motion-reduce:transition-none motion-reduce:duration-0">
       <button v-if="showFloatingTop && !menuOpen" type="button" @click="toTop" aria-label="Back to top"
         class="group fixed right-4 sm:right-6 bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-6 z-30 inline-flex items-center gap-2.5 bg-ink-700 text-white text-sm font-semibold pl-2 pr-4 sm:pr-5 py-2 rounded-full ring-1 ring-white/10 shadow-[0_18px_40px_-14px_rgba(7,24,14,0.7)] hover:bg-ink-600 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-4 focus-visible:ring-sun-300/50 transition">
         <span class="w-8 h-8 rounded-full bg-sun-300 text-ink-700 flex items-center justify-center shrink-0">
@@ -1572,6 +1651,67 @@ export default {
         Back to top
       </button>
     </transition>
+
+    <!-- Every permit and who can request it: registered citizens, business owners, or both -->
+    <BaseModal v-if="permitsOpen" size="xl" :eyebrow="$tx('lp.permits.modalEyebrow', 'All permits')" :title="$tx('lp.permits.modalTitle', 'Every permit you can request')"
+      :subtitle="$tx('lp.permits.modalSub', 'Some are for registered citizens, some for business owners, and some for both.')" @close="permitsOpen = false">
+      <template #icon>
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+      </template>
+
+      <!-- stays in view while the list scrolls under it -->
+      <div class="sticky top-0 z-10 -mx-1 px-1 pb-3 bg-white flex flex-wrap items-center gap-3">
+        <div class="flex gap-1.5 p-1 rounded-2xl bg-slate-100" role="tablist" aria-label="Who the permit is for">
+          <button v-for="f in [{ key: 'all', label: $tx('lp.permits.all', 'All') }, { key: 'citizen', label: $tx('lp.permits.citizens', 'Registered citizens') }, { key: 'business', label: $tx('lp.permits.owners', 'Business owners') }]" :key="f.key"
+            type="button" role="tab" :aria-selected="catalogFilter === f.key ? 'true' : 'false'" @click="catalogFilter = f.key"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition"
+            :class="catalogFilter === f.key ? 'bg-white text-ink-700 shadow-sm' : 'text-slate-500 hover:text-ink-700'">
+            {{ f.label }}
+            <span v-if="catalog" class="min-w-[1.25rem] h-5 px-1 rounded-full text-[10px] font-bold grid place-items-center"
+              :class="catalogFilter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-white text-slate-500'">{{ catalogCounts[f.key] }}</span>
+          </button>
+        </div>
+        <div class="relative flex-1 min-w-[10rem]">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input v-model="catalogQuery" type="search" :placeholder="$tx('lp.permits.search', 'Search permits')" :aria-label="$tx('lp.permits.search', 'Search permits')"
+            class="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
+        </div>
+      </div>
+
+      <p v-if="catalogLoading" class="py-10 text-center text-sm text-slate-500">{{ $tx('lp.permits.loading', 'Loading permits…') }}</p>
+      <div v-else-if="catalogError" class="py-8 text-center" role="alert">
+        <p class="text-sm font-semibold text-red-700">{{ catalogError }}</p>
+        <button type="button" @click="catalog = null; openPermits()" class="mt-3 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition">{{ $tx('lp.permits.retry', 'Try again') }}</button>
+      </div>
+      <template v-else>
+        <p v-if="!catalogGroups.length" class="py-10 text-center text-sm text-slate-500">{{ $tx('lp.permits.noMatch', 'No permit matches that. Try another word, or switch the filter to All.') }}</p>
+        <section v-for="g in catalogGroups" :key="g.track" class="mt-2 first:mt-0">
+          <h3 class="mt-3 mb-2.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+            {{ $tx('lp.track.' + g.track, g.label) }}
+            <span class="px-1.5 py-0.5 rounded-md bg-slate-100 text-[10px] text-slate-500 tabular-nums">{{ g.permits.length }}</span>
+          </h3>
+          <ul class="grid sm:grid-cols-2 gap-2.5">
+            <li v-for="p in g.permits" :key="p.name" class="rounded-2xl ring-1 ring-brand-100 bg-white p-4 flex flex-col">
+              <span class="font-bold text-ink-700 leading-snug">{{ p.name }}</span>
+              <span v-if="p.description" class="mt-1 text-xs text-slate-500 leading-relaxed">{{ p.description }}</span>
+              <span class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5">
+                <span v-if="p.citizen" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200">{{ $tx('lp.permits.citizens', 'Registered citizens') }}</span>
+                <span v-if="p.business" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-sun-50 text-sun-700 ring-1 ring-inset ring-sun-200">{{ $tx('lp.permits.owners', 'Business owners') }}</span>
+              </span>
+            </li>
+          </ul>
+        </section>
+      </template>
+
+      <template #footer>
+        <p class="text-xs text-slate-500 leading-snug flex-1 min-w-[12rem]">{{ $tx('lp.permits.footer', 'To request one, verify as a resident or add your business. It takes a single free account.') }}</p>
+        <router-link to="/register" @click="permitsOpen = false"
+          class="inline-flex items-center gap-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-5 py-2.5 rounded-xl transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">
+          {{ $tx('lp.permits.create', 'Create a free account') }}
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </router-link>
+      </template>
+    </BaseModal>
 
     <ChatLauncher :visible="faqSeen" :lift-for-fab="showFloatingTop && !menuOpen" />
   </div>

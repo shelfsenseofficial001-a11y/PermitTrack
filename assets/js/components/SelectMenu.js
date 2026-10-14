@@ -109,8 +109,8 @@ export default {
     </button>
 
     <transition
-      enter-from-class="opacity-0 -translate-y-1" enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
-      leave-to-class="opacity-0" leave-active-class="transition duration-100 ease-in motion-reduce:transition-none">
+      enter-from-class="opacity-0 -translate-y-1" enter-active-class="transition duration-150 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+      leave-to-class="opacity-0" leave-active-class="transition duration-100 ease-in motion-reduce:transition-none motion-reduce:duration-0">
       <ul v-if="open" ref="list" role="listbox" :aria-activedescendant="id ? id + '-opt-' + active : undefined"
         class="absolute z-30 left-0 right-0 mt-1.5 max-h-60 overflow-auto rounded-xl bg-white border border-slate-200 shadow-[0_18px_40px_-12px_rgba(16,48,29,0.35)] p-1.5">
         <li v-for="(o, i) in options" :key="o.value" :id="id ? id + '-opt-' + i : undefined"

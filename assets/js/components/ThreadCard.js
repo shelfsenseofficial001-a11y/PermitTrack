@@ -1,5 +1,5 @@
-import { openApplicationThread } from '../store/ui.js?v=142';
-import { timeAgo } from '../util.js?v=142';
+import { openApplicationThread } from '../store/ui.js?v=168';
+import { timeAgo } from '../util.js?v=168';
 
 // Where "Activity & Messages" used to be on a permit. The conversation itself lives in Messages
 // now (the chat panel's thread for this application); this shows the latest thing that happened
@@ -44,7 +44,7 @@ export default {
     </p>
     <div v-if="latest" class="mt-4 rounded-lg bg-slate-50 ring-1 ring-slate-100 px-3 py-2.5">
       <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Latest · {{ timeAgo(latest.created_at) }}</p>
-      <p class="mt-0.5 text-sm text-slate-700 line-clamp-2"><span v-if="latest.type === 'message'" class="font-semibold">{{ latest.sender_name }}: </span>{{ latest.body }}</p>
+      <p class="mt-0.5 text-sm text-slate-700 line-clamp-2"><span v-if="latest.type === 'message'" class="font-semibold">{{ latest.sender_name }}: </span>{{ latest.deleted_at ? $t('msg.removed') : latest.body }}</p>
     </div>
     <div class="mt-auto pt-5">
       <button type="button" @click="open"

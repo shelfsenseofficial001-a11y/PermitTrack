@@ -1,11 +1,11 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=142';
-import AppShell from './AppShell.js?v=142';
-import StatusStepper from './StatusStepper.js?v=142';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel, DELIVERY_STATUS_STEPS, deliveryStatusLabel, formatPeso, DELIVERY_FEE } from '../util.js?v=142';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=142';
-import Loader from './Loader.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import ThreadCard from './ThreadCard.js?v=142';
+import { apiGet, apiPost, apiPostForm, viewUrl } from '../api/client.js?v=168';
+import AppShell from './AppShell.js?v=168';
+import StatusStepper from './StatusStepper.js?v=168';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel, DELIVERY_STATUS_STEPS, deliveryStatusLabel, formatPeso, DELIVERY_FEE } from '../util.js?v=168';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=168';
+import Loader from './Loader.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import ThreadCard from './ThreadCard.js?v=168';
 
 export default {
   name: 'PermitDetail',
@@ -71,7 +71,7 @@ export default {
     permitIconClass,
     formatDate,
     formatDateTime,
-    downloadUrl,
+    viewUrl,
     deliveryStatusLabel,
     formatPeso,
     // `silent` skips the full-page Loader: used after an in-place action (editing, discarding,
@@ -368,7 +368,7 @@ export default {
                 </div>
               </div>
               <div class="flex items-center gap-2 shrink-0">
-                <a v-if="doc.file_path" :href="downloadUrl(doc.id)" class="text-sm font-semibold text-brand-600 hover:underline">View</a>
+                <a v-if="doc.file_path" :href="viewUrl(doc.id)" target="_blank" rel="noopener" class="text-sm font-semibold text-brand-600 hover:underline">View</a>
                 <!-- Anything an office hasn't verified yet can still be swapped: the one a
                      reviewer sent back, one never uploaded, and one simply waiting its turn. -->
                 <label v-if="doc.status === 'Needs Re-upload' || doc.status === 'Missing'"

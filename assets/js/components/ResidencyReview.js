@@ -1,13 +1,14 @@
-import { apiGet, apiPost } from '../api/client.js?v=142';
-import StaffShell from './StaffShell.js?v=142';
-import { formatDate, backButtonClass, backIconClass } from '../util.js?v=142';
-import Loader from './Loader.js?v=142';
-import MaskedValue from './MaskedValue.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=168';
+import StaffShell from './StaffShell.js?v=168';
+import { formatDate, backButtonClass, backIconClass } from '../util.js?v=168';
+import Loader from './Loader.js?v=168';
+import MaskedValue from './MaskedValue.js?v=168';
+import VerifiedBadge from './VerifiedBadge.js?v=168';
 
 export default {
   name: 'ResidencyReview',
   setup: () => ({ backButtonClass, backIconClass }),
-  components: { StaffShell, Loader, MaskedValue },
+  components: { StaffShell, Loader, MaskedValue, VerifiedBadge },
   data() {
     return {
       loading: true,
@@ -103,7 +104,7 @@ export default {
                     <template v-if="proof.issued_on">Issued {{ formatDate(proof.issued_on) }} ({{ proof.age_days }} day(s) old) · </template>{{ proof.original_filename }}
                   </div>
                 </div>
-                <a :href="fileUrl(proof.id)" target="_blank" rel="noopener" class="text-sm font-semibold text-brand-700 hover:underline">Open in new tab ↗</a>
+                <a :href="fileUrl(proof.id) + '&view=1'" target="_blank" rel="noopener" class="text-sm font-semibold text-brand-700 hover:underline">Open in new tab ↗</a>
               </div>
               <div class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
                 <img v-if="isImage(proof)" :src="fileUrl(proof.id)" :alt="proof.doc_type_label" class="w-full max-h-[560px] object-contain" />
@@ -133,8 +134,8 @@ export default {
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Address declared</dt>
                 <dd class="font-semibold text-slate-800">{{ request.address_line }}, Brgy. {{ request.barangay }}, {{ request.city }} {{ request.postal_code }}</dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Date of birth</dt><dd><MaskedValue :value="applicant.birthdate ? formatDate(applicant.birthdate) : ''" label="date of birth" /></dd></div>
-              <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Email</dt><dd class="font-semibold text-slate-800 break-all">{{ applicant.email || '—' }} <span v-if="applicant.email_verified_at" class="text-brand-700">✓</span></dd></div>
-              <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Mobile</dt><dd class="font-semibold text-slate-800">{{ applicant.phone || '—' }} <span v-if="applicant.phone_verified_at" class="text-brand-700">✓</span></dd></div>
+              <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Email</dt><dd class="font-semibold text-slate-800 break-all">{{ applicant.email || '—' }} <VerifiedBadge v-if="applicant.email_verified_at" /></dd></div>
+              <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Mobile</dt><dd class="font-semibold text-slate-800">{{ applicant.phone || '—' }} <VerifiedBadge v-if="applicant.phone_verified_at" /></dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-0.5">Account created</dt><dd class="font-semibold text-slate-800">{{ formatDate(applicant.created_at) }}</dd></div>
             </dl>
           </div>

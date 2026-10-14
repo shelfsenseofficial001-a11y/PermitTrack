@@ -1,12 +1,13 @@
-import { apiGet, apiPost } from '../api/client.js?v=142';
-import StaffShell from './StaffShell.js?v=142';
-import { formatDate } from '../util.js?v=142';
-import Loader from './Loader.js?v=142';
-import MaskedValue from './MaskedValue.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=168';
+import StaffShell from './StaffShell.js?v=168';
+import { formatDate } from '../util.js?v=168';
+import Loader from './Loader.js?v=168';
+import MaskedValue from './MaskedValue.js?v=168';
+import VerifiedBadge from './VerifiedBadge.js?v=168';
 
 export default {
   name: 'BusinessReview',
-  components: { StaffShell, Loader, MaskedValue },
+  components: { StaffShell, Loader, MaskedValue, VerifiedBadge },
   data() {
     return {
       loading: true,
@@ -90,7 +91,7 @@ export default {
                   <div class="font-semibold text-slate-800">{{ doc.label }}</div>
                   <div class="text-sm text-slate-500"><template v-if="doc.id_type_label">{{ doc.id_type_label }} · </template>{{ doc.original_filename }} · uploaded {{ formatDate(doc.uploaded_at) }}</div>
                 </div>
-                <a :href="fileUrl(doc.id)" target="_blank" rel="noopener" class="text-sm font-semibold text-brand-700 hover:underline">Open in new tab ↗</a>
+                <a :href="fileUrl(doc.id) + '&view=1'" target="_blank" rel="noopener" class="text-sm font-semibold text-brand-700 hover:underline">Open in new tab ↗</a>
               </div>
               <div class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
                 <img v-if="doc.mime_type.startsWith('image/')" :src="fileUrl(doc.id)" :alt="doc.label" class="w-full max-h-[560px] object-contain" />
@@ -129,7 +130,7 @@ export default {
             <dl class="space-y-2.5 text-sm">
               <div><dt class="text-slate-400 text-xs font-semibold uppercase">Name (must match the ID)</dt><dd class="font-semibold text-slate-800">{{ owner.full_name }}</dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase">Role</dt><dd class="font-semibold text-slate-800">{{ business.representative_role || (business.is_registered_owner ? 'Registered owner' : '—') }}</dd></div>
-              <div><dt class="text-slate-400 text-xs font-semibold uppercase">Contacts</dt><dd class="font-semibold text-slate-800 break-all">{{ owner.email || '—' }} {{ owner.email_verified_at ? '✓' : '' }} · {{ owner.phone || '—' }} {{ owner.phone_verified_at ? '✓' : '' }}</dd></div>
+              <div><dt class="text-slate-400 text-xs font-semibold uppercase">Contacts</dt><dd class="font-semibold text-slate-800 break-all">{{ owner.email || '—' }} <VerifiedBadge v-if="owner.email_verified_at" /> · {{ owner.phone || '—' }} <VerifiedBadge v-if="owner.phone_verified_at" /></dd></div>
               <div><dt class="text-slate-400 text-xs font-semibold uppercase">Resident status</dt><dd class="font-semibold text-slate-800">{{ owner.resident_status === 'verified' ? 'Verified Resident' : 'Not a verified Resident' }}</dd></div>
             </dl>
           </div>

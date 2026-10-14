@@ -1,11 +1,12 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=142';
-import { authState, logout, signOutPathFor } from './store/auth.js?v=142';
-import { uiState, beginTransition, endTransition } from './store/ui.js?v=142';
-import ChangePasswordModal from './components/ChangePasswordModal.js?v=142';
-import CookieBanner from './components/CookieBanner.js?v=142';
-import BaseModal from './components/BaseModal.js?v=142';
-import LogoMark from './components/LogoMark.js?v=142';
+import { router } from './router/router.js?v=168';
+import { authState, logout, signOutPathFor } from './store/auth.js?v=168';
+import { uiState, beginTransition, endTransition } from './store/ui.js?v=168';
+import ChangePasswordModal from './components/ChangePasswordModal.js?v=168';
+import CookieBanner from './components/CookieBanner.js?v=168';
+import BaseModal from './components/BaseModal.js?v=168';
+import LogoMark from './components/LogoMark.js?v=168';
+import { t, tx } from './store/i18n.js?v=168';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -132,7 +133,12 @@ const App = {
   `,
 };
 
-createApp(App).use(router).mount('#app');
+const app = createApp(App).use(router);
+// $t('key') in any template. It reads the reactive language, so every template using it
+// re-renders the moment the language changes.
+app.config.globalProperties.$t = t;
+app.config.globalProperties.$tx = tx;
+app.mount('#app');
 
 // Arriving from an account switch, the veil came up already (see ui.js). Lift it once the new
 // account's first page is in place underneath.

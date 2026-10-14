@@ -1,6 +1,6 @@
-import BaseModal from './BaseModal.js?v=142';
-import { detectFaceDescriptor, faceDistance, FACE_MATCH_THRESHOLD, detectEyeOpenness, EAR_BLINK_THRESHOLD } from '../faceVerify.js?v=142';
-import { readIdText, looksLikePhilippineGovernmentId } from '../idVerify.js?v=142';
+import BaseModal from './BaseModal.js?v=168';
+import { detectFaceDescriptor, faceDistance, FACE_MATCH_THRESHOLD, detectEyeOpenness, EAR_BLINK_THRESHOLD } from '../faceVerify.js?v=168';
+import { readIdText, looksLikePhilippineGovernmentId } from '../idVerify.js?v=168';
 
 // How often the live video is sampled while watching for a blink.
 const LIVENESS_POLL_MS = 220;

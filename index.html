@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>PermitTrack</title>
-<link rel="icon" href="favicon.ico?v=142" sizes="any" />
-<link rel="icon" type="image/png" href="assets/images/PermitTrackIcon.png?v=142" />
-<link rel="apple-touch-icon" href="assets/images/PermitTrackIcon.png?v=142" />
+<link rel="icon" href="favicon.ico?v=168" sizes="any" />
+<link rel="icon" type="image/png" href="assets/images/PermitTrackIcon.png?v=168" />
+<link rel="apple-touch-icon" href="assets/images/PermitTrackIcon.png?v=168" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
@@ -462,6 +462,11 @@
       linear-gradient(100deg, #1f7a3a 0%, #3f8f3a 28%, #a3d468 58%, #d9f09a 78%, #f7e27a 100%);
   }
 
+  /* pt-flash — the message a reply quotes, lit for a moment after jumping to it */
+  @keyframes pt-flash { 0%, 55% { background-color: rgba(247, 207, 27, .38); } 100% { background-color: transparent; } }
+  .pt-flash { animation: pt-flash 1.6s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .pt-flash { animation-duration: .01s; } }
+
   /* Clickable affordance — a baseline every interactive control gets automatically, on top of
      whatever hover styling a component already defines. Buttons, links and role="button"
      elements get a quick, subtle press (scale down + dim) on :active so every one of them reads
@@ -469,13 +474,19 @@
      faint hover lift so a mouse resting over a control confirms it's live. Disabled controls get
      a not-allowed cursor and dimmed look as a fallback, in case a component forgot to say so itself. */
   button:not(:disabled):not([aria-disabled="true"]), [role="button"]:not([aria-disabled="true"]), a[href] {
-    transition: transform .12s var(--ease-out), filter .12s var(--ease-out);
+    transition: scale .12s var(--ease-out), filter .12s var(--ease-out);
   }
   button:not(:disabled):not([aria-disabled="true"]):hover, [role="button"]:not([aria-disabled="true"]):hover {
     filter: brightness(1.05);
   }
+  /* `scale`, not `transform: scale()`. This rule lands on every control in the app, and plenty of
+     them are *positioned* by a transform (the demo tab's translate-x-full/-translate-y-1/2, menus
+     that spring out of a button). A `transform` declaration here would replace that positioning
+     outright, so pressing one would fling it across the screen — and, since it moves out from
+     under the cursor between mousedown and mouseup, the click would never land. The standalone
+     `scale` property composes with whatever transform the element already carries. */
   button:not(:disabled):not([aria-disabled="true"]):active, [role="button"]:not([aria-disabled="true"]):active, a[href]:active {
-    transform: scale(.97);
+    scale: .97;
     filter: brightness(.96);
   }
   button:disabled, button[aria-disabled="true"], [role="button"][aria-disabled="true"] {
@@ -483,7 +494,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     button:not(:disabled):not([aria-disabled="true"]):active, [role="button"]:not([aria-disabled="true"]):active, a[href]:active {
-      transform: none;
+      scale: none;
     }
   }
 </style>
@@ -499,6 +510,6 @@
 </head>
 <body class="bg-meadow text-slate-900">
   <div id="app" v-cloak></div>
-  <script type="module" src="assets/js/app.js?v=142"></script>
+  <script type="module" src="assets/js/app.js?v=168"></script>
 </body>
 </html>

@@ -1,10 +1,10 @@
-import { apiGet, apiPost, apiPostForm, downloadUrl } from '../api/client.js?v=142';
-import StatusStepper from './StatusStepper.js?v=142';
-import PipelineStepper from './PipelineStepper.js?v=142';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=142';
-import Loader from './Loader.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import ThreadCard from './ThreadCard.js?v=142';
+import { apiGet, apiPost, apiPostForm, viewUrl } from '../api/client.js?v=168';
+import StatusStepper from './StatusStepper.js?v=168';
+import PipelineStepper from './PipelineStepper.js?v=168';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, UPLOAD_ACCEPT, uploadTypeError , permitLabel} from '../util.js?v=168';
+import Loader from './Loader.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import ThreadCard from './ThreadCard.js?v=168';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php and the new-application form.
 const MAX_UPLOAD_MB = 5;
@@ -83,7 +83,7 @@ export default {
     permitIconClass,
     formatDate,
     formatDateTime,
-    downloadUrl,
+    viewUrl,
     // Only construction and business permits carry an address; the rest store 'N/A', so the
     // address field is left out of the edit form for them. Matches $needsAddress in applications.php.
     hasEditableAddress(app) {
@@ -361,7 +361,7 @@ export default {
                   </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
-                  <a v-if="doc.file_path" :href="downloadUrl(doc.id)" class="text-sm font-semibold text-brand-600 hover:underline">View</a>
+                  <a v-if="doc.file_path" :href="viewUrl(doc.id)" target="_blank" rel="noopener" class="text-sm font-semibold text-brand-600 hover:underline">View</a>
                   <!-- A flagged or missing document can always be supplied. While the application
                        is still editable, an already-uploaded one can be swapped out too. -->
                   <label v-if="doc.status === 'Needs Re-upload' || doc.status === 'Missing' || app.editable"

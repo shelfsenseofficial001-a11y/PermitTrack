@@ -43,3 +43,9 @@ export function apiPostForm(path, formData) {
 export function downloadUrl(docId) {
   return `${BASE}/documents.php?action=download&id=${docId}`;
 }
+
+// Where "View" on a document goes: the file inside a page that is named for it and carries the
+// PermitTrack icon (api/lib/support.php send_file_viewer). downloadUrl is the bare file.
+export function viewUrl(docId) {
+  return `${BASE}/documents.php?action=download&id=${docId}&view=1`;
+}

@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { apiGet } from '../api/client.js?v=142';
+import { apiGet } from '../api/client.js?v=168';
 
 /**
  * The account picker: the accounts this install can be signed in as, grouped by level, filling
@@ -57,6 +57,9 @@ const DemoAccountList = {
     // Levels this form cannot sign in are shown with a note instead of silently filling a field
     // that will be refused. The modal passes false and they are left out altogether.
     showOtherPortals: { type: Boolean, default: true },
+    // Keep the search box at the top of its scrolling container while the list moves under it.
+    // For the side panel, whose scroll area has 0.75rem of padding the box has to reach past.
+    stickySearch: Boolean,
   },
   emits: ['pick'],
   data() {
@@ -117,7 +120,11 @@ const DemoAccountList = {
   },
   template: `
   <div>
-    <div v-if="offered.length" class="relative mb-3">
+    <!-- Sticky inside the side panel's scroll area, which has 0.75rem of padding: -mt-3 pulls the box up
+         over that padding and pt-3 puts the space back inside it, so it starts where it always did.
+         -top-3 does the same for the stuck position (sticky measures from inside the padding, so
+         top-0 would pin it 0.75rem down), leaving no list showing above it once stuck. -->
+    <div v-if="offered.length" class="relative" :class="stickySearch ? 'sticky -top-3 z-10 -mt-3 pt-3 pb-3 bg-white' : 'mb-3'">
       <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input v-model="query" type="search" placeholder="Search name, email or office"
         aria-label="Search demo accounts"
@@ -178,6 +185,10 @@ export default {
     portal: { type: String, default: 'resident' },
     // 'tab' hangs off the sign-in card; 'inline' sits in the flow of a form already on screen.
     variant: { type: String, default: 'tab' },
+    // Offer only the accounts this form can sign in. The tab normally lists everything and routes
+    // a pick from the other portal to its own page; inside a dialog (Add account) there is no page
+    // to route away from, so it is limited like the inline variant is.
+    sameLevelOnly: Boolean,
   },
   emits: ['fill'],
   data() {
@@ -195,14 +206,31 @@ export default {
     // Inline sits inside a single form with nowhere to send a pick it cannot sign in, so it
     // offers only its own levels. The tab can route to the other page, so it shows everything.
     showOtherPortals() {
-      return this.variant !== 'inline';
+      return this.variant !== 'inline' && !this.sameLevelOnly;
+    },
+  },
+  watch: {
+    // While the panel is out, Escape closes it. Listening in the capture phase and marking the event
+    // handled lets a dialog underneath (BaseModal) see it was spoken for and stay open.
+    open(isOpen) {
+      if (isOpen) document.addEventListener('keydown', this.onEscape, true);
+      else document.removeEventListener('keydown', this.onEscape, true);
     },
   },
   mounted() {
     // The tab loads when it is opened; inline is part of the form, so it is ready up front.
     if (this.variant === 'inline') this.load();
   },
+  beforeUnmount() {
+    document.removeEventListener('keydown', this.onEscape, true);
+  },
   methods: {
+    onEscape(e) {
+      if (e.key === 'Escape' && this.open && this.variant !== 'inline') {
+        e.preventDefault();
+        this.open = false;
+      }
+    },
     toggle() {
       this.open = !this.open;
       if (this.open && !this.loaded && !this.loading) this.load();
@@ -235,7 +263,13 @@ export default {
     },
   },
   template: `
-  <div v-if="enabled">
+  <div v-if="enabled" class="contents">
+    <!-- class="contents": this wrapper must not become a layout box of its own. As the 'tab'
+         variant it lands in AuthLayout's #edge slot as a third child of a 2-column grid — a plain
+         block box there gets auto-placed into a new implicit row, which steals height from row 1
+         (the card has an explicit height) and leaves a dead strip at the bottom of the card. Its
+         own children are already position: fixed/absolute, so flattening it out of the box model
+         doesn't move them. -->
     <!-- Inline: a disclosure inside the form it fills. -->
     <div v-if="variant === 'inline'" class="rounded-2xl ring-1 ring-brand-200 bg-brand-50/50 overflow-hidden">
       <button type="button" @click="open = !open" :aria-expanded="open ? 'true' : 'false'"
@@ -264,29 +298,38 @@ export default {
     </div>
 
     <template v-else>
-      <!-- Hangs off the card's right edge, square where it meets the card so it reads as attached.
-           Hidden while the panel is out, since the panel covers that edge on a narrow screen. -->
+      <!-- Hangs off the card's right edge, square where it meets the card so it reads as attached —
+           from sm up, where translate-x-full pushes it outside the card and it can't overlap
+           anything inside. Below sm the card is full-width and can run taller than the viewport,
+           so centering on the *card* would park the tab on top of whatever form field happens to
+           sit at the card's vertical middle; pinned to the viewport corner instead, like the chat
+           launcher. Hidden while the panel is out, since the panel covers that edge on a narrow screen. -->
       <button v-show="!open" type="button" @click="toggle"
         :aria-expanded="open ? 'true' : 'false'" aria-controls="demo-accounts-panel"
         aria-label="Show demo accounts"
-        class="absolute top-1/2 -translate-y-1/2 right-0 sm:translate-x-full z-30 flex flex-col items-center gap-2 py-5 px-1.5 rounded-l-2xl sm:rounded-l-none sm:rounded-r-2xl bg-brand-600 text-white shadow-[0_10px_30px_-10px_rgba(16,48,29,0.65)] hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 transition-colors duration-200 motion-reduce:transition-none">
+        class="fixed right-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom))] sm:absolute sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:right-0 sm:translate-x-full z-30 flex flex-col items-center gap-2 py-5 px-1.5 rounded-l-2xl sm:rounded-l-none sm:rounded-r-2xl bg-brand-600 text-white shadow-[0_10px_30px_-10px_rgba(16,48,29,0.65)] hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 transition-colors duration-200 motion-reduce:transition-none">
         <span class="text-[10px] font-bold uppercase tracking-[0.2em] [writing-mode:vertical-rl]">Demo</span>
         <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="m9 18 6-6-6-6"/>
         </svg>
       </button>
 
+      <!-- The backdrop and panel live on <body>, not here: when this is the tab on a dialog (Add account),
+           an ancestor that is animating or transformed would become the box that position: fixed
+           measures from, and the panel would slide in relative to the dialog instead of the screen.
+           z-[65]/z-[70] put them above a dialog (z-[60]) as well as the page. -->
+      <Teleport to="body">
       <transition enter-from-class="opacity-0" leave-to-class="opacity-0"
-        enter-active-class="transition-opacity duration-300 motion-reduce:transition-none"
-        leave-active-class="transition-opacity duration-200 motion-reduce:transition-none">
-        <div v-if="open" @click="open = false" class="fixed inset-0 z-40 bg-ink-900/25 backdrop-blur-[1px]"></div>
+        enter-active-class="transition-opacity duration-300 motion-reduce:transition-none motion-reduce:duration-0"
+        leave-active-class="transition-opacity duration-200 motion-reduce:transition-none motion-reduce:duration-0">
+        <div v-if="open" @click="open = false" class="fixed inset-0 z-[65] bg-ink-900/25 backdrop-blur-[1px]"></div>
       </transition>
 
       <transition enter-from-class="translate-x-full" leave-to-class="translate-x-full"
-        enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none"
-        leave-active-class="transition-transform duration-200 ease-in motion-reduce:transition-none">
+        enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+        leave-active-class="transition-transform duration-200 ease-in motion-reduce:transition-none motion-reduce:duration-0">
         <aside v-if="open" id="demo-accounts-panel"
-          class="fixed inset-y-0 right-0 z-50 w-[22rem] max-w-[88vw] bg-white shadow-[0_0_60px_-12px_rgba(16,48,29,0.45)] flex flex-col">
+          class="font-inter fixed inset-y-0 right-0 z-[70] w-[22rem] max-w-[88vw] bg-white shadow-[0_0_60px_-12px_rgba(16,48,29,0.45)] flex flex-col">
 
           <div class="px-5 pt-5 pb-4 border-b border-ink-100">
             <div class="flex items-start justify-between gap-3">
@@ -307,10 +350,11 @@ export default {
 
           <div class="flex-1 overflow-y-auto px-3 py-3">
             <DemoAccountList :groups="groups" :portal="portal" :loading="loading" :error="error"
-              :show-other-portals="showOtherPortals" @pick="pick" />
+              :show-other-portals="showOtherPortals" sticky-search @pick="pick" />
           </div>
         </aside>
       </transition>
+      </Teleport>
     </template>
   </div>
   `,

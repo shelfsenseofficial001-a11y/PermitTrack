@@ -1,10 +1,11 @@
-import { apiGet, apiPost } from '../api/client.js?v=142';
-import { authState } from '../store/auth.js?v=142';
-import { uiState } from '../store/ui.js?v=142';
-import { timeAgo } from '../util.js?v=142';
-import ChatWidget from './ChatWidget.js?v=142';
-import GibsPeek from './GibsPeek.js?v=142';
-import LogoMark from './LogoMark.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=168';
+import { authState } from '../store/auth.js?v=168';
+import { uiState } from '../store/ui.js?v=168';
+import { timeAgo } from '../util.js?v=168';
+import ChatWidget from './ChatWidget.js?v=168';
+import GibsPeek from './GibsPeek.js?v=168';
+import LogoMark from './LogoMark.js?v=168';
+import MessageThread from './MessageThread.js?v=168';
 
 /**
  * The one chat button in the corner. It opens a panel with three tabs:
@@ -34,7 +35,7 @@ function gibsHiddenPref() {
 
 export default {
   name: 'ChatLauncher',
-  components: { ChatWidget, GibsPeek, LogoMark },
+  components: { ChatWidget, GibsPeek, LogoMark, MessageThread },
   props: {
     // The landing page holds the button back until its FAQ is on screen; everywhere else it is
     // simply there. Once shown it stays, so an open conversation never vanishes on a scroll.
@@ -66,7 +67,6 @@ export default {
       thread: null,
       messages: [],
       threadLoading: false,
-      reply: '',
       // Help
       faqs: [],
       faqsLoaded: false,
@@ -247,7 +247,6 @@ export default {
       this.tab = 'messages';
       this.view = 'thread';
       this.error = '';
-      this.reply = '';
       this.threadLoading = !this.thread || this.thread.id !== id;
       await this.fetchThread(id);
       this.threadLoading = false;
@@ -256,7 +255,7 @@ export default {
       this.threadTimer = setInterval(() => {
         if (document.visibilityState === 'visible' && this.view === 'thread' && this.thread) this.fetchThread(this.thread.id, true);
       }, THREAD_POLL_MS);
-      this.$nextTick(() => this.$refs.reply && this.$refs.reply.focus());
+      this.$nextTick(() => this.$refs.msgThread && this.$refs.msgThread.focus());
     },
     // A permit page's "Open in Messages": find (or make) that application's thread and open it.
     async openApplication(applicationId) {
@@ -305,28 +304,14 @@ export default {
       this.messages = [];
       this.loadList();
     },
-    async sendReply() {
-      const message = this.reply.trim();
-      if (!message || this.sending || !this.thread) return;
-      this.sending = true;
-      this.error = '';
-      try {
-        await apiPost('conversations.php?action=send', { id: this.thread.id, message });
-        this.reply = '';
-        await this.fetchThread(this.thread.id);
-        this.scrollThread();
-      } catch (e) {
-        this.error = e.message;
-      } finally {
-        this.sending = false;
-        this.$nextTick(() => this.$refs.reply && this.$refs.reply.focus());
-      }
+    // MessageThread sent, edited or removed something: take the server's version of the thread
+    async onChanged({ scroll }) {
+      if (!this.thread) return;
+      await this.fetchThread(this.thread.id);
+      if (scroll) this.scrollThread();
     },
     scrollThread() {
-      this.$nextTick(() => {
-        const el = this.$refs.threadLog;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
+      this.$nextTick(() => this.$refs.msgThread && this.$refs.msgThread.scrollToBottom());
     },
 
     // ---- help
@@ -366,8 +351,8 @@ export default {
     <GibsPeek v-if="visible && !gibsHidden" :suppressed="open" :lift-for-fab="liftForFab" :lift-for-bar="liftForBar" @open="open = true" />
 
     <!-- The button. It pops in rather than fading, so arriving with the FAQ reads as an offer. -->
-    <transition enter-from-class="opacity-0 scale-50 translate-y-3" enter-active-class="transition duration-500 ease-[cubic-bezier(.34,1.56,.64,1)] motion-reduce:transition-none"
-      leave-to-class="opacity-0 scale-75" leave-active-class="transition duration-200 motion-reduce:transition-none">
+    <transition enter-from-class="opacity-0 scale-50 translate-y-3" enter-active-class="transition duration-500 ease-[cubic-bezier(.34,1.56,.64,1)] motion-reduce:transition-none motion-reduce:duration-0"
+      leave-to-class="opacity-0 scale-75" leave-active-class="transition duration-200 motion-reduce:transition-none motion-reduce:duration-0">
       <button v-if="visible" ref="fab" type="button" @click="toggle" :aria-expanded="open ? 'true' : 'false'"
         :aria-label="open ? 'Close help and messages' : (unread ? 'Help and messages, ' + unread + ' unread' : 'Help and messages')"
         class="fixed right-5 z-40 w-14 h-14 rounded-full bg-brand-600 text-white place-items-center shadow-[0_14px_30px_-10px_rgba(16,48,29,0.65)] hover:bg-brand-700 active:scale-95 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-300 transition"
@@ -383,8 +368,8 @@ export default {
     </transition>
 
     <!-- The panel: whole screen on phones; from md up it rises out of the button in the corner. -->
-    <transition enter-from-class="opacity-0 md:translate-y-4 md:scale-[0.96]" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none"
-      leave-to-class="opacity-0 md:translate-y-3 md:scale-[0.97]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none">
+    <transition enter-from-class="opacity-0 md:translate-y-4 md:scale-[0.96]" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+      leave-to-class="opacity-0 md:translate-y-3 md:scale-[0.97]" leave-active-class="transition duration-150 ease-in motion-reduce:transition-none motion-reduce:duration-0">
       <section v-if="open" role="dialog" aria-modal="false" aria-label="Help and messages"
         class="font-inter fixed z-50 inset-0 md:inset-auto md:right-5 md:w-[390px] md:h-[min(660px,calc(100vh-8rem))] md:origin-bottom-right flex flex-col bg-white md:rounded-[28px] overflow-hidden shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)] ring-1 ring-black/5"
         :class="liftForBar ? 'md:bottom-[10.5rem]' : (liftForFab ? 'md:bottom-[9.75rem]' : 'md:bottom-24')">
@@ -631,49 +616,24 @@ export default {
 
           <!-- a thread -->
           <template v-else-if="view === 'thread'">
-            <div ref="threadLog" class="pt-tab-in flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-soft px-4 py-4 bg-meadow/40" aria-live="polite">
-              <div v-if="threadLoading" class="py-10 grid place-items-center"><LogoMark animated class="w-9 h-9" /></div>
-              <template v-else>
-              <div v-if="thread && thread.application_id" class="pt-rise-in mb-4 flex items-center gap-3 rounded-2xl bg-white ring-1 ring-ink-100 p-3 shadow-[0_8px_20px_-16px_rgba(16,48,29,0.5)]">
-                <span class="shrink-0 w-9 h-9 rounded-xl bg-sun-100 text-sun-700 grid place-items-center">
-                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-sm font-bold text-ink-700 truncate">{{ thread.subject }}</span>
-                  <span class="block text-[11px] text-slate-500 truncate">Application #{{ thread.application_id }} · {{ thread.application_status }}</span>
-                </span>
-                <button type="button" @click="openApplicationPage" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 ring-1 ring-brand-100 hover:bg-brand-100 transition">View</button>
-              </div>
-              <transition-group name="list" tag="div" class="relative space-y-2.5">
-                <div v-for="m in messages" :key="m.id" :class="m.kind === 'event' ? 'flex justify-center py-0.5' : (m.mine ? 'flex flex-col items-end' : 'flex flex-col items-start')">
-                  <p v-if="m.kind === 'event'" class="max-w-[92%] text-center text-[11px] leading-snug text-slate-500 bg-white/80 ring-1 ring-ink-100 rounded-xl px-3 py-1.5">
-                    {{ m.body }} <span class="text-slate-400">· {{ timeAgo(m.created_at) }}</span>
-                  </p>
-                  <template v-else>
-                  <span v-if="!m.mine" class="px-1 mb-0.5 text-[11px] font-semibold text-slate-500">{{ m.sender_name }}</span>
-                  <div class="max-w-[85%] px-3.5 py-2 text-sm whitespace-pre-line break-words"
-                    :class="m.mine ? 'rounded-2xl rounded-br-md bg-brand-600 text-white' : 'rounded-2xl rounded-bl-md bg-white ring-1 ring-brand-100 text-slate-700 shadow-[0_6px_16px_-12px_rgba(16,48,29,0.35)]'">{{ m.body }}</div>
-                  <span class="px-1 mt-0.5 text-[10px] text-slate-400">{{ timeAgo(m.created_at) }}</span>
-                  </template>
+            <MessageThread v-if="thread" ref="msgThread" :key="thread.id" class="pt-tab-in" :thread="thread" :messages="messages" variant="applicant"
+              :loading="threadLoading" :placeholder="$t('msg.applicantPlaceholder')" :hint="$t('msg.applicantHint')" :error="error"
+              enter-to-send icon-button @changed="onChanged">
+              <template #top>
+                <div v-if="thread.application_id" class="pt-rise-in mb-4 flex items-center gap-3 rounded-2xl bg-white ring-1 ring-ink-100 p-3 shadow-[0_8px_20px_-16px_rgba(16,48,29,0.5)]">
+                  <span class="shrink-0 w-9 h-9 rounded-xl bg-sun-100 text-sun-700 grid place-items-center">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-sm font-bold text-ink-700 truncate">{{ thread.subject }}</span>
+                    <span class="block text-[11px] text-slate-500 truncate">Application #{{ thread.application_id }} · {{ thread.application_status }}</span>
+                  </span>
+                  <button type="button" @click="openApplicationPage" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 ring-1 ring-brand-100 hover:bg-brand-100 transition">View</button>
                 </div>
-              </transition-group>
               </template>
-            </div>
-            <form @submit.prevent="sendReply" class="shrink-0 border-t border-slate-100 bg-white p-3">
-              <p v-if="error" class="mb-2 text-sm text-red-600" role="alert">{{ error }}</p>
-              <div class="flex items-end gap-2">
-                <label for="chat-reply" class="sr-only">Reply</label>
-                <textarea id="chat-reply" ref="reply" v-model="reply" rows="1" maxlength="2000" placeholder="Write a reply…"
-                  class="flex-1 min-w-0 max-h-32 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-600/15"
-                  @keydown.enter.exact.prevent="sendReply"></textarea>
-                <button type="submit" :disabled="sending || !reply.trim()" aria-label="Send reply"
-                  class="shrink-0 w-11 h-11 rounded-xl bg-brand-600 text-white grid place-items-center hover:bg-brand-700 disabled:opacity-50 transition">
-                  <LogoMark v-if="sending" animated color="currentColor" class="w-5 h-5" />
-                  <svg v-else class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6l.1 6.5L15 12 3.5 13.9z"/></svg>
-                </button>
-              </div>
-              <p class="mt-1.5 text-[10px] text-slate-400">Enter to send · Shift + Enter for a new line</p>
-            </form>
+            </MessageThread>
+            <!-- opening a thread: nothing loaded yet to hang the messages on -->
+            <div v-else class="flex-1 min-h-0 grid place-items-center bg-meadow/40"><LogoMark animated class="w-9 h-9" /></div>
           </template>
         </div>
 

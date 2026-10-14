@@ -59,11 +59,11 @@ function staff_on_application(array $user, int $applicationId): bool
  * other side's turn, and the sender has read everything above it. Runs inside the caller's
  * transaction when there is one.
  */
-function post_application_message(int $applicationId, int $applicantId, int $senderId, string $body): void
+function post_application_message(int $applicationId, int $applicantId, int $senderId, string $body, ?int $replyToId = null): void
 {
     $pdo = db();
-    $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'message', 'message', ?)")
-        ->execute([$applicationId, $senderId, $body]);
+    $pdo->prepare("INSERT INTO application_activity (application_id, sender_id, type, event, body, reply_to_id) VALUES (?, ?, 'message', 'message', ?, ?)")
+        ->execute([$applicationId, $senderId, $body, $replyToId]);
     if (application_thread_id($applicationId) === null) {
         return;
     }

@@ -1,12 +1,15 @@
-import { authState } from '../store/auth.js?v=142';
-import { apiGet } from '../api/client.js?v=142';
-import { openChangePassword, askSignOut } from '../store/ui.js?v=142';
+import { authState } from '../store/auth.js?v=168';
+import { apiGet } from '../api/client.js?v=168';
+import { openChangePassword, askSignOut } from '../store/ui.js?v=168';
+import { t } from '../store/i18n.js?v=168';
+import LanguageSelect from './LanguageSelect.js?v=168';
 
 // How often the Messages badge checks for new questions from applicants
 const MESSAGES_POLL_MS = 30000;
 
 export default {
   name: 'StaffShell',
+  components: { LanguageSelect },
   data() {
     return { authState, pendingResidency: 0, pendingBusinesses: 0, unreadMessages: 0, menuOpen: false };
   },
@@ -24,12 +27,12 @@ export default {
     trayTabs() {
       const p = this.$route.path;
       const tabs = [
-        { key: 'queue', to: '/reviewer', label: 'Permits', active: p.startsWith('/reviewer') },
-        { key: 'residents', to: '/staff/residency', label: 'Residents', badge: this.pendingResidency, active: p.startsWith('/staff/residency') },
-        { key: 'businesses', to: '/staff/businesses', label: 'Businesses', badge: this.pendingBusinesses, active: p.startsWith('/staff/businesses') },
-        { key: 'messages', to: '/staff/messages', label: 'Messages', badge: this.unreadMessages, active: p.startsWith('/staff/messages') },
+        { key: 'queue', to: '/reviewer', label: t('nav.permits'), active: p.startsWith('/reviewer') },
+        { key: 'residents', to: '/staff/residency', label: t('nav.residents'), badge: this.pendingResidency, active: p.startsWith('/staff/residency') },
+        { key: 'businesses', to: '/staff/businesses', label: t('nav.businesses'), badge: this.pendingBusinesses, active: p.startsWith('/staff/businesses') },
+        { key: 'messages', to: '/staff/messages', label: t('nav.messages'), badge: this.unreadMessages, active: p.startsWith('/staff/messages') },
       ];
-      if (this.isAdmin) tabs.push({ key: 'admin', to: '/admin', label: 'Admin', active: p.startsWith('/admin') });
+      if (this.isAdmin) tabs.push({ key: 'admin', to: '/admin', label: t('nav.admin'), active: p.startsWith('/admin') });
       return tabs;
     },
   },
@@ -84,26 +87,28 @@ export default {
             <img src="assets/images/CITY-HALL-LOGO.png" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
-              <div class="text-[11px] text-ink-300 tracking-wide">{{ authState.user && authState.user.role === 'admin' ? 'ADMIN · STAFF PORTAL' : 'STAFF PORTAL' }}</div>
+              <div class="text-[11px] text-ink-300 tracking-wide">{{ authState.user && authState.user.role === 'admin' ? $t('shell.adminPortal') : $t('shell.portal') }}</div>
             </div>
           </router-link>
           <nav class="hidden md:flex items-center gap-5 text-sm font-medium whitespace-nowrap">
-            <router-link to="/reviewer" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">Permits</router-link>
-            <router-link to="/staff/residency" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" title="Resident Verifications">
-              Residents
-              <span v-if="pendingResidency" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="pendingResidency + ' waiting'">{{ pendingResidency }}</span>
+            <router-link to="/reviewer" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">{{ $t('nav.permits') }}</router-link>
+            <router-link to="/staff/residency" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" :title="$t('nav.residentsTitle')">
+              {{ $t('nav.residents') }}
+              <span v-if="pendingResidency" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="$t('shell.waiting', { n: pendingResidency })">{{ pendingResidency }}</span>
             </router-link>
-            <router-link v-if="authState.user && authState.user.role === 'admin'" to="/admin" class="text-ink-200 hover:text-white transition order-last" active-class="!text-sun-300">Admin</router-link>
-            <router-link to="/staff/businesses" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" title="Business Verifications">
-              Businesses
-              <span v-if="pendingBusinesses" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="pendingBusinesses + ' waiting'">{{ pendingBusinesses }}</span>
+            <router-link v-if="authState.user && authState.user.role === 'admin'" to="/admin" class="text-ink-200 hover:text-white transition order-last" active-class="!text-sun-300">{{ $t('nav.admin') }}</router-link>
+            <router-link to="/staff/businesses" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" :title="$t('nav.businessesTitle')">
+              {{ $t('nav.businesses') }}
+              <span v-if="pendingBusinesses" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="$t('shell.waiting', { n: pendingBusinesses })">{{ pendingBusinesses }}</span>
             </router-link>
-            <router-link to="/staff/messages" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" title="Messages from applicants">
-              Messages
-              <span v-if="unreadMessages" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="unreadMessages + ' unread'">{{ unreadMessages }}</span>
+            <router-link to="/staff/messages" class="inline-flex items-center gap-1.5 text-ink-200 hover:text-white transition" active-class="!text-sun-300" :title="$t('nav.messagesTitle')">
+              {{ $t('nav.messages') }}
+              <span v-if="unreadMessages" class="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-sun-400 text-ink-700 text-[11px] font-bold inline-flex items-center justify-center" :aria-label="$t('shell.unread', { n: unreadMessages })">{{ unreadMessages }}</span>
             </router-link>
           </nav>
         </div>
+        <div class="flex items-center gap-1 sm:gap-2">
+        <LanguageSelect />
         <!-- Account menu, the same one residents have -->
         <div ref="menu" class="relative">
           <button type="button" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen" aria-haspopup="menu"
@@ -120,21 +125,22 @@ export default {
               <div class="font-semibold text-white truncate">{{ authState.user && authState.user.full_name }}</div>
               <div class="text-xs text-ink-300 truncate">{{ authState.user && (authState.user.email || authState.user.phone) }}</div>
               <div class="flex flex-wrap gap-1 mt-2">
-                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sun-300 text-ink-700">{{ isAdmin ? 'Admin' : 'City Staff' }}</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sun-300 text-ink-700">{{ isAdmin ? $t('shell.roleAdmin') : $t('shell.roleStaff') }}</span>
                 <span v-if="authState.user && authState.user.department_name" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-ink-200 truncate max-w-full">{{ authState.user.department_name }}</span>
               </div>
             </div>
             <button type="button" role="menuitem" @click="menuOpen = false; openChangePassword()" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
               <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Change password
+              {{ $t('shell.changePassword') }}
             </button>
             <div class="h-px bg-white/10 my-1"></div>
             <button type="button" role="menuitem" @click="doLogout" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-red-300 hover:bg-red-500/15">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-              Sign out
+              {{ $t('shell.signOut') }}
             </button>
           </div>
           </transition>
+        </div>
         </div>
       </div>
     </header>
@@ -163,7 +169,7 @@ export default {
             <!-- Admin -->
             <svg v-else class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
             <span v-if="t.badge" class="absolute top-0 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-sun-400 text-ink-700 text-[10px] font-bold flex items-center justify-center ring-2 ring-ink-700"
-              :aria-label="t.badge + ' waiting'">{{ t.badge > 9 ? '9+' : t.badge }}</span>
+              :aria-label="$t('shell.waiting', { n: t.badge })">{{ t.badge > 9 ? '9+' : t.badge }}</span>
           </span>
           <span class="text-[11px] font-semibold leading-none">{{ t.label }}</span>
         </router-link>

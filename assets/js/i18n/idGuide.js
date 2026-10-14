@@ -1,0 +1,100 @@
+// The Get an ID guide (components/IdGuide.js) in Tagalog. Same shape as the English entries there,
+// keyed by the ID's key; a field left out falls back to the English one. Steps are matched by
+// position, so keep the same number of steps and bring-items as the English.
+
+export const TL_IDS = {
+  philsys: {
+    cost: 'Libre',
+    where: 'Isang registration center ng PSA na malapit sa iyo',
+    summary: 'Ang pambansang ID para sa bawat Pilipino at dayuhang residente. Isang rehistro lang ang magbibigay sa iyo ng PhilSys Number at card na tinatanggap bilang patunay ng pagkakakilanlan sa buong bansa.',
+    steps: [
+      { title: 'Simulan ang iyong rehistrasyon', text: 'Punan ang iyong mga detalye — pangalan, petsa ng kapanganakan, address — online, o sa registration center. Ito ang “Step 1” ng PhilSys registration.', tip: 'Isulat ang pangalan mo nang eksakto kung paano ito nakasulat sa iyong PSA birth certificate.' },
+      { title: 'Pumili ng center at petsa', text: 'Piliin ang registration center na pinakamalapit sa iyo at mag-book ng iskedyul para sa susunod na hakbang. May mga center na tumatanggap ng walk-in, pero mas mabilis kung may booking.' },
+      { title: 'Dalhin ang iyong mga papeles', text: 'Dalhin ang kumpirmasyon ng iyong rehistrasyon at isang orihinal na ID o ang iyong PSA birth certificate bilang patunay kung sino ka.', tip: 'Magdala ng orihinal, at isang photocopy kung sakaling hingin ito ng center.' },
+      { title: 'Ipakuha ang iyong biometrics', text: 'Ini-scan ng center ang iyong fingerprints at irises at kumukuha ng larawan mo na nakaharap. Ito ang “Step 2”.', tip: 'Tanggalin ang salamin at sombrero, at itali ang buhok na tumatakip sa mukha.' },
+      { title: 'Tanggapin ang iyong card', text: 'Agad na ibibigay sa iyo ang iyong PhilSys Number. Ang naka-print na card ay idedeliver sa iyong address ng PHLPost, at maaaring mas maaga mong makuha ang digital na ePhilID.' },
+    ],
+    bring: ['Kumpirmasyon o slip ng rehistrasyon', 'PSA birth certificate, o ibang orihinal na ID', 'Ang iyong kasalukuyang address'],
+  },
+  umid: {
+    agency: 'SSS, GSIS o Pag-IBIG',
+    cost: 'Karaniwang libre — kumpirmahin sa inyong ahensya',
+    where: 'Isang sangay ng ahensyang kinabibilangan mo',
+    summary: 'Ang Unified Multi-Purpose ID, na ibinibigay sa mga miyembro ng SSS, GSIS at Pag-IBIG. Isang card lang ang may dala ng member number mo at tinatanggap bilang government photo ID.',
+    steps: [
+      { title: 'Maging miyembro', text: 'Para sa mga miyembro ang UMID, kaya kailangan mo muna ng umiiral na membership sa SSS, GSIS o Pag-IBIG at ng iyong member number. Kung wala ka pa, magrehistro sa ahensya.' },
+      { title: 'Tiyaking bukas ito, saka mag-book', text: 'Mula nang ilunsad ang National ID, limitado na ang mga bagong aplikasyon para sa UMID card. Itanong sa iyong ahensya — sa website nila o sa sangay — kung tumatanggap pa sila, saka mag-book ng appointment.', tip: 'Kung hindi ito available, ang PhilID ang pinakamabilis na paraan para magkaroon ng government photo ID ngayon.' },
+      { title: 'Ihanda ang iyong mga dokumento', text: 'Dalhin ang iyong member number at kahit isang valid ID o supporting document, at ang UMID application form kung hihingin ito ng sangay.' },
+      { title: 'Ipakuha ang larawan at fingerprints mo', text: 'Sa sangay, kukunan ang iyong larawan, pirma at fingerprints para sa card.' },
+      { title: 'Kunin ang iyong card', text: 'Kapag naproseso na, ibibigay ang card sa sangay o idedeliver sa iyo. Itago ang iyong claim stub o resibo hanggang makuha mo ito.' },
+    ],
+    bring: ['Member number ng SSS, GSIS o Pag-IBIG', 'Kahit isang valid ID o supporting document', 'Ang iyong application form, kung hinihingi ng sangay'],
+  },
+  postal: {
+    cost: 'May bayad — itanong ang kasalukuyang halaga',
+    where: 'Ang post office na sumasakop sa iyong address',
+    summary: 'Isang photo ID na inilalabas ng PHLPost. Isa ito sa mas madaling makuha kung wala ka pang ibang ID, dahil sa post office ka mismo mag-a-apply.',
+    steps: [
+      { title: 'Kunin ang application form', text: 'Hingin ang Postal ID application form sa inyong post office at punan ito gamit ang malalaking letra.' },
+      { title: 'Ihanda ang mga requirement', text: 'Karaniwang kakailanganin mo ang PSA birth certificate o ibang valid ID, patunay ng address tulad ng barangay certificate o utility bill, at passport-size na mga larawan.', tip: 'Bahagyang nagkakaiba ang requirements bawat sangay — itanong muna kung ano ang hinihingi ng sa inyo bago pumunta.' },
+      { title: 'Pumunta sa inyong post office', text: 'Mag-apply sa post office ng inyong lugar, dala ang mga orihinal at photocopy.' },
+      { title: 'Larawan at fingerprints', text: 'Kukunan ng post office ang iyong larawan, pirma at fingerprints para sa card.' },
+      { title: 'Bayaran ang fee', text: 'Magbayad ng fee sa counter at itago ang opisyal na resibo. Ito rin ang iyong claim stub.' },
+      { title: 'Maghintay, saka kunin', text: 'Ilang araw hanggang ilang linggo ang pagpoproseso. Bumalik dala ang iyong resibo kapag sinabi nang handa na ito.' },
+    ],
+    bring: ['PSA birth certificate, o ibang valid ID', 'Patunay ng address (barangay certificate o utility bill)', 'Passport-size na mga larawan', 'Pera para sa fee'],
+  },
+  voters: {
+    cost: 'Libre ang pagpaparehistro — maaaring may maliit na bayad ang certification',
+    where: 'Ang COMELEC office ng inyong lungsod o munisipyo (Office of the Election Officer)',
+    summary: 'Hindi na nagpi-print ang COMELEC ng lumang Voter’s ID card. Kapag rehistradong botante ka na, maaari kang humingi ng Voter’s Certification, na tinatanggap bilang patunay ng pagkakakilanlan at rehistrasyon.',
+    steps: [
+      { title: 'Punan muna ang iyong mga detalye', text: 'Sa online pre-registration ng COMELEC, maaari mong ilagay ang iyong mga detalye at mag-book ng pagbisita bago pumunta. Puwede ring mag-apply nang personal sa inyong lokal na opisina.' },
+      { title: 'Magparehistro habang bukas ito', text: 'Bukas lang ang voter registration sa takdang mga panahon bago ang halalan, sa COMELEC office ng inyong lungsod o munisipyo. Itanong kung anong mga petsa ang bukas.', tip: 'Kailangan mong nakatira sa lungsod o munisipyo sa itinakdang haba ng panahon para makapagparehistro roon.' },
+      { title: 'Pagkuha ng biometrics', text: 'Kukunan sa opisina ang iyong larawan, pirma at fingerprints.' },
+      { title: 'Hintayin ang pag-apruba', text: 'Ina-apruba ang mga aplikasyon sa isang pagdinig ng Election Registration Board. Itanong sa inyong Election Officer kung kailan didinggin ang sa iyo.' },
+      { title: 'Humingi ng Voter’s Certification', text: 'Kapag rehistrado ka na, humiling ng Voter’s Certification sa parehong opisina. Magdala ng valid ID; maaaring may maliit na bayad.' },
+    ],
+    bring: ['Isang valid ID, o mga dokumentong nagpapatunay kung sino ka', 'Patunay na nakatira ka sa lungsod o munisipyo', 'Ang iyong online pre-registration slip, kung gumawa ka'],
+  },
+  senior: {
+    agency: 'Office of Senior Citizens Affairs (OSCA) ng inyong lungsod o munisipyo',
+    cost: 'Libre',
+    where: 'Ang OSCA sa city hall o munisipyo ninyo',
+    summary: 'Isang photo ID para sa mga mamamayang Pilipino na 60 taong gulang pataas, na inilalabas ng inyong lungsod o munisipyo. Ito rin ang ipinapakita para makuha ang mga diskwento at pribilehiyo ng senior citizen.',
+    steps: [
+      { title: 'Tiyaking kwalipikado ka', text: 'Kailangan kang mamamayang Pilipino na 60 taong gulang pataas at nakatira sa lungsod o munisipyong pinag-a-applyan mo.' },
+      { title: 'Ihanda ang iyong mga papeles', text: 'Karaniwang kailangan ang PSA birth certificate o ibang valid ID na nagpapakita ng edad mo, patunay ng tirahan tulad ng barangay certificate, at passport-size na mga larawan.', tip: 'Itanong sa inyong OSCA ang eksaktong listahan — bahagyang nagkakaiba ito sa bawat lungsod.' },
+      { title: 'Pumunta sa inyong OSCA', text: 'Bisitahin ang Office of Senior Citizens Affairs sa city hall o munisipyo ninyo, o ang opisinang ituturo ng inyong barangay.' },
+      { title: 'Larawan at application form', text: 'Punan ang application form. Kukunan ng opisina ang iyong larawan at pirma, at maaari ring kunin ang iyong thumbmark.' },
+      { title: 'Kunin ang iyong ID', text: 'Ibinibigay ang ID sa OSCA, minsan sa araw ding iyon at minsan pagkatapos ng maikling paghihintay. Itago ang claim slip hanggang makuha mo ito.' },
+    ],
+    bring: ['PSA birth certificate, o ibang valid ID na nagpapakita ng edad', 'Patunay ng tirahan (barangay certificate)', 'Passport-size na mga larawan', 'Ang application form mula sa inyong OSCA'],
+  },
+  pagibig: {
+    cost: 'Maaaring may bayad — itanong sa Pag-IBIG',
+    where: 'Isang sangay ng Pag-IBIG Fund, o ang online service o partner bank na ituturo nila',
+    summary: 'Isang photo ID card para sa mga miyembro ng Pag-IBIG Fund na dala ang iyong membership number. Nagbago na ang paraan ng pag-aalok nito sa paglipas ng panahon, kaya kumpirmahin sa Pag-IBIG kung ano ang available sa iyo.',
+    steps: [
+      { title: 'Maging miyembro ng Pag-IBIG', text: 'Para sa mga miyembro ang card, kaya kailangan mo muna ng Pag-IBIG membership at ng iyong Pag-IBIG MID number. Kung wala ka pa, magrehistro sa Pag-IBIG.' },
+      { title: 'Alamin kung paano mag-apply', text: 'Itanong sa isang sangay ng Pag-IBIG, o tingnan ang opisyal nilang mga channel, kung ibinibigay ang card sa mga sangay, sa online service nila o sa partner bank, at kung kwalipikado ka.', tip: 'Huwag magbayad sa sinumang nag-aalok na “iproseso” ito para sa iyo — sa Pag-IBIG mismo lang mag-apply.' },
+      { title: 'Ihanda ang iyong mga dokumento', text: 'Dalhin ang iyong MID number at isang valid government ID, at anumang ibang papeles na hihingin ng sangay o partner.' },
+      { title: 'Larawan at pirma', text: 'Kukunan ang iyong larawan at pirma para sa card.' },
+      { title: 'Kunin ang iyong card', text: 'Ibibigay ang card sa sangay o idedeliver sa iyo. Itago ang iyong resibo o claim slip hanggang makuha mo ito.' },
+    ],
+    bring: ['Pag-IBIG MID number', 'Isang valid government ID', 'Anumang ibang papeles na hihingin ng sangay'],
+  },
+  philhealth: {
+    cost: 'Libre ang pagpaparehistro — depende sa uri ng iyong membership ang kontribusyon',
+    where: 'Isang PhilHealth Local Health Insurance Office (LHIO)',
+    summary: 'Ang ID ng isang miyembro ng PhilHealth, na dala ang iyong PhilHealth Identification Number (PIN). Depende sa ibinibigay ng inyong opisina kung naka-print na card o member data record muna ang matatanggap mo.',
+    steps: [
+      { title: 'Magparehistro bilang miyembro', text: 'Punan ang PhilHealth Member Registration Form (PMRF) sa isang opisina ng PhilHealth, o sa opisyal na online services ng PhilHealth kung maaari kang magparehistro sa ganoong paraan.' },
+      { title: 'Dalhin ang iyong mga dokumento', text: 'Karaniwang PSA birth certificate o ibang valid ID, at passport-size na mga larawan. Itanong sa opisina kung ano ang kailangan ng uri ng iyong membership.' },
+      { title: 'Pumunta sa inyong opisina ng PhilHealth', text: 'Isumite ang form sa Local Health Insurance Office na sumasakop sa iyong address.' },
+      { title: 'Larawan at pirma', text: 'Kukunan ng opisina ang iyong larawan at pirma, at ibibigay sa iyo ang iyong PhilHealth Identification Number (PIN).' },
+      { title: 'Humingi ng iyong ID', text: 'Kapag rehistrado ka na, itanong kung may available na naka-print na PhilHealth ID. Kung wala, bibigyan ka ng Member Data Record na itatago mo.', tip: 'Itago sa ligtas na lugar ang iyong PIN — kakailanganin mo ito sa mga claim.' },
+    ],
+    bring: ['PSA birth certificate, o ibang valid ID', 'Passport-size na mga larawan', 'Ang iyong napunang PMRF (nasa opisina ito)'],
+  },
+};

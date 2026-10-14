@@ -146,7 +146,8 @@ if ($action === 'file' && $method === 'GET') {
     if ($isStaff && !in_barangay_scope(barangay_scope($user), $proof['barangay_id'])) {
         fail('File not found.', 404);
     }
-    send_private_file($proof['file_path'], $proof['mime_type'], $proof['original_filename']);
+    send_private_file($proof['file_path'], $proof['mime_type'], $proof['original_filename'],
+        RESIDENCY_DOC_TYPES[$proof['doc_type']]['label'] ?? null);
 }
 
 // ---------- City Staff / Admin ----------

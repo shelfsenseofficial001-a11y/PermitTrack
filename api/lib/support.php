@@ -55,12 +55,61 @@ function store_private_file(array $file, string $dir, string $label): array
     ];
 }
 
-/** Streams a stored private file inline (for viewing in the browser) and stops. */
-function send_private_file(string $relativePath, string $mime, string $originalName): void
+/** The file types a browser can show on a page; anything else is only ever offered as a download. */
+const BROWSER_VIEWABLE_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * The page a document opens in when someone clicks "View". A browser shows a bare image or PDF
+ * under the name of the script that sent it ("documents.php (745×795)") with the web server's
+ * default icon, so the file is wrapped in a page of ours that names it and carries PermitTrack's
+ * own icon. $fileUrl is the raw file, relative to the script that is answering. Stops the request.
+ */
+function send_file_viewer(string $title, string $fileUrl, string $mime): void
+{
+    $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $embed = $mime === 'application/pdf'
+        ? '<iframe src="' . $e($fileUrl) . '" title="' . $e($title) . '"></iframe>'
+        : '<img src="' . $e($fileUrl) . '" alt="' . $e($title) . '">';
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    header("Content-Security-Policy: default-src 'none'; img-src 'self'; frame-src 'self'; style-src 'unsafe-inline'");
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<title>' . $e($title) . ' · PermitTrack</title>'
+        . '<link rel="icon" type="image/png" href="../assets/images/PermitTrackIcon.png">'
+        . '<style>html,body{margin:0;height:100%;background:#10301d}'
+        . 'body{display:grid;place-items:center}'
+        . 'img{display:block;max-width:100%;max-height:100vh;object-fit:contain}'
+        . 'iframe{display:block;width:100%;height:100vh;border:0;background:#fff}</style>'
+        . '</head><body>' . $embed . '</body></html>';
+    exit;
+}
+
+/**
+ * The URL of the file this request is for, minus the ?view=1 that asked for the viewer page.
+ * Relative, so it resolves beside the endpoint that is answering.
+ */
+function raw_file_url(): string
+{
+    $query = $_GET;
+    unset($query['view']);
+    return basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) . '?' . http_build_query($query);
+}
+
+/**
+ * Streams a stored private file inline (for viewing in the browser) and stops. With ?view=1 it
+ * answers with the viewer page instead (send_file_viewer), named $title — the file's own name if
+ * none is given. A type a browser can't show is streamed as it always was.
+ */
+function send_private_file(string $relativePath, string $mime, string $originalName, ?string $title = null): void
 {
     $path = storage_path($relativePath);
     if (!is_file($path)) {
         fail('File not found.', 404);
+    }
+    if (($_GET['view'] ?? '') === '1' && in_array($mime, BROWSER_VIEWABLE_MIME, true)) {
+        send_file_viewer($title ?? $originalName, raw_file_url(), $mime);
     }
     $safeName = preg_replace('/[^A-Za-z0-9._ -]/', '_', $originalName);
     header('Content-Type: ' . $mime);

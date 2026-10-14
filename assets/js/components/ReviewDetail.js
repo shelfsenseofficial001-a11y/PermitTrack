@@ -1,12 +1,12 @@
-import { apiGet, apiPost, downloadUrl } from '../api/client.js?v=142';
-import StaffShell from './StaffShell.js?v=142';
-import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass, permitLabel, DOCUMENT_REJECT_REASONS, rejectReasonLabel, DELIVERY_STATUS_STEPS, formatPeso } from '../util.js?v=142';
-import { inputClass } from './AuthLayout.js?v=142';
-import Loader from './Loader.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import MaskedValue from './MaskedValue.js?v=142';
-import SelectMenu from './SelectMenu.js?v=142';
-import { authState } from '../store/auth.js?v=142';
+import { apiGet, apiPost, viewUrl } from '../api/client.js?v=168';
+import StaffShell from './StaffShell.js?v=168';
+import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass, permitLabel, DOCUMENT_REJECT_REASONS, rejectReasonLabel, DELIVERY_STATUS_STEPS, formatPeso } from '../util.js?v=168';
+import { inputClass } from './AuthLayout.js?v=168';
+import Loader from './Loader.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import MaskedValue from './MaskedValue.js?v=168';
+import SelectMenu from './SelectMenu.js?v=168';
+import { authState } from '../store/auth.js?v=168';
 
 const STATUS_OPTIONS = ['Under Review', 'Inspection Scheduled', 'Inspector Notes', 'Approved', 'Rejected'];
 
@@ -144,7 +144,7 @@ export default {
     formatDate,
     formatDateTime,
     formatPeso,
-    downloadUrl,
+    viewUrl,
     rejectReasonLabel,
     // `silent` skips the full-page Loader: used after an in-place action (approving a document,
     // saving a decision, moving a delivery status) where the page is already showing and swapping
@@ -361,7 +361,7 @@ export default {
                     <span v-else-if="doc.status === 'Intake Approved'" class="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full bg-sun-100 text-sun-700">Passed intake</span>
                     <span v-else-if="doc.status === 'Needs Re-upload'" class="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Rejected</span>
                   </div>
-                  <a v-if="doc.file_path" :href="downloadUrl(doc.id)" class="text-xs font-semibold text-brand-600 hover:underline">View file</a>
+                  <a v-if="doc.file_path" :href="viewUrl(doc.id)" target="_blank" rel="noopener" class="text-xs font-semibold text-brand-600 hover:underline">View file</a>
                   <span v-else class="text-xs text-slate-400">Not uploaded</span>
                   <div v-if="doc.uploaded_at" class="text-xs text-slate-400 mt-0.5">Uploaded {{ formatDateTime(doc.uploaded_at) }}</div>
                   <!-- Why it went back, so the next office is not left guessing either -->

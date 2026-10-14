@@ -58,6 +58,25 @@ function own_application(int $id, array $user): array
     return $app;
 }
 
+// Every permit that can be requested, and who it is for — a registered citizen (resident), a
+// business owner, or both. Public on purpose: it is the home page's "all permits" list, and says
+// nothing the permits section there doesn't already. Read-only, and only what is shown there.
+if ($action === 'catalog' && $method === 'GET') {
+    $rows = db()->query(
+        "SELECT name, description, track, resident_eligible, business_eligible
+           FROM permit_types
+          WHERE is_active = 1
+          ORDER BY FIELD(track, 'construction', 'business', 'personal', 'barangay_standalone'), name"
+    )->fetchAll();
+    respond(['permits' => array_map(fn($r) => [
+        'name' => $r['name'],
+        'description' => $r['description'],
+        'track' => $r['track'],
+        'citizen' => (bool)(int)$r['resident_eligible'],
+        'business' => (bool)(int)$r['business_eligible'],
+    ], $rows)]);
+}
+
 if ($action === 'required_documents' && $method === 'GET') {
     $type = (string)($_GET['type'] ?? '');
     respond(['documents' => required_documents_for($type)]);

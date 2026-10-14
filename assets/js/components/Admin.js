@@ -1,7 +1,7 @@
-import { apiGet, apiPost } from '../api/client.js?v=142';
-import StaffShell from './StaffShell.js?v=142';
-import { formatDate, isValidEmail, numberFieldError } from '../util.js?v=142';
-import Loader from './Loader.js?v=142';
+import { apiGet, apiPost } from '../api/client.js?v=168';
+import StaffShell from './StaffShell.js?v=168';
+import { formatDate, isValidEmail, numberFieldError } from '../util.js?v=168';
+import Loader from './Loader.js?v=168';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -32,6 +32,11 @@ const AUDIT_LABELS = {
   'admin.department_updated': 'Updated department',
   'admin.faq_created': 'Added a chat bot answer',
   'admin.faq_updated': 'Edited a chat bot answer',
+  'conversation_started': 'Started a conversation',
+  'conversation_closed': 'Marked a conversation done',
+  'conversation_reopened': 'Reopened a conversation',
+  'message_edited': 'Edited a message',
+  'message_removed': 'Removed a message',
 };
 
 export default {

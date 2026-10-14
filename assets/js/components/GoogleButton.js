@@ -1,5 +1,5 @@
-import { apiGet } from '../api/client.js?v=142';
-import { googleSignIn, homePathFor } from '../store/auth.js?v=142';
+import { apiGet } from '../api/client.js?v=168';
+import { googleSignIn, homePathFor } from '../store/auth.js?v=168';
 
 // Sign in with Google, using Google's own button (Google Identity Services). The button hands
 // back an ID token, which the server verifies before it signs anyone in — see api/lib/google.php.

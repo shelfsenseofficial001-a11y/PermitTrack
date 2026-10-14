@@ -1,8 +1,8 @@
-import { login, reloadAs } from '../store/auth.js?v=142';
-import { inputClass, inputErrorClass } from './AuthLayout.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import DemoAccounts from './DemoAccounts.js?v=142';
-import { identifierError } from '../util.js?v=142';
+import { login, reloadAs } from '../store/auth.js?v=168';
+import { inputClass, inputErrorClass } from './AuthLayout.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import DemoAccounts from './DemoAccounts.js?v=168';
+import { identifierError } from '../util.js?v=168';
 
 // "Add account": sign in to another account on top of the current page. The current account
 // stays signed in on this browser (see auth.php "accounts"), so the user can switch back.
@@ -79,6 +79,12 @@ export default {
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
     </template>
 
+    <!-- The demo tab on the dialog's edge and its panel on the right of the screen: the same picker the
+         sign-in pages have. Only resident-portal accounts, since this dialog signs in as one. -->
+    <template #edge>
+      <DemoAccounts portal="resident" same-level-only @fill="fillDemo" />
+    </template>
+
     <form id="add-account-form" @submit.prevent="submit" class="space-y-4" novalidate>
       <div>
         <label class="block text-xs font-semibold text-slate-600 mb-1.5" for="add-account-id">Email or mobile number</label>
@@ -109,8 +115,6 @@ export default {
         <svg class="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
         {{ error }}
       </div>
-
-      <DemoAccounts variant="inline" portal="resident" @fill="fillDemo" />
 
       <p class="text-sm text-slate-500">
         Don't have another account?

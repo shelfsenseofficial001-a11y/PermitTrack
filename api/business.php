@@ -237,7 +237,15 @@ if ($action === 'file' && $method === 'GET') {
     if ($isStaff && !in_barangay_scope(barangay_scope($user), $doc['barangay_id'])) {
         fail('File not found.', 404);
     }
-    send_private_file($doc['file_path'], $doc['mime_type'], $doc['original_filename']);
+    // The viewer page's title: what the document is for, else the name it was uploaded under
+    $titles = [
+        'registration' => 'Business registration certificate',
+        'representative_id' => 'Representative’s ID',
+        'barangay_clearance' => 'Barangay Business Clearance',
+        'location_proof' => 'Proof of business location',
+        'authority' => 'Authority to represent the business',
+    ];
+    send_private_file($doc['file_path'], $doc['mime_type'], $doc['original_filename'], $titles[$doc['doc_key']] ?? null);
 }
 
 // ---------- City Staff / Admin ----------

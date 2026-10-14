@@ -1,7 +1,7 @@
-import { apiGet } from '../api/client.js?v=142';
-import StaffShell from './StaffShell.js?v=142';
-import { formatDate } from '../util.js?v=142';
-import Loader from './Loader.js?v=142';
+import { apiGet } from '../api/client.js?v=168';
+import StaffShell from './StaffShell.js?v=168';
+import { formatDate } from '../util.js?v=168';
+import Loader from './Loader.js?v=168';
 
 const TABS = [
   { key: 'pending', label: 'Waiting for review' },
@@ -52,10 +52,12 @@ export default {
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" role="tablist" aria-label="Verification status">
       <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :aria-selected="activeTab === tab.key" @click="selectTab(tab.key)"
-        class="text-left bg-white rounded-2xl border p-5 transition"
+        class="group relative text-left bg-white rounded-2xl border p-5 pr-12 transition"
         :class="activeTab === tab.key ? 'border-brand-600 ring-4 ring-brand-600/10' : 'border-brand-100 hover:border-brand-300'">
         <div class="text-xs font-semibold uppercase tracking-wide" :class="activeTab === tab.key ? 'text-brand-700' : 'text-slate-500'">{{ tab.label }}</div>
         <div class="text-3xl font-bold mt-0.5" :class="tab.key === 'pending' && counts.pending ? 'text-sun-700' : 'text-ink-700'">{{ counts[tab.key] }}</div>
+        <svg class="absolute bottom-4 right-4 w-5 h-5 transition duration-200 group-hover:translate-x-0.5" :class="activeTab === tab.key ? 'text-brand-600' : 'text-slate-300 group-hover:text-brand-600'"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
       </button>
     </div>
 

@@ -1,13 +1,15 @@
-import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=142';
-import { apiGet, apiPost } from '../api/client.js?v=142';
-import ChatLauncher from './ChatLauncher.js?v=142';
-import AddAccountModal from './AddAccountModal.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import { formatDateTime } from '../util.js?v=142';
-import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=142';
-import Loader from './Loader.js?v=142';
-import NotificationToasts from './NotificationToasts.js?v=142';
-import NotificationIcon from './NotificationIcon.js?v=142';
+import { authState, listAccounts, switchAccount, forgetAccount, reloadAs } from '../store/auth.js?v=168';
+import { apiGet, apiPost } from '../api/client.js?v=168';
+import ChatLauncher from './ChatLauncher.js?v=168';
+import AddAccountModal from './AddAccountModal.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import { formatDateTime } from '../util.js?v=168';
+import { tx } from '../store/i18n.js?v=168';
+import LanguageSelect from './LanguageSelect.js?v=168';
+import { uiState, openChangePassword, askSignOut, beginTransition, endTransition } from '../store/ui.js?v=168';
+import Loader from './Loader.js?v=168';
+import NotificationToasts from './NotificationToasts.js?v=168';
+import NotificationIcon from './NotificationIcon.js?v=168';
 
 // How often the bell checks for new notifications while you're on a page. A permit moves through
 // its stages over days, so this is about not missing one for long, not about being instant.
@@ -17,7 +19,7 @@ const MAX_TOASTS = 3;
 
 export default {
   name: 'AppShell',
-  components: { ChatLauncher, AddAccountModal, BaseModal, Loader, NotificationToasts, NotificationIcon },
+  components: { ChatLauncher, AddAccountModal, BaseModal, Loader, NotificationToasts, NotificationIcon, LanguageSelect },
   props: {
     // For a page with its own sticky action bar along the bottom: lifts the Ask button above it
     liftChat: { type: Boolean, default: false },
@@ -72,10 +74,10 @@ export default {
       const canApply = !!(this.authState.user && this.authState.user.can_apply);
       const p = this.$route.path;
       return [
-        { key: 'dashboard', to: '/dashboard', label: 'Dashboard', active: p === '/dashboard' },
+        { key: 'dashboard', to: '/dashboard', label: tx('lp.dashboard', 'Dashboard'), active: p === '/dashboard' },
         // A single permit's page belongs to My Permits, so that tab stays lit while you're in one
-        { key: 'permits', to: '/permits', label: 'My Permits', active: p === '/permits' || /^\/applications\/\d+/.test(p) },
-        { key: 'new', to: '/applications/new', label: canApply ? 'New Application' : 'Browse Permits', active: p === '/applications/new' },
+        { key: 'permits', to: '/permits', label: tx('lp.myPermits', 'My Permits'), active: p === '/permits' || /^\/applications\/\d+/.test(p) },
+        { key: 'new', to: '/applications/new', label: canApply ? tx('lp.newApplication', 'New Application') : tx('lp.browsePermits', 'Browse Permits'), active: p === '/applications/new' },
       ];
     },
   },
@@ -240,20 +242,21 @@ export default {
             <img src="assets/images/CITY-HALL-LOGO.png" alt="" class="w-9 h-9 object-contain shrink-0" />
             <div class="leading-tight">
               <div class="text-sm font-bold">PermitTrack</div>
-              <div class="text-[11px] text-ink-300">City of Dasmariñas</div>
+              <div class="text-[11px] text-ink-300">{{ $tx('lp.cityOf', 'City of Dasmariñas') }}</div>
             </div>
           </router-link>
           <nav class="hidden md:flex items-center gap-5 text-sm font-medium whitespace-nowrap">
-            <router-link to="/dashboard" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">Dashboard</router-link>
-            <router-link to="/permits" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">My Permits</router-link>
-            <router-link to="/applications/new" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">{{ authState.user && authState.user.can_apply ? 'New Application' : 'Browse Permits' }}</router-link>
+            <router-link to="/dashboard" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">{{ $tx('lp.dashboard', 'Dashboard') }}</router-link>
+            <router-link to="/permits" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">{{ $tx('lp.myPermits', 'My Permits') }}</router-link>
+            <router-link to="/applications/new" class="text-ink-200 hover:text-white transition" active-class="!text-sun-300">{{ authState.user && authState.user.can_apply ? $tx('lp.newApplication', 'New Application') : $tx('lp.browsePermits', 'Browse Permits') }}</router-link>
           </nav>
         </div>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2 sm:gap-4">
+          <LanguageSelect />
           <!-- Notifications -->
           <div v-if="isApplicant" ref="notif" class="relative">
             <button type="button" @click="toggleNotifications" :aria-expanded="notifOpen" aria-haspopup="menu"
-              :title="unread ? unread + ' new notifications' : 'Notifications'"
+              :title="unread ? $tx('rs.newNotifications', '{n} new notifications', { n: unread }) : $tx('rs.notifications', 'Notifications')"
               class="flex items-center justify-center w-9 h-9 rounded-full text-ink-300 hover:text-white hover:bg-white/10 transition" :class="notifOpen ? 'bg-white/10 text-white' : ''">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
@@ -270,8 +273,8 @@ export default {
             <div v-if="notifOpen" role="menu"
               class="origin-top sm:origin-top-right fixed inset-x-3 top-[4.5rem] sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[22rem] rounded-2xl bg-ink-700 border border-white/10 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] p-2 text-sm">
               <div class="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-white/10 mb-1">
-                <div class="font-semibold text-white">Notifications</div>
-                <router-link to="/notifications" @click="notifOpen = false" class="text-xs font-semibold text-sun-300 hover:underline">View all</router-link>
+                <div class="font-semibold text-white">{{ $tx('rs.notifications', 'Notifications') }}</div>
+                <router-link to="/notifications" @click="notifOpen = false" class="text-xs font-semibold text-sun-300 hover:underline">{{ $tx('rs.viewAll', 'View all') }}</router-link>
               </div>
 
               <Loader v-if="notifLoading" variant="inline" kind="notifications" class="justify-center py-5 text-ink-300" />
@@ -282,8 +285,8 @@ export default {
                     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                   </svg>
                 </span>
-                <p class="font-semibold text-white">No notifications yet.</p>
-                <p class="text-xs text-ink-300 mt-1 leading-relaxed">Updates about your permits and applications will show up here.</p>
+                <p class="font-semibold text-white">{{ $tx('rs.noNotifs', 'No notifications yet.') }}</p>
+                <p class="text-xs text-ink-300 mt-1 leading-relaxed">{{ $tx('rs.noNotifsBody', 'Updates about your permits and applications will show up here.') }}</p>
               </div>
 
               <!-- On phones, short enough to stay clear of the bottom tab tray -->
@@ -326,11 +329,11 @@ export default {
               </div>
               <router-link to="/account" role="menuitem" @click="menuOpen = false" class="flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
                 <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                My account
+                {{ $tx('lp.myAccount', 'My account') }}
               </router-link>
               <button type="button" role="menuitem" @click="menuOpen = false; openChangePassword()" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10">
                 <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                Change password
+                {{ $tx('shell.changePassword', 'Change password') }}
               </button>
               <div class="h-px bg-white/10 my-1"></div>
               <div class="relative">
@@ -338,7 +341,7 @@ export default {
                   class="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-ink-100 hover:bg-white/10" :class="accountsOpen ? 'bg-white/10' : ''">
                   <span class="flex items-center gap-3">
                     <svg class="w-4 h-4 text-ink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg>
-                    Switch account
+                    {{ $tx('rs.switchAccount', 'Switch account') }}
                   </span>
                   <svg class="w-4 h-4 text-ink-400 transition-transform" :class="accountsOpen ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
                 </button>
@@ -346,7 +349,7 @@ export default {
                 <!-- Accounts signed in on this browser (opens inside the menu, on the right) -->
                 <transition name="expand">
                 <div v-if="accountsOpen" class="mt-1 rounded-xl bg-black/20 border border-white/10 p-1.5">
-                  <p class="px-3 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">On this browser</p>
+                  <p class="px-3 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">{{ $tx('rs.onThisBrowser', 'On this browser') }}</p>
                   <Loader v-if="accountsLoading" variant="inline" kind="accounts" class="px-2 text-ink-300" />
                   <div v-for="a in accounts" :key="a.id" class="group/acct relative flex items-center rounded-xl hover:bg-white/10">
                     <button type="button" @click="chooseAccount(a)" :disabled="switching"
@@ -371,14 +374,14 @@ export default {
                   <div class="h-px bg-white/10 my-1"></div>
                   <button type="button" @click="menuOpen = false; addingAccount = true" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-white hover:bg-white/10">
                     <span class="w-3.5 text-center text-lg leading-none text-ink-300">+</span>
-                    Add account
+                    {{ $tx('lp.addAccount', 'Add account') }}
                   </button>
                 </div>
                 </transition>
               </div>
               <button type="button" role="menuitem" @click="doLogout" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-red-300 hover:bg-red-500/15">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-                Sign out
+                {{ $tx('shell.signOut', 'Sign out') }}
               </button>
             </div>
             </transition>

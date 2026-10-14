@@ -1,11 +1,11 @@
-import { apiGet, apiPostForm } from '../api/client.js?v=142';
-import AppShell from './AppShell.js?v=142';
-import BaseModal from './BaseModal.js?v=142';
-import SelectMenu from './SelectMenu.js?v=142';
-import FaceVerifyModal from './FaceVerifyModal.js?v=142';
-import { authState } from '../store/auth.js?v=142';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=142';
-import { documentInstructions } from '../docInstructions.js?v=142';
+import { apiGet, apiPostForm } from '../api/client.js?v=168';
+import AppShell from './AppShell.js?v=168';
+import BaseModal from './BaseModal.js?v=168';
+import SelectMenu from './SelectMenu.js?v=168';
+import FaceVerifyModal from './FaceVerifyModal.js?v=168';
+import { authState } from '../store/auth.js?v=168';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError } from '../util.js?v=168';
+import { documentInstructions } from '../docInstructions.js?v=168';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
 // these two have to move together.

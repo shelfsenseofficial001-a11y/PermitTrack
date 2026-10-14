@@ -79,6 +79,60 @@ function clean_body(mixed $raw): string
 }
 
 /**
+ * Where a thread's messages live: [table, condition, parameter]. An application's thread reads its
+ * own timeline (application_activity, messages only — the status lines are not messages and can't
+ * be replied to, edited or removed); any other thread has its own table.
+ */
+function thread_store(array $conv): array
+{
+    return $conv['application_id'] !== null
+        ? ['application_activity', "application_id = ? AND type = 'message'", (int)$conv['application_id']]
+        : ['conversation_messages', 'conversation_id = ?', (int)$conv['id']];
+}
+
+/** One message of this thread by id, or null if it isn't one of its messages. */
+function find_thread_message(array $conv, int $messageId): ?array
+{
+    [$table, $where, $param] = thread_store($conv);
+    $stmt = db()->prepare("SELECT * FROM $table WHERE id = ? AND $where");
+    $stmt->execute([$messageId, $param]);
+    return $stmt->fetch() ?: null;
+}
+
+/**
+ * The message a reply points at, checked: it must be a live message in this same thread. Returns
+ * its id, or null when this isn't a reply; fails when it names something that can't be replied to.
+ */
+function checked_reply_target(array $conv, mixed $raw): ?int
+{
+    $id = (int)$raw;
+    if ($id <= 0) {
+        return null;
+    }
+    $target = find_thread_message($conv, $id);
+    if (!$target || $target['deleted_at'] !== null) {
+        fail('That message is no longer there to reply to.', 409);
+    }
+    return $id;
+}
+
+/** A message the signed-in person wrote and may still change; 404/403 otherwise. */
+function own_message(array $conv, array $user, mixed $rawId): array
+{
+    $message = find_thread_message($conv, (int)$rawId);
+    if (!$message) {
+        fail('Message not found.', 404);
+    }
+    if ($message['sender_id'] === null || (int)$message['sender_id'] !== (int)$user['id']) {
+        fail('You can only change your own messages.', 403);
+    }
+    if ($message['deleted_at'] !== null) {
+        fail('That message was already removed.', 409);
+    }
+    return $message;
+}
+
+/**
  * Which threads an office's inbox holds: its questions, and the applications on its pipeline that
  * someone has written in. Binds the department id twice.
  */
@@ -109,8 +163,8 @@ function conversation_select(bool $asApplicant): string
                      WHERE p.application_id = c.application_id AND p.status = 'current' ORDER BY p.step_order LIMIT 1), d.name) AS office_name,
                    u.full_name AS applicant_name,
                    IF(c.application_id IS NULL,
-                      (SELECT m.body FROM conversation_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1),
-                      (SELECT v.body FROM application_activity v WHERE v.application_id = c.application_id ORDER BY v.id DESC LIMIT 1)
+                      (SELECT IF(m.deleted_at IS NULL, m.body, 'Message removed') FROM conversation_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1),
+                      (SELECT IF(v.deleted_at IS NULL, v.body, 'Message removed') FROM application_activity v WHERE v.application_id = c.application_id ORDER BY v.id DESC LIMIT 1)
                    ) AS last_message,
                    ($unread) AS unread,
                    (c.last_sender_id = c.user_id AND c.status = 'open') AS awaiting_office
@@ -256,6 +310,7 @@ if ($action === 'get' && $method === 'GET') {
     if ($conv['application_id'] !== null) {
         $stmt = db()->prepare(
             "SELECT v.id, v.body, v.sender_id, v.type, DATE_FORMAT(v.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    v.reply_to_id, v.original_body, v.deleted_at, DATE_FORMAT(v.edited_at, '%Y-%m-%d %H:%i:%s') AS edited_at,
                     u.full_name AS sender_name, u.role AS sender_role
                FROM application_activity v LEFT JOIN users u ON u.id = v.sender_id
               WHERE v.application_id = ? ORDER BY v.id ASC"
@@ -264,22 +319,54 @@ if ($action === 'get' && $method === 'GET') {
     } else {
         $stmt = db()->prepare(
             "SELECT m.id, m.body, m.sender_id, 'message' AS type, DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    m.reply_to_id, m.original_body, m.deleted_at, DATE_FORMAT(m.edited_at, '%Y-%m-%d %H:%i:%s') AS edited_at,
                     u.full_name AS sender_name, u.role AS sender_role
                FROM conversation_messages m LEFT JOIN users u ON u.id = m.sender_id
               WHERE m.conversation_id = ? ORDER BY m.id ASC"
         );
         $stmt->execute([$conv['id']]);
     }
-    $messages = array_map(fn($m) => [
-        'id' => (int)$m['id'],
-        'kind' => $m['type'] === 'status_change' ? 'event' : 'message',
-        'body' => $m['body'],
-        'created_at' => $m['created_at'],
-        'sender_name' => $m['sender_name'] ?? 'Deleted account',
-        // From the viewer's side: which bubbles are theirs, and which are the other party's.
-        'mine' => $m['sender_id'] !== null && (int)$m['sender_id'] === (int)$user['id'],
-        'from_office' => $m['sender_id'] === null || (int)$m['sender_id'] !== (int)$conv['user_id'],
-    ], $stmt->fetchAll());
+    $rows = $stmt->fetchAll();
+    $byId = [];
+    foreach ($rows as $r) {
+        $byId[(int)$r['id']] = $r;
+    }
+
+    $messages = array_map(function (array $m) use ($byId, $user, $conv): array {
+        $deleted = $m['deleted_at'] !== null;
+        $edited = !$deleted && $m['edited_at'] !== null;
+        // What a reply quotes: enough to recognise the message, never a removed one's words.
+        $reply = null;
+        if ($m['reply_to_id'] !== null && isset($byId[(int)$m['reply_to_id']])) {
+            $target = $byId[(int)$m['reply_to_id']];
+            $targetGone = $target['deleted_at'] !== null;
+            $reply = [
+                'id' => (int)$target['id'],
+                'sender_name' => $target['sender_name'] ?? 'Deleted account',
+                'mine' => $target['sender_id'] !== null && (int)$target['sender_id'] === (int)$user['id'],
+                'body' => $targetGone ? '' : mb_substr((string)$target['body'], 0, 140),
+                'deleted' => $targetGone,
+            ];
+        }
+        return [
+            'id' => (int)$m['id'],
+            'kind' => $m['type'] === 'status_change' ? 'event' : 'message',
+            'body' => $deleted ? '' : $m['body'],
+            'created_at' => $m['created_at'],
+            'deleted' => $deleted,
+            'edited' => $edited,
+            'edited_at' => $edited ? $m['edited_at'] : null,
+            // The first version, for whoever opens "edited". Only sent when there is one to show.
+            'original_body' => $edited ? $m['original_body'] : null,
+            'reply_to' => $reply,
+            // Lets the thread group a run of messages by who wrote them, rather than by display name
+            'sender_id' => $m['sender_id'] !== null ? (int)$m['sender_id'] : null,
+            'sender_name' => $m['sender_name'] ?? 'Deleted account',
+            // From the viewer's side: which bubbles are theirs, and which are the other party's.
+            'mine' => $m['sender_id'] !== null && (int)$m['sender_id'] === (int)$user['id'],
+            'from_office' => $m['sender_id'] === null || (int)$m['sender_id'] !== (int)$conv['user_id'],
+        ];
+    }, $rows);
 
     respond(['conversation' => $row, 'messages' => $messages]);
 }
@@ -341,16 +428,17 @@ if ($action === 'send' && $method === 'POST') {
     $in = json_input();
     $conv = load_conversation((int)($in['id'] ?? 0), $user);
     $body = clean_body($in['message'] ?? '');
+    $replyTo = checked_reply_target($conv, $in['reply_to'] ?? null);
     $applicantSide = is_applicant_side($conv, $user);
 
     $pdo = db();
     $pdo->beginTransaction();
     try {
         if ($conv['application_id'] !== null) {
-            post_application_message((int)$conv['application_id'], (int)$conv['user_id'], (int)$user['id'], $body);
+            post_application_message((int)$conv['application_id'], (int)$conv['user_id'], (int)$user['id'], $body, $replyTo);
         } else {
-            $pdo->prepare('INSERT INTO conversation_messages (conversation_id, sender_id, body) VALUES (?, ?, ?)')
-                ->execute([$conv['id'], $user['id'], $body]);
+            $pdo->prepare('INSERT INTO conversation_messages (conversation_id, sender_id, body, reply_to_id) VALUES (?, ?, ?, ?)')
+                ->execute([$conv['id'], $user['id'], $body, $replyTo]);
             // Sending is also reading: whoever writes has seen everything above it. A new message
             // reopens a closed thread — the office closing it shouldn't stop the applicant replying.
             $pdo->prepare(
@@ -372,6 +460,42 @@ if ($action === 'send' && $method === 'POST') {
         );
     }
     respond(['ok' => true], 201);
+}
+
+// Change what one of your own messages says. The first version is kept (original_body) so "edited"
+// can be opened to show it; later edits move edited_at on but leave that first version alone. It
+// does not touch whose turn it is or anyone's read mark — fixing a typo isn't a new message.
+if ($action === 'edit' && $method === 'POST') {
+    $user = require_auth();
+    $in = json_input();
+    $conv = load_conversation((int)($in['id'] ?? 0), $user);
+    $message = own_message($conv, $user, $in['message_id'] ?? 0);
+    $body = clean_body($in['message'] ?? '');
+
+    if ($body !== $message['body']) {
+        [$table] = thread_store($conv);
+        // original_body is assigned first on purpose: MySQL evaluates SET left to right, so after
+        // `body = ?` it would read the new text back.
+        db()->prepare("UPDATE $table SET original_body = COALESCE(original_body, body), body = ?, edited_at = NOW(3) WHERE id = ?")
+            ->execute([$body, $message['id']]);
+        audit((int)$user['id'], 'message_edited', 'conversation', (int)$conv['id'], 'Message #' . $message['id']);
+    }
+    respond(['ok' => true]);
+}
+
+// Remove one of your own messages. The row stays — replies to it and the order of the thread still
+// need it — but its words go: body is emptied and the pre-edit version is cleared with it.
+if ($action === 'remove' && $method === 'POST') {
+    $user = require_auth();
+    $in = json_input();
+    $conv = load_conversation((int)($in['id'] ?? 0), $user);
+    $message = own_message($conv, $user, $in['message_id'] ?? 0);
+
+    [$table] = thread_store($conv);
+    db()->prepare("UPDATE $table SET body = '', original_body = NULL, edited_at = NULL, deleted_at = NOW(3) WHERE id = ?")
+        ->execute([$message['id']]);
+    audit((int)$user['id'], 'message_removed', 'conversation', (int)$conv['id'], 'Message #' . $message['id']);
+    respond(['ok' => true]);
 }
 
 // The thread for one application, for the permit pages and the review screen to open it by.
@@ -400,6 +524,18 @@ if ($action === 'close' && $method === 'POST') {
     $conv = load_conversation((int)(json_input()['id'] ?? 0), $user);
     db()->prepare("UPDATE conversations SET status = 'closed' WHERE id = ?")->execute([$conv['id']]);
     audit((int)$user['id'], 'conversation_closed', 'conversation', (int)$conv['id']);
+    respond(['ok' => true]);
+}
+
+// Undo "done": the office puts a closed thread back among the open ones. Nothing else changes — if
+// the applicant spoke last, it is waiting on a reply again, which is the state it was closed out of.
+if ($action === 'reopen' && $method === 'POST') {
+    $user = require_role('staff');
+    $conv = load_conversation((int)(json_input()['id'] ?? 0), $user);
+    if ($conv['status'] === 'closed') {
+        db()->prepare("UPDATE conversations SET status = 'open' WHERE id = ?")->execute([$conv['id']]);
+        audit((int)$user['id'], 'conversation_reopened', 'conversation', (int)$conv['id']);
+    }
     respond(['ok' => true]);
 }
 

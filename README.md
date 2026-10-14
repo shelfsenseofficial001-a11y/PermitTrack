@@ -15,7 +15,7 @@ A permit application & review system for residents/businesses and city staff, bu
    or import the files in phpMyAdmin, in filename order. Migrations are safe to run more
    than once, so re-running the whole set is the way to bring an existing database up to date.
 
-   <details><summary>The 36 migrations, in order</summary>
+   <details><summary>The 40 migrations, in order</summary>
 
    ```
    001_user_levels.sql
@@ -54,6 +54,10 @@ A permit application & review system for residents/businesses and city staff, bu
    031_document_intake_stage.sql
    032_document_reject_reason.sql
    033_activity_event.sql
+   034_document_reject_restores_prior_status.sql
+   035_delivery.sql
+   036_message_edit_reply.sql
+   037_unregistered_user_wording.sql
    ```
    Two files share the `008` prefix (`permit_pipeline` before `withdraw_applications`), two
    share `030` (`conversations` before `google_sign_in`), and two share `031`

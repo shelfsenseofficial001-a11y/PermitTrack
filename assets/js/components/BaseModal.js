@@ -12,13 +12,17 @@ export default {
     tone: { type: String, default: 'brand' },
     // False for dialogs the user must complete (no close button, backdrop or Escape)
     dismissible: { type: Boolean, default: true },
+    // 'md' is the usual narrow dialog; 'xl' is for ones that hold a list (the all-permits dialog)
+    size: { type: String, default: 'md' },
   },
   emits: ['close'],
   data() {
     return { titleId: 'modal-title-' + Math.random().toString(36).slice(2, 8) };
   },
   mounted() {
-    this.onKey = (e) => { if (e.key === 'Escape') this.dismiss(); };
+    // Something opened over the dialog (the demo-accounts panel) takes Escape first: it marks the
+    // event handled, and the dialog leaves it for that to close.
+    this.onKey = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) this.dismiss(); };
     document.addEventListener('keydown', this.onKey);
     // The page scrolls on <html> (index.html sets its overflow), so that is what gets locked.
     // Locking <body> instead leaves the page scrolling and unsticks the sticky header.
@@ -34,10 +38,14 @@ export default {
     },
   },
   template: `
-  <transition appear enter-from-class="opacity-0" enter-active-class="transition-opacity duration-300 ease-out motion-reduce:transition-none">
+  <transition appear enter-from-class="opacity-0" enter-active-class="transition-opacity duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0">
     <div class="font-inter fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-ink-900/55 backdrop-blur-[3px]" @click.self="dismiss">
-      <transition appear enter-from-class="opacity-0 translate-y-8 scale-[0.88]" enter-active-class="transition duration-500 ease-[cubic-bezier(.34,1.45,.64,1)] motion-reduce:transition-none">
-        <div class="relative w-full max-w-[440px] max-h-[calc(100vh-2rem)] flex flex-col rounded-3xl bg-white overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
+      <transition appear enter-from-class="opacity-0 translate-y-8 scale-[0.88]" enter-active-class="transition duration-500 ease-[cubic-bezier(.34,1.45,.64,1)] motion-reduce:transition-none motion-reduce:duration-0">
+        <!-- The frame that animates in, around the dialog proper. The dialog clips to its rounded
+             corners (overflow-hidden), so anything meant to hang off its edge — the demo-accounts
+             tab, see the "edge" slot — has to sit out here, beside it, or it would be cut off. -->
+        <div class="relative w-full" :class="size === 'xl' ? 'max-w-3xl' : 'max-w-[440px]'">
+        <div class="relative w-full max-h-[calc(100vh-2rem)] flex flex-col rounded-3xl bg-white overflow-hidden ring-1 ring-black/5 shadow-[0_40px_90px_-24px_rgba(7,24,14,0.55)]"
           role="dialog" aria-modal="true" :aria-labelledby="titleId">
 
           <div class="pt-gradient-wide h-1.5 shrink-0" aria-hidden="true"></div>
@@ -68,6 +76,8 @@ export default {
           <div v-if="$slots.footer" class="flex flex-wrap items-center gap-3 px-7 py-4 border-t border-brand-100 bg-slate-50/70 shrink-0">
             <slot name="footer"></slot>
           </div>
+        </div>
+        <slot name="edge"></slot>
         </div>
       </transition>
     </div>

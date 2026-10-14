@@ -25,7 +25,7 @@ if ($action === 'list' && $method === 'GET') {
          LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
          LEFT JOIN users u ON u.id = v.sender_id
          WHERE a.applicant_id = ?
-           AND (v.type = 'status_change' OR u.role IN ('staff', 'admin'))
+           AND (v.type = 'status_change' OR (u.role IN ('staff', 'admin') AND v.deleted_at IS NULL))
          ORDER BY v.created_at DESC, v.id DESC
          LIMIT " . $limit // an int, clamped above — safe to inline
     );

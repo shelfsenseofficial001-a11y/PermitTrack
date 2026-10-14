@@ -28,8 +28,8 @@ export default {
   },
   template: `
   <transition
-    enter-from-class="opacity-0 translate-y-4" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none"
-    leave-to-class="opacity-0 translate-y-4" leave-active-class="transition duration-200 ease-in motion-reduce:transition-none">
+    enter-from-class="opacity-0 translate-y-4" enter-active-class="transition duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+    leave-to-class="opacity-0 translate-y-4" leave-active-class="transition duration-200 ease-in motion-reduce:transition-none motion-reduce:duration-0">
     <div v-if="open" role="region" aria-label="Cookie notice"
       class="font-inter fixed z-[55] left-4 right-4 sm:right-auto sm:max-w-sm bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-6">
       <div class="rounded-3xl bg-white ring-1 ring-black/5 shadow-[0_28px_60px_-20px_rgba(7,24,14,0.45)] overflow-hidden">

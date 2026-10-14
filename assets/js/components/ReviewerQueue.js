@@ -1,8 +1,8 @@
-import { apiGet } from '../api/client.js?v=142';
-import StaffShell from './StaffShell.js?v=142';
-import { formatDate, permitIconClass, permitLabel, deliveryStatusLabel, formatPeso } from '../util.js?v=142';
-import { authState } from '../store/auth.js?v=142';
-import Loader from './Loader.js?v=142';
+import { apiGet } from '../api/client.js?v=168';
+import StaffShell from './StaffShell.js?v=168';
+import { formatDate, permitIconClass, permitLabel, deliveryStatusLabel, formatPeso } from '../util.js?v=168';
+import { authState } from '../store/auth.js?v=168';
+import Loader from './Loader.js?v=168';
 
 const TABS = [
   { key: 'new', label: 'New' },
@@ -26,6 +26,7 @@ export default {
       apps: [],
       counts: { new: 0, in_progress: 0, awaiting_applicant: 0 },
       loading: true,
+      loadError: '',
       // Approved permits waiting on delivery: they've left both queues above (status is no
       // longer 'Submitted'/current-step), so without this list there'd be no way back to them.
       deliveryApps: [],
@@ -77,27 +78,33 @@ export default {
     },
     async refresh() {
       this.loading = true;
-      const deliveryPromise = apiGet('reviewer.php?action=delivery_queue');
-      if (this.isPipelineStaff) {
-        const [queueRes, countsRes, deliveryRes] = await Promise.all([
-          apiGet('reviewer.php?action=pipeline_queue'),
-          apiGet('reviewer.php?action=pipeline_counts'),
-          deliveryPromise,
-        ]);
-        this.apps = queueRes.applications;
-        this.counts = countsRes;
-        this.deliveryApps = deliveryRes.applications;
-      } else {
-        const [queueRes, countsRes, deliveryRes] = await Promise.all([
-          apiGet(`reviewer.php?action=queue&tab=${this.activeTab}`),
-          apiGet('reviewer.php?action=counts'),
-          deliveryPromise,
-        ]);
-        this.apps = queueRes.applications;
-        this.counts = countsRes;
-        this.deliveryApps = deliveryRes.applications;
+      this.loadError = '';
+      try {
+        const deliveryPromise = apiGet('reviewer.php?action=delivery_queue');
+        if (this.isPipelineStaff) {
+          const [queueRes, countsRes, deliveryRes] = await Promise.all([
+            apiGet('reviewer.php?action=pipeline_queue'),
+            apiGet('reviewer.php?action=pipeline_counts'),
+            deliveryPromise,
+          ]);
+          this.apps = queueRes.applications;
+          this.counts = countsRes;
+          this.deliveryApps = deliveryRes.applications;
+        } else {
+          const [queueRes, countsRes, deliveryRes] = await Promise.all([
+            apiGet(`reviewer.php?action=queue&tab=${this.activeTab}`),
+            apiGet('reviewer.php?action=counts'),
+            deliveryPromise,
+          ]);
+          this.apps = queueRes.applications;
+          this.counts = countsRes;
+          this.deliveryApps = deliveryRes.applications;
+        }
+      } catch (e) {
+        this.loadError = e.message || 'Could not load the queue.';
+      } finally {
+        this.loading = false;
       }
-      this.loading = false;
     },
   },
   template: `
@@ -125,7 +132,7 @@ export default {
         v-for="tab in tabs" :key="tab.key"
         type="button" role="tab" :aria-selected="activeTab === tab.key"
         @click="selectTab(tab.key)"
-        class="text-left bg-white rounded-2xl border p-5 flex items-center gap-4 transition"
+        class="group relative text-left bg-white rounded-2xl border p-5 pr-12 flex items-center gap-4 transition"
         :class="activeTab === tab.key ? 'border-brand-600 ring-4 ring-brand-600/10' : 'border-brand-100 hover:border-brand-300'"
       >
         <div class="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" :class="tabIconClass(tab.key)">
@@ -137,6 +144,8 @@ export default {
           <div class="text-xs font-semibold uppercase tracking-wide" :class="activeTab === tab.key ? 'text-brand-700' : 'text-slate-500'">{{ tab.label }}</div>
           <div class="text-3xl font-bold text-ink-700 mt-0.5">{{ counts[tab.key] }}</div>
         </div>
+        <svg class="absolute bottom-4 right-4 w-5 h-5 transition duration-200 group-hover:translate-x-0.5" :class="activeTab === tab.key ? 'text-brand-600' : 'text-slate-300 group-hover:text-brand-600'"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
       </button>
     </div>
 
@@ -170,6 +179,12 @@ export default {
     <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{{ isPipelineStaff ? 'Waiting on your office' : activeTabLabel + ' applications' }}</h2>
 
     <Loader v-if="loading" kind="queue" />
+
+    <div v-else-if="loadError" class="bg-white rounded-2xl border border-red-200 p-8 text-center" role="alert">
+      <p class="text-sm font-semibold text-red-700">Couldn't load the queue.</p>
+      <p class="text-sm text-slate-500 mt-1">{{ loadError }}</p>
+      <button type="button" @click="refresh" class="mt-4 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition">Try again</button>
+    </div>
 
     <div v-else-if="!apps.length" :key="'empty-' + activeTab" class="pt-tab-in bg-white rounded-2xl border border-dashed border-brand-200 p-12 text-center text-slate-500">
       Nothing in this queue right now.
