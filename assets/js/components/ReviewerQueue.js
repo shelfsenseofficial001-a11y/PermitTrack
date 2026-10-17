@@ -162,11 +162,15 @@ export default {
             </div>
             <div class="min-w-0">
               <div class="font-bold text-ink-700 truncate">{{ app.applicant_name }} &mdash; {{ permitLabel(app.permit_type || app.permit_type_name) }}</div>
-              <div class="text-sm text-slate-500 mt-0.5 truncate">{{ app.delivery_method === 'barangay_pickup' ? 'Pickup at barangay hall' : 'To ' + app.delivery_address }}</div>
+              <div class="text-sm text-slate-500 mt-0.5 truncate">
+                {{ app.delivery_method === 'barangay_pickup' ? 'Pickup at Barangay Hall' : (app.delivery_address ? 'Deliver to ' + app.delivery_address : 'Batch delivery requested') }}
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-3 shrink-0">
-            <span class="text-xs font-bold px-3 py-1.5 rounded-full bg-sun-100 text-sun-700">{{ deliveryStatusLabel(app.delivery_status) }}</span>
+            <span class="text-xs font-bold px-3 py-1.5 rounded-full bg-sun-100 text-sun-700">
+              {{ deliveryStatusLabel(app.delivery_status) || 'Preparing' }}
+            </span>
             <router-link :to="'/reviewer/applications/' + app.id" class="inline-flex items-center gap-1.5 bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-brand-700 transition shadow-[0_8px_18px_-8px_rgba(31,122,58,0.6)]">
               Manage
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>

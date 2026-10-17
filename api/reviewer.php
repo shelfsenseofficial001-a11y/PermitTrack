@@ -77,26 +77,53 @@ if ($action === 'counts' && $method === 'GET') {
     respond(['new' => (int)$new, 'in_progress' => (int)$inProgress, 'awaiting_applicant' => (int)$awaiting]);
 }
 
-// Approved permits drop out of 'queue'/'pipeline_queue' entirely (status NOT IN 'Approved'/
-// current-step-only) — this is the only place a permit waiting on delivery turns back up, so
-// an office actually has a way to find it again once it's left the review queues behind.
+// Approved permits and batch step files waiting on physical delivery.
+// This is where applications with whole-app delivery OR pipeline step deliveries appear so staff
+// can manage the dispatch through the Preparing -> Out for Delivery -> Delivered stages.
 if ($action === 'delivery_queue' && $method === 'GET') {
     $user = require_role('staff');
-    $rows = db()->query(
-        "SELECT a.*, u.full_name AS applicant_name, pt.name AS permit_type_name
-         FROM applications a JOIN users u ON u.id = a.applicant_id
-         LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
-         WHERE a.delivery_method IN ('delivery', 'barangay_pickup') AND a.delivery_status IS NOT NULL AND a.delivery_status <> 'delivered'
-         ORDER BY a.delivery_requested_at ASC"
-    )->fetchAll();
+    $userDeptId = (int)($user['department_id'] ?? 0);
+    $isAdmin = ($user['role'] === 'admin');
 
-    if ($user['role'] !== 'admin') {
+    // Applications that have either:
+    // 1) Whole-application delivery active (a.delivery_method is set and delivery_status is not 'delivered')
+    // 2) At least one pipeline step with delivery active (p.delivery_method is set and delivery_status is not 'delivered')
+    $sql = "SELECT DISTINCT a.*, u.full_name AS applicant_name, pt.name AS permit_type_name
+            FROM applications a
+            JOIN users u ON u.id = a.applicant_id
+            LEFT JOIN permit_types pt ON pt.id = a.permit_type_id
+            LEFT JOIN application_pipeline_progress p ON p.application_id = a.id
+            WHERE (
+                (a.delivery_method IN ('delivery', 'barangay_pickup') AND a.delivery_status IS NOT NULL AND a.delivery_status <> 'delivered')
+                OR
+                (p.delivery_method IN ('delivery', 'barangay_pickup') AND p.delivery_status IS NOT NULL AND p.delivery_status <> 'delivered')
+            )
+            ORDER BY COALESCE(a.delivery_requested_at, p.delivery_requested_at, a.updated_at) ASC";
+
+    $rows = db()->query($sql)->fetchAll();
+
+    if (!$isAdmin) {
         $legacyTypes = reviewable_permit_types($user);
-        $rows = array_values(array_filter($rows, function (array $app) use ($user, $legacyTypes) {
+        $rows = array_values(array_filter($rows, function (array $app) use ($user, $userDeptId, $legacyTypes) {
+            // Check if user is the handling Barangay Secretariat
             $barangayDeptId = $app['barangay_id'] !== null ? resolve_office_department('BARANGAY', (int)$app['barangay_id']) : null;
-            if ($barangayDeptId !== null) {
-                return $barangayDeptId === (int)($user['department_id'] ?? 0);
+            if ($barangayDeptId !== null && $barangayDeptId === $userDeptId) {
+                return true;
             }
+            // Check if user's office has a step waiting on delivery in this application
+            if ($userDeptId > 0) {
+                $stepMatchStmt = db()->prepare(
+                    "SELECT 1 FROM application_pipeline_progress
+                      WHERE application_id = ? AND department_id = ?
+                        AND delivery_method IN ('delivery', 'barangay_pickup')
+                        AND delivery_status <> 'delivered' LIMIT 1"
+                );
+                $stepMatchStmt->execute([$app['id'], $userDeptId]);
+                if ($stepMatchStmt->fetchColumn()) {
+                    return true;
+                }
+            }
+            // Fall back to legacy permit_types
             return $legacyTypes === null || in_array($app['permit_type'], $legacyTypes, true);
         }));
     }
@@ -352,12 +379,15 @@ if ($action === 'pipeline_decision' && $method === 'POST') {
     respond(['ok' => true, 'status' => $resultStatus]);
 }
 
-// Staff's own tracking of the physical handoff, once the applicant has chosen delivery. Separate
-// from applications.status, which stays 'Approved' throughout — this only ever moves forward,
-// Preparing -> Out for delivery -> Delivered.
+// Staff's own tracking of the physical handoff, once the applicant has chosen delivery.
+// Supports 3 stages with photos & courier information as per wireframe:
+// 1. Preparing stage: courier_name, courier_phone, courier_license_photo, courier_plate_number -> "send for delivery" (moves to out_for_delivery)
+// 2. Out for delivery stage: delivery_proof_photo (proof of withheld documents / files) -> "ready to deliver" (ready for handoff)
+// 3. Delivered stage: delivered_photo (image of delivered document at location) -> "mark as delivered"
 if ($action === 'delivery_status' && $method === 'POST') {
     $user = require_role('staff');
-    $in = json_input();
+    $isMultipart = !empty($_POST);
+    $in = $isMultipart ? $_POST : json_input();
     $appId = (int)($in['application_id'] ?? 0);
     $status = (string)($in['delivery_status'] ?? '');
 
@@ -376,11 +406,6 @@ if ($action === 'delivery_status' && $method === 'POST') {
         fail('This permit is not set for delivery.', 409);
     }
 
-    // The barangay secretariat handles delivery — it's the office closest to the applicant and
-    // the one every pipeline already routes through, not whichever city office happened to issue
-    // the permit. On the old single-stage flow, which never had a barangay step at all, fall back
-    // to whichever department's permit_types cover it (the same rule 'decision' authorizes with).
-    // Admins are exempt, same as everywhere else.
     if ($user['role'] !== 'admin') {
         $barangayDeptId = $app['barangay_id'] !== null ? resolve_office_department('BARANGAY', (int)$app['barangay_id']) : null;
         if ($barangayDeptId !== null) {
@@ -395,14 +420,40 @@ if ($action === 'delivery_status' && $method === 'POST') {
         }
     }
 
-    // Forward only — Delivered is the end of the line, and a step can't be skipped or reversed
-    // by typing a different value into the same request.
     if (array_search($status, $order, true) <= array_search($app['delivery_status'], $order, true)) {
         fail('Delivery status can only move forward, from ' . DELIVERY_STATUS_LABELS[$app['delivery_status']] . '.', 409);
     }
 
-    db()->prepare('UPDATE applications SET delivery_status = ?, delivery_updated_at = NOW() WHERE id = ?')
-        ->execute([$status, $appId]);
+    // Process file uploads if attached
+    $uploadDir = __DIR__ . '/../uploads/delivery/' . $appId;
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0777, true);
+    }
+
+    $saveUploaded = function (string $key) use ($uploadDir): ?string {
+        if (!empty($_FILES[$key]) && $_FILES[$key]['error'] === UPLOAD_ERR_OK) {
+            $ext = strtolower(pathinfo((string)$_FILES[$key]['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) {
+                fail('Images or PDFs only for delivery attachments.');
+            }
+            $safe = uniqid('del_', true) . '.' . $ext;
+            move_uploaded_file($_FILES[$key]['tmp_name'], $uploadDir . '/' . $safe);
+            return 'uploads/delivery/' . basename($uploadDir) . '/' . $safe;
+        }
+        return null;
+    };
+
+    $courierName = trim((string)($in['courier_name'] ?? $app['courier_name'] ?? ''));
+    $courierPhone = trim((string)($in['courier_phone'] ?? $app['courier_phone'] ?? ''));
+    $plateNumber = trim((string)($in['courier_plate_number'] ?? $app['courier_plate_number'] ?? ''));
+    $licensePhoto = $saveUploaded('courier_license') ?: ($app['courier_license_photo'] ?? null);
+    $proofPhoto = $saveUploaded('delivery_proof') ?: ($app['delivery_proof_photo'] ?? null);
+    $deliveredPhoto = $saveUploaded('delivered_photo') ?: ($app['delivered_photo'] ?? null);
+
+    db()->prepare(
+        'UPDATE applications SET delivery_status = ?, courier_name = ?, courier_phone = ?, courier_plate_number = ?,
+                courier_license_photo = ?, delivery_proof_photo = ?, delivered_photo = ?, delivery_updated_at = NOW() WHERE id = ?'
+    )->execute([$status, $courierName ?: null, $courierPhone ?: null, $plateNumber ?: null, $licensePhoto, $proofPhoto, $deliveredPhoto, $appId]);
 
     db()->prepare(
         "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
@@ -418,11 +469,11 @@ if ($action === 'delivery_status' && $method === 'POST') {
     respond(['ok' => true]);
 }
 
-// Section 5: the per-node counterpart to 'delivery_status' above — tracking the handoff of just
-// one finished office's files, for a hard-copy choice made before the whole application is done.
+// Section 5 & Batch delivery: counterpart for pipeline steps with courier & photo support
 if ($action === 'node_delivery_status' && $method === 'POST') {
     $user = require_role('staff');
-    $in = json_input();
+    $isMultipart = !empty($_POST);
+    $in = $isMultipart ? $_POST : json_input();
     $stepId = (int)($in['step_id'] ?? 0);
     $status = (string)($in['delivery_status'] ?? '');
 
@@ -437,18 +488,61 @@ if ($action === 'node_delivery_status' && $method === 'POST') {
     if (!$step) {
         fail('Step not found.', 404);
     }
+    if ($step['step_label'] === 'Issued directly by the barangay') {
+        fail('Delivery for this permit is handled through the main permit delivery.', 409);
+    }
     if (!in_array($step['delivery_method'], ['delivery', 'barangay_pickup'], true) || empty($step['delivery_status'])) {
         fail('No delivery choice has been made for this step yet.', 409);
     }
-    if ($user['role'] !== 'admin' && (int)$step['department_id'] !== (int)($user['department_id'] ?? 0)) {
-        fail('This step is handled by another office.', 403);
+
+    // Authorized: Barangay Secretariat (handling barangay), admin, or the issuing department
+    if ($user['role'] !== 'admin') {
+        $appStmt2 = db()->prepare('SELECT barangay_id FROM applications WHERE id = ?');
+        $appStmt2->execute([(int)$step['application_id']]);
+        $appRow2 = $appStmt2->fetch();
+        $barangayDeptId = $appRow2 && $appRow2['barangay_id'] !== null ? resolve_office_department('BARANGAY', (int)$appRow2['barangay_id']) : null;
+        $userDeptId = (int)($user['department_id'] ?? 0);
+        $isHandlingBarangay = ($barangayDeptId !== null && $barangayDeptId === $userDeptId);
+        $isIssuingOffice = ((int)$step['department_id'] === $userDeptId);
+
+        if (!$isHandlingBarangay && !$isIssuingOffice) {
+            fail('Delivery for this step is handled by the Barangay Secretariat or the issuing office.', 403);
+        }
     }
     if (array_search($status, $order, true) <= array_search($step['delivery_status'], $order, true)) {
         fail('Delivery status can only move forward, from ' . DELIVERY_STATUS_LABELS[$step['delivery_status']] . '.', 409);
     }
 
-    db()->prepare('UPDATE application_pipeline_progress SET delivery_status = ?, delivery_updated_at = NOW() WHERE id = ?')
-        ->execute([$status, $stepId]);
+    // Process file uploads
+    $uploadDir = __DIR__ . '/../uploads/delivery/step_' . $stepId;
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0777, true);
+    }
+
+    $saveUploaded = function (string $key) use ($uploadDir): ?string {
+        if (!empty($_FILES[$key]) && $_FILES[$key]['error'] === UPLOAD_ERR_OK) {
+            $ext = strtolower(pathinfo((string)$_FILES[$key]['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) {
+                fail('Images or PDFs only for delivery attachments.');
+            }
+            $safe = uniqid('del_', true) . '.' . $ext;
+            move_uploaded_file($_FILES[$key]['tmp_name'], $uploadDir . '/' . $safe);
+            return 'uploads/delivery/' . basename($uploadDir) . '/' . $safe;
+        }
+        return null;
+    };
+
+    $courierName = trim((string)($in['courier_name'] ?? $step['courier_name'] ?? ''));
+    $courierPhone = trim((string)($in['courier_phone'] ?? $step['courier_phone'] ?? ''));
+    $plateNumber = trim((string)($in['courier_plate_number'] ?? $step['courier_plate_number'] ?? ''));
+    $licensePhoto = $saveUploaded('courier_license') ?: ($step['courier_license_photo'] ?? null);
+    $proofPhoto = $saveUploaded('delivery_proof') ?: ($step['delivery_proof_photo'] ?? null);
+    $deliveredPhoto = $saveUploaded('delivered_photo') ?: ($step['delivered_photo'] ?? null);
+
+    db()->prepare(
+        'UPDATE application_pipeline_progress SET delivery_status = ?, courier_name = ?, courier_phone = ?, courier_plate_number = ?,
+                courier_license_photo = ?, delivery_proof_photo = ?, delivered_photo = ?, delivery_updated_at = NOW() WHERE id = ?'
+    )->execute([$status, $courierName ?: null, $courierPhone ?: null, $plateNumber ?: null, $licensePhoto, $proofPhoto, $deliveredPhoto, $stepId]);
 
     $appStmt = db()->prepare('SELECT applicant_id, property_address FROM applications WHERE id = ?');
     $appStmt->execute([(int)$step['application_id']]);

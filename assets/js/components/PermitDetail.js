@@ -1,11 +1,11 @@
-import { apiGet, apiPost, apiPostForm, viewUrl } from '../api/client.js?v=168';
-import AppShell from './AppShell.js?v=168';
-import StatusStepper from './StatusStepper.js?v=168';
-import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel, DELIVERY_STATUS_STEPS, deliveryStatusLabel, formatPeso, DELIVERY_FEE } from '../util.js?v=168';
-import { uiState, toggleReviewerHints } from '../store/ui.js?v=168';
-import Loader from './Loader.js?v=168';
-import BaseModal from './BaseModal.js?v=168';
-import ThreadCard from './ThreadCard.js?v=168';
+import { apiGet, apiPost, apiPostForm, viewUrl } from '../api/client.js?v=169';
+import AppShell from './AppShell.js?v=169';
+import StatusStepper from './StatusStepper.js?v=169';
+import { permitNumber, permitIconClass, formatDate, formatDateTime, backButtonClass, backIconClass, UPLOAD_ACCEPT, uploadTypeError, permitLabel, rejectReasonLabel, DELIVERY_STATUS_STEPS, deliveryStatusLabel, formatPeso, DELIVERY_FEE, isRenewableBaseType } from '../util.js?v=169';
+import { uiState, toggleReviewerHints } from '../store/ui.js?v=169';
+import Loader from './Loader.js?v=169';
+import BaseModal from './BaseModal.js?v=169';
+import ThreadCard from './ThreadCard.js?v=169';
 
 export default {
   name: 'PermitDetail',
@@ -45,16 +45,17 @@ export default {
       deliveryError: '',
       deliveryFee: DELIVERY_FEE,
       deliverySteps: DELIVERY_STATUS_STEPS,
-      // Section 5: per-node delivery choice state
-      nodeDeliverySavingId: null,
-      nodeDeliveryAddressFor: null, // step id whose address textarea is open
-      nodeDeliveryAddress: '',
-      nodeDeliveryError: '',
-      nodeDeliveryErrorMsg: '',
+      // Batch delivery: unified choice for all output files across all pipeline nodes.
+      batchDeliveryChoice: '', // 'barangay_pickup' | 'delivery'
+      batchDeliveryAddress: '', // auto-populated from applicant's registered address
+      batchDeliveryLandmarks: '', // optional landmarks / additional directions
+      batchDeliverySaving: false,
+      batchDeliveryError: '',
     };
   },
   async mounted() {
     await this.refresh();
+    this.initBatchAddress();
   },
   computed: {
     // The step the permit is sitting on right now — the one a reviewer has to act on next.
@@ -77,9 +78,26 @@ export default {
     deliveryStepIndex() {
       return DELIVERY_STATUS_STEPS.findIndex((s) => s.value === (this.app && this.app.delivery_status));
     },
+    // Pipeline nodes that produced output files and whose delivery has not yet been chosen.
+    // These are shown together in one "Documents ready for delivery" batch section.
+    batchOutputSteps() {
+      return (this.app && this.app.pipeline || []).filter(
+        (s) => s.has_output && s.step_label !== 'Issued directly by the barangay'
+      );
+    },
+    // True once every output step that needs a choice already has one.
+    batchDeliveryDone() {
+      return this.batchOutputSteps.length > 0 && this.batchOutputSteps.every((s) => s.delivery_method);
+    },
+    // The first delivery method chosen across all steps (they are all set in one go).
+    batchDeliveryMethod() {
+      const step = this.batchOutputSteps.find((s) => s.delivery_method);
+      return step ? step.delivery_method : null;
+    },
   },
   methods: {
     permitLabel,
+    isRenewableBaseType,
     rejectReasonLabel,
     toggleReviewerHints,
     permitNumber,
@@ -105,6 +123,10 @@ export default {
           method: this.payMethod,
           simulate,
         });
+        if (res.requires_redirect && res.checkout_url) {
+          window.location.href = res.checkout_url;
+          return;
+        }
         if (!res.succeeded) {
           this.payError = res.message;
         }
@@ -235,30 +257,38 @@ export default {
         this.deliverySaving = false;
       }
     },
-    async chooseNodeDelivery(step, method) {
-      if (this.nodeDeliverySavingId) return;
-      this.nodeDeliveryError = '';
-      if (method === 'delivery' && !this.nodeDeliveryAddress.trim()) {
-        this.nodeDeliveryAddressFor = step.id;
-        this.nodeDeliveryError = String(step.id);
-        this.nodeDeliveryErrorMsg = 'Please give an address to deliver to.';
+    // Batch delivery: called once for ALL pipeline output steps at the same time.
+    // Populates address from the applicant's registered address when the component mounts;
+    // the applicant can override it before confirming.
+    initBatchAddress() {
+      if (!this.batchDeliveryAddress && this.app && this.app.applicant_address) {
+        this.batchDeliveryAddress = this.app.applicant_address;
+      }
+    },
+    async chooseBatchDelivery() {
+      if (this.batchDeliverySaving) return;
+      this.batchDeliveryError = '';
+      if (!this.batchDeliveryChoice) {
+        this.batchDeliveryError = 'Please choose how you want to receive your documents.';
         return;
       }
-      this.nodeDeliverySavingId = step.id;
+      if (this.batchDeliveryChoice === 'delivery' && !this.batchDeliveryAddress.trim()) {
+        this.batchDeliveryError = 'Please provide a delivery address.';
+        return;
+      }
+      this.batchDeliverySaving = true;
       try {
-        await apiPost('applications.php?action=set_node_delivery', {
-          step_id: step.id,
-          delivery_method: method,
-          delivery_address: this.nodeDeliveryAddress,
+        await apiPost('applications.php?action=set_batch_delivery', {
+          id: this.app.id,
+          delivery_method: this.batchDeliveryChoice,
+          delivery_address: this.batchDeliveryAddress,
+          delivery_landmarks: this.batchDeliveryLandmarks,
         });
-        this.nodeDeliveryAddressFor = null;
-        this.nodeDeliveryAddress = '';
         await this.refresh(true);
       } catch (e) {
-        this.nodeDeliveryError = String(step.id);
-        this.nodeDeliveryErrorMsg = e.message;
+        this.batchDeliveryError = e.message;
       } finally {
-        this.nodeDeliverySavingId = null;
+        this.batchDeliverySaving = false;
       }
     },
   },
@@ -296,6 +326,13 @@ export default {
               Discard
             </button>
           </template>
+          <!-- Renewable base permit, approved, with a renewal type set up (section 2) -->
+          <router-link v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type || app.permit_type_name)"
+            :to="'/applications/new?renew=' + app.id"
+            class="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3.5 py-1.5 rounded-full transition shadow-sm">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            Renew Permit
+          </router-link>
           <span class="text-xs font-bold px-3 py-1.5 rounded-full"
             :class="app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
               : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-600'
@@ -327,7 +364,7 @@ export default {
               class="rounded-xl border border-slate-200 hover:border-brand-300 px-3.5 py-3 text-sm font-semibold text-ink-700 transition">{{ m.label }}</button>
           </div>
           <template v-else>
-            <p class="text-sm text-slate-600 mb-3">Paying with <span class="font-semibold">{{ paymentMethodLabel(payMethod) }}</span> — a simulated PayMongo checkout (test mode).</p>
+            <p class="text-sm text-slate-600 mb-3">Paying with <span class="font-semibold">{{ paymentMethodLabel(payMethod) }}</span> — PayMongo sandbox (test mode). You will be redirected to authorise your payment.</p>
             <div class="flex flex-wrap gap-2">
               <button type="button" @click="payNow('success')" :disabled="paySaving"
                 class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2.5 rounded-xl transition">{{ paySaving ? 'Processing…' : 'Pay now' }}</button>
@@ -389,20 +426,31 @@ export default {
         <StatusStepper :stages="app.stages" :active-index="app.stage_index" :rejected="app.status === 'Rejected'" />
       </div>
 
-      <!-- Pickup vs. delivery, once the permit is Approved. Shown until a choice is made; after
-           that, just the choice (and, for delivery, staff's own progress on it). -->
-      <div v-if="app.status === 'Approved'" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+      <!-- Renewal info for approved renewable permits (section 2) -->
+      <div v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type || app.permit_type_name)"
+        class="bg-brand-50 border border-brand-200 rounded-xl p-4 mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-start gap-2.5 min-w-0">
+          <svg class="w-5 h-5 text-brand-700 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          <div>
+            <p class="text-sm font-bold text-ink-700">Renewable Permit · Due every year by January 20</p>
+            <p class="text-xs text-slate-600 mt-0.5">When renewing, your issued files and approvals from this permit are automatically pre-listed for your renewal application.</p>
+          </div>
+        </div>
+        <router-link :to="'/applications/new?renew=' + app.id"
+          class="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-sm shrink-0">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          Renew Now
+        </router-link>
+      </div>
+
+      <!-- Pickup vs. delivery (whole-application, legacy/non-pipeline approved apps).
+           Only shown for approved non-pipeline apps where delivery_method is not yet chosen. -->
+      <div v-if="app.status === 'Approved' && !app.pipeline?.length" class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
         <h2 class="font-bold text-ink-700 mb-1">Getting your permit</h2>
 
         <template v-if="!app.delivery_method">
-          <p class="text-sm text-slate-500 mb-4">Soft copies are always downloadable above. For a hard copy — pickup at the office, pickup at your barangay hall, or delivery to an address — all free.</p>
-          <div class="grid sm:grid-cols-3 gap-3">
-            <button type="button" @click="deliveryChoice = 'pickup'"
-              class="text-left rounded-xl border-2 p-4 transition"
-              :class="deliveryChoice === 'pickup' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
-              <div class="font-semibold text-slate-700">Pick up at the office</div>
-              <div class="text-xs text-slate-400 mt-1">Bring a valid ID to claim it.</div>
-            </button>
+          <p class="text-sm text-slate-500 mb-4">Soft copies are always downloadable above. For a hard copy — pick up at your barangay hall or have it delivered to your address — all free.</p>
+          <div class="grid sm:grid-cols-2 gap-3">
             <button type="button" @click="deliveryChoice = 'barangay_pickup'"
               class="text-left rounded-xl border-2 p-4 transition"
               :class="deliveryChoice === 'barangay_pickup' ? 'border-brand-300 bg-meadow' : 'border-slate-200 hover:border-brand-300'">
@@ -429,10 +477,6 @@ export default {
           <p v-if="deliveryError" class="text-sm text-red-600 mt-3">{{ deliveryError }}</p>
         </template>
 
-        <template v-else-if="app.delivery_method === 'pickup'">
-          <p class="text-sm text-slate-600">You chose to pick this up at the office. Bring a valid ID to claim it.</p>
-        </template>
-
         <template v-else>
           <p class="text-sm text-slate-500 mb-4">
             <template v-if="app.delivery_method === 'barangay_pickup'">Being prepared for pickup at <span class="font-semibold text-slate-700">your barangay hall</span>.</template>
@@ -451,33 +495,173 @@ export default {
         </template>
       </div>
 
-      <!-- Section 5: a node that just finished and produced output files offers the same choice,
-           one office at a time, instead of only at the very end. -->
-      <div v-for="step in (app.pipeline || []).filter(s => s.has_output)" :key="'node-delivery-' + step.id"
-        class="bg-white rounded-xl border border-slate-200 p-6 mt-6">
-        <h2 class="font-bold text-ink-700 mb-1">Files from {{ step.step_label }}</h2>
-        <template v-if="!step.delivery_method">
-          <p class="text-sm text-slate-500 mb-3">{{ step.department_name }} has finished its part. Soft copies of its files are downloadable above now; for a hard copy, choose one — all free.</p>
-          <div class="grid sm:grid-cols-3 gap-2.5">
-            <button type="button" @click="chooseNodeDelivery(step, 'pickup')" :disabled="nodeDeliverySavingId === step.id"
-              class="text-sm font-semibold text-left rounded-xl border-2 border-slate-200 hover:border-brand-300 p-3 transition">Pick up at the office</button>
-            <button type="button" @click="chooseNodeDelivery(step, 'barangay_pickup')" :disabled="nodeDeliverySavingId === step.id"
-              class="text-sm font-semibold text-left rounded-xl border-2 border-slate-200 hover:border-brand-300 p-3 transition">Pick up at my barangay hall</button>
-            <button type="button" @click="nodeDeliveryAddressFor = step.id" :disabled="nodeDeliverySavingId === step.id"
-              class="text-sm font-semibold text-left rounded-xl border-2 border-slate-200 hover:border-brand-300 p-3 transition">Deliver to my address</button>
+      <!-- Batch delivery section: shown when there are pipeline output files ready.
+           All files from approved offices are listed on the left; the applicant makes
+           ONE delivery choice for everything together — matching wireframe layout. -->
+      <div v-if="batchOutputSteps.length" class="bg-white rounded-2xl border border-slate-200 mt-6 overflow-hidden shadow-sm">
+        <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-bold text-ink-700">Documents / Files Batch Delivery</h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              All approved papers from the municipality go through your <strong class="text-brand-700">Barangay</strong> first before heading to you.
+            </p>
           </div>
-          <div v-if="nodeDeliveryAddressFor === step.id" class="mt-3 flex gap-2">
-            <textarea v-model="nodeDeliveryAddress" rows="2" placeholder="Where should it be delivered?"
-              class="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"></textarea>
-            <button type="button" @click="chooseNodeDelivery(step, 'delivery')" :disabled="nodeDeliverySavingId === step.id"
-              class="shrink-0 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2 rounded-xl transition self-start">Confirm</button>
+          <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">
+            {{ batchOutputSteps.length }} {{ batchOutputSteps.length === 1 ? 'Office ready' : 'Offices ready' }}
+          </span>
+        </div>
+
+        <div class="grid lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+
+          <!-- Left column (55-60% width): list of documents / files -->
+          <div class="lg:col-span-7 p-6 bg-white flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">List of Documents / Files</span>
+                <span class="text-xs text-slate-400">Soft copies always available</span>
+              </div>
+
+              <div class="space-y-4">
+                <div v-for="step in batchOutputSteps" :key="step.id"
+                  class="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 transition hover:border-slate-300">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-brand-100 text-brand-700">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                      </span>
+                      <div class="min-w-0">
+                        <h3 class="text-sm font-bold text-slate-800 truncate">{{ step.step_label }}</h3>
+                        <p class="text-[11px] text-slate-500">{{ step.department_name }}</p>
+                      </div>
+                    </div>
+                    <span v-if="step.delivery_method && step.delivery_status"
+                      class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 shrink-0">
+                      {{ deliveryStatusLabel(step.delivery_status) }}
+                    </span>
+                  </div>
+
+                  <!-- Specific documents produced by this step -->
+                  <ul v-if="step.output_documents && step.output_documents.length" class="mt-2.5 pt-2 border-t border-slate-200/60 space-y-1.5">
+                    <li v-for="d in step.output_documents" :key="d.id" class="flex items-center justify-between text-xs text-slate-600 pl-8">
+                      <span class="truncate flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        <span class="font-medium text-slate-700">{{ d.doc_name }}</span>
+                      </span>
+                      <a v-if="d.file_path" :href="viewUrl(d.id)" target="_blank" rel="noopener"
+                        class="text-xs font-semibold text-brand-600 hover:text-brand-800 hover:underline shrink-0 ml-2">
+                        View
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-400">
+              <svg class="w-4 h-4 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              <span>Municipality approvals are routed and dispatched through the Barangay Secretariat for safe physical custody.</span>
+            </div>
           </div>
-          <p v-if="nodeDeliveryError === step.id + ''" class="text-sm text-red-600 mt-2">{{ nodeDeliveryErrorMsg }}</p>
-        </template>
-        <template v-else>
-          <p class="text-sm text-slate-600">{{ step.delivery_method === 'delivery' ? 'Being delivered to ' + step.delivery_address : step.delivery_method === 'barangay_pickup' ? 'Pickup at your barangay hall' : 'Pickup at the office' }} — {{ step.delivery_status ? deliveryStatusLabel(step.delivery_status) : '' }}</p>
-        </template>
+
+          <!-- Right column (40-45% width): choice & location form -->
+          <div class="lg:col-span-5 p-6 bg-white flex flex-col justify-between">
+
+            <!-- Already confirmed: show tracking status -->
+            <template v-if="batchDeliveryDone">
+              <div class="space-y-4">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Delivery Status</span>
+
+                <div class="rounded-xl bg-brand-50 border border-brand-200 p-4">
+                  <div class="flex items-center gap-2 text-sm font-bold text-brand-800">
+                    <svg v-if="batchDeliveryMethod === 'barangay_pickup'" class="w-4 h-4 text-brand-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    <svg v-else class="w-4 h-4 text-brand-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    {{ batchDeliveryMethod === 'barangay_pickup' ? 'Pick up at Barangay Hall' : 'Delivering to Address' }}
+                  </div>
+                  <p class="text-xs text-brand-900 mt-1.5 leading-relaxed">
+                    <strong class="font-semibold text-slate-700">Location:</strong>
+                    {{ batchOutputSteps.find(s => s.delivery_address)?.delivery_address || 'Registered Address' }}
+                  </p>
+                  <p v-if="batchOutputSteps.find(s => s.delivery_landmarks)?.delivery_landmarks" class="text-xs text-slate-600 mt-1">
+                    <strong class="font-semibold text-slate-700">Landmarks:</strong>
+                    {{ batchOutputSteps.find(s => s.delivery_landmarks)?.delivery_landmarks }}
+                  </p>
+                </div>
+
+                <div class="text-xs text-slate-500 leading-relaxed">
+                  Your delivery option applies to all approved files above. The Barangay Secretariat will coordinate with you once the packet arrives.
+                </div>
+              </div>
+            </template>
+
+            <!-- Not yet chosen: show options from wireframe -->
+            <template v-else>
+              <div class="space-y-4">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Choose Delivery Option</span>
+
+                <!-- Option 1: pick up at barangay hall -->
+                <button type="button" @click="batchDeliveryChoice = 'barangay_pickup'"
+                  class="w-full text-left rounded-xl border-2 px-4 py-3 transition relative"
+                  :class="batchDeliveryChoice === 'barangay_pickup' ? 'border-brand-500 bg-meadow/80 ring-2 ring-brand-500/20' : 'border-slate-200 hover:border-brand-300 bg-white'">
+                  <div class="flex items-center justify-between">
+                    <div class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                      <svg class="w-4 h-4 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      Pick up at barangay hall
+                    </div>
+                    <span v-if="batchDeliveryChoice === 'barangay_pickup'" class="w-4 h-4 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px]">✓</span>
+                  </div>
+                  <div class="text-xs text-slate-500 mt-1 ml-6">Papers ready at your local barangay office.</div>
+                </button>
+
+                <!-- Option 2: deliver to my address -->
+                <button type="button" @click="batchDeliveryChoice = 'delivery'"
+                  class="w-full text-left rounded-xl border-2 px-4 py-3 transition relative"
+                  :class="batchDeliveryChoice === 'delivery' ? 'border-brand-500 bg-meadow/80 ring-2 ring-brand-500/20' : 'border-slate-200 hover:border-brand-300 bg-white'">
+                  <div class="flex items-center justify-between">
+                    <div class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                      <svg class="w-4 h-4 text-brand-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                      Deliver to my address
+                    </div>
+                    <span v-if="batchDeliveryChoice === 'delivery'" class="w-4 h-4 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px]">✓</span>
+                  </div>
+                  <div class="text-xs text-slate-500 mt-1 ml-6">Free dispatch to your registered address.</div>
+                </button>
+
+                <!-- Location information box (wireframe: location information) -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-bold text-slate-700">Location Information</label>
+                    <span class="text-[10px] text-slate-400">Auto-populated from account</span>
+                  </div>
+                  <textarea v-model="batchDeliveryAddress" rows="3"
+                    class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
+                    placeholder="Enter full address..."></textarea>
+                </div>
+
+                <!-- Additional info (wireframe: additional info, if deliver to address, like landmarks) -->
+                <div v-if="batchDeliveryChoice === 'delivery'">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">
+                    Additional Info <span class="font-normal text-slate-400">(Landmarks, gate, unit #)</span>
+                  </label>
+                  <textarea v-model="batchDeliveryLandmarks" rows="2"
+                    class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
+                    placeholder="e.g. In front of elementary school, blue gate..."></textarea>
+                </div>
+
+                <p v-if="batchDeliveryError" class="text-xs text-red-600">{{ batchDeliveryError }}</p>
+              </div>
+
+              <!-- Confirm delivery button aligned bottom-right as per wireframe -->
+              <div class="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+                <button type="button" @click="chooseBatchDelivery" :disabled="batchDeliverySaving || !batchDeliveryChoice"
+                  class="inline-flex items-center justify-center text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 px-6 py-2.5 rounded-xl transition shadow-sm">
+                  {{ batchDeliverySaving ? 'Saving…' : 'Confirm delivery' }}
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
+
 
       <div class="grid lg:grid-cols-2 gap-6 mt-6">
         <div class="bg-white rounded-xl border border-slate-200 p-6">

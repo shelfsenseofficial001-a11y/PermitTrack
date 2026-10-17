@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import { router } from './router/router.js?v=168';
+import { router } from './router/router.js?v=172';
 import { authState, logout, signOutPathFor } from './store/auth.js?v=168';
 import { uiState, beginTransition, endTransition } from './store/ui.js?v=168';
 import ChangePasswordModal from './components/ChangePasswordModal.js?v=168';

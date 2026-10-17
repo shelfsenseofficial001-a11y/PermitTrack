@@ -21,3 +21,4 @@ UPDATE permit_types SET description = 'The yearly renewal of your outdoor advert
 
 UPDATE permit_types SET description = 'The yearly barangay endorsement for continuing tricycle operations within the barangay. Required before renewing your city MTOP/TODA franchise.'
  WHERE name = 'Barangay Clearance for Tricycles (TODA) Renewal';
+

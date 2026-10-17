@@ -29,6 +29,7 @@ export const DOCUMENT_INSTRUCTIONS = {
   'Vehicle OR/CR': 'The Official Receipt and Certificate of Registration of the vehicle, issued by the LTO — bring these when you apply.',
   'Proof of Ownership': 'A land title, tax declaration, or deed of sale showing you own the property.',
   'Job Offer Letter': 'A signed letter from your employer confirming the job offer, on company letterhead.',
+  'First-Time Jobseeker Certificate': 'Issued by your barangay under the First-Time Jobseekers Assistance Act (RA 11261). Bring a valid government ID and a barangay clearance showing you are a first-time jobseeker — your barangay hall will issue the certificate on the same visit. It can only be claimed once.',
   'Site Sketch': 'A simple sketch showing where the work will take place relative to nearby streets or structures.',
   'Excavation Plan': 'An engineering plan for the excavation, prepared by a licensed engineer, showing depth, area and safety measures.',
   'Utility Company Authorization (if applicable)': 'A letter from the relevant utility company — water, electric or telecom — authorizing or coordinating work near their lines, if your project is near one.',
@@ -45,6 +46,20 @@ export const DOCUMENT_INSTRUCTIONS = {
   'Certified gross sales / receipts summary (previous year)': 'A summary of your previous year’s gross sales, certified by your accountant or bookkeeper — often prepared alongside your BIR filings.',
   'Copy of Business/Mayor’s Permit': 'Your current Business/Mayor’s Permit. Check your own records, or request a certified copy from BPLO.',
   'Proof of Address': 'A recent utility bill, barangay certificate, or lease contract showing your current address.',
+  'Previous Sanitary Permit': 'Your Sanitary Permit issued by the City Health Office for the previous year. If renewed on PermitTrack, this is automatically pre-listed from your earlier approved application.',
+  'Previous Fire Safety Inspection Certificate': 'The Fire Safety Inspection Certificate (FSIC) issued by the BFP for your premises for the previous year. Automatically pre-listed from your earlier approved application.',
+  'Previous Mayor’s Permit (Food Service)': 'Your Food Service Mayor’s Permit from the previous year, issued by BPLO. Automatically pre-listed from your earlier approved application.',
+  'Previous Liquor/Tobacco License': 'Your Liquor and/or Tobacco retailing authority from the previous year, issued by BPLO. Automatically pre-listed from your earlier approved application.',
+  'Previous Police Clearance': 'Your police clearance issued by the PNP for liquor/tobacco licensing from the previous year. Automatically pre-listed from your earlier approved application.',
+  'Previous Market Stall/Vending Permit': 'Your public market stall lease or vending permit from the previous year. Automatically pre-listed from your earlier approved application.',
+  'Official Receipt of last year’s stall fee': 'The official receipt for your market stall fee or vending permit fee from the City Treasurer’s Office.',
+  'Previous Barangay Clearance for Tricycles (TODA)': 'The TODA clearance or endorsement issued by your barangay for tricycle operations from the previous year. Automatically pre-listed from your earlier approved application.',
+  'Previous MTOP Permit': 'Your Motorized Tricycle Operator’s Permit (MTOP) franchise issued by BPLO for the previous year. Automatically pre-listed from your earlier approved application.',
+  'Updated Driver’s License': 'Your current, valid professional driver’s license issued by the LTO.',
+  'Updated Vehicle OR/CR': 'The current Official Receipt (OR) and Certificate of Registration (CR) of your tricycle, issued by the LTO.',
+  'Previous Sign Permit': 'Your outdoor advertising/signboard permit from the previous year, issued by BPLO. Automatically pre-listed from your earlier approved application.',
+  'Previous Building Permit': 'Your Building Permit issued by the Office of the Building Official (OBO) for the previous year. Automatically pre-listed from your earlier approved application when you renew through PermitTrack.',
+  'Previous Barangay Construction Clearance': 'The Barangay Construction Clearance from your barangay, issued for the original building permit. Automatically pre-listed from your earlier approved application when you renew through PermitTrack.',
 
   // BusinessForm.js uses its own doc_key values rather than doc_name — these cover the ones
   // that aren't already a close match to an entry above.

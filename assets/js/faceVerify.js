@@ -10,9 +10,10 @@ const FACE_API_SRC = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-
 // every model's files flattened into one npm-published folder, which loadFromUri needs.
 const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
 
-// Stricter than face-api.js's usual 0.6 "same person" cutoff — 0.6 is loose enough to accept
-// two different people often enough to matter here. Lower distance is a closer match.
-export const FACE_MATCH_THRESHOLD = 0.45;
+// Relaxed from the original 0.45 — still tighter than face-api.js's default 0.6, but
+// generous enough to accommodate typical ID-photo-to-selfie lighting/angle differences.
+// Lower distance is a closer match.
+export const FACE_MATCH_THRESHOLD = 0.55;
 
 let loadPromise = null;
 
@@ -58,7 +59,7 @@ export function loadFaceApi() {
 export async function detectFaceDescriptor(input) {
   const faceapi = await loadFaceApi();
   const result = await faceapi
-    .detectSingleFace(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
+    .detectSingleFace(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
     .withFaceLandmarks()
     .withFaceDescriptor();
   return result ? result.descriptor : null;
@@ -71,31 +72,36 @@ export function faceDistance(a, b) {
 
 // ---------------------------------------------------------------------------------------------
 // Liveness: a face matching the ID photo isn't proof a live person is at the camera — a printed
-// photo or a phone screen held up to it matches too. Requiring a real blink before the selfie is
-// captured rules that out: a static photo cannot blink on cue.
+// photo or a phone screen held up to it matches too. Requiring the person to turn their head
+// to the side rules that out: a flat photo or screen cannot change its viewing angle on cue.
 // ---------------------------------------------------------------------------------------------
 
-// The standard eye-aspect-ratio blink cutoff (Soukupová & Čech) — open eyes read ~0.28-0.35,
-// closed ones drop under this.
-export const EAR_BLINK_THRESHOLD = 0.23;
-
-function eyeAspectRatio(eye) {
-  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const vertical = dist(eye[1], eye[5]) + dist(eye[2], eye[4]);
-  const horizontal = dist(eye[0], eye[3]);
-  return horizontal === 0 ? 0 : vertical / (2 * horizontal);
-}
-
 /**
- * One fast read of how open the eyes are right now, for polling a live video several times a
- * second. Uses TinyFaceDetector — fine here, since this only ever decides "open or closed", never
- * identity. Returns null when no face is currently found.
+ * Estimates horizontal head rotation (yaw) from a live video frame.
+ *
+ * Returns a signed offset in inter-eye-width units:
+ *   ~  0.00  → facing straight at the camera
+ *   > +0.20  → turned noticeably to one side
+ *   < -0.20  → turned noticeably to the other side
+ *   null     → no face detected in this frame
+ *
+ * Method: nose tip (landmark 30) displacement from the midpoint between the outer
+ * eye corners (36 = left outer, 45 = right outer), normalised by inter-eye distance.
+ * Geometrically robust across webcam resolutions and lighting conditions.
+ * Uses TinyFaceDetector — speed matters here; we only need pose, not identity.
  */
-export async function detectEyeOpenness(video) {
+export async function detectHeadYaw(video) {
   const faceapi = await loadFaceApi();
   const result = await faceapi
     .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
     .withFaceLandmarks();
   if (!result) return null;
-  return (eyeAspectRatio(result.landmarks.getLeftEye()) + eyeAspectRatio(result.landmarks.getRightEye())) / 2;
+  const lm       = result.landmarks.positions;
+  const leftOuter  = lm[36];   // outer corner of the left eye
+  const rightOuter = lm[45];   // outer corner of the right eye
+  const noseTip    = lm[30];
+  const eyeMidX    = (leftOuter.x + rightOuter.x) / 2;
+  const interEye   = Math.abs(rightOuter.x - leftOuter.x);
+  if (interEye === 0) return null;
+  return (noseTip.x - eyeMidX) / interEye;
 }

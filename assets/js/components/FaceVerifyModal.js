@@ -1,12 +1,17 @@
 import BaseModal from './BaseModal.js?v=168';
-import { detectFaceDescriptor, faceDistance, FACE_MATCH_THRESHOLD, detectEyeOpenness, EAR_BLINK_THRESHOLD } from '../faceVerify.js?v=168';
+import { detectFaceDescriptor, faceDistance, FACE_MATCH_THRESHOLD, detectHeadYaw } from '../faceVerify.js?v=168';
 import { readIdText, looksLikePhilippineGovernmentId } from '../idVerify.js?v=168';
 
-// How often the live video is sampled while watching for a blink.
-const LIVENESS_POLL_MS = 220;
-// After this long without a face in frame, or without a blink, nudge the person rather than
-// failing silently — they're still free to keep trying, nothing times out into a bypass.
-const LIVENESS_HINT_MS = 9000;
+// How often the live video is sampled while watching for a head turn.
+const LIVENESS_POLL_MS = 300;
+// After this long without completing the gesture, nudge the person.
+const LIVENESS_HINT_MS = 15000;
+// Consecutive frames the face must be centred (|yaw| < CENTER_YAW_MAX) before we ask for a turn.
+const CENTER_FRAMES_NEEDED = 3;
+// Consecutive frames with |yaw| > TURN_YAW_MIN before the capture fires.
+const TURN_FRAMES_NEEDED   = 2;
+const CENTER_YAW_MAX = 0.12;   // nose roughly on the eye midpoint → facing straight
+const TURN_YAW_MIN   = 0.22;   // nose clearly offset → meaningful side turn
 
 // Proof that a government ID belongs to the person submitting it: a live selfie, matched
 // against the face in the ID photo right there in the browser. Shown over the upload field
@@ -29,11 +34,14 @@ export default {
       capturedUrl: '',
       stream: null,
       idDescriptor: null,
-      // Liveness: capture only fires once a real blink is seen, so a printed photo or a photo
-      // held up to the camera — which would otherwise match the ID just fine — can't pass.
+      // Liveness: two-step head-turn gesture. First the face must be centred for a few frames,
+      // then a deliberate turn to either side triggers the capture. A flat photo or screen
+      // cannot change its viewing angle on cue, so it can never complete the gesture.
+      livenessStep: 'center',   // 'center' → wait for straight-ahead; 'turn' → wait for side profile
+      centeredFrames: 0,
+      turnedFrames: 0,
       livenessHint: false,
       livenessTimer: null,
-      eyesWereClosed: false,
       noFaceStreak: 0,
     };
   },
@@ -102,27 +110,49 @@ export default {
         this.stream = null;
       }
     },
-    // Polls the live video for a blink (eyes closed, then open again) and captures the instant
-    // one happens — a photo held up to the camera never blinks, so it never reaches this point.
+    // Polls the live video for a two-step head-turn gesture:
+    //   Step 1 'center'  — face must be straight-ahead for CENTER_FRAMES_NEEDED consecutive frames.
+    //   Step 2 'turn'    — face must then be turned to either side for TURN_FRAMES_NEEDED frames.
+    // A flat photo or screen cannot rotate itself, so it can never complete both steps.
     startLivenessCheck() {
       this.stopLivenessCheck();
-      this.livenessHint = false;
-      this.eyesWereClosed = false;
-      this.noFaceStreak = 0;
+      this.livenessStep    = 'center';
+      this.centeredFrames  = 0;
+      this.turnedFrames    = 0;
+      this.livenessHint    = false;
+      this.noFaceStreak    = 0;
       const startedAt = Date.now();
       this.livenessTimer = setInterval(async () => {
         if (this.phase !== 'camera' || !this.$refs.video) return;
-        const ear = await detectEyeOpenness(this.$refs.video);
-        if (this.phase !== 'camera') return; // the frame may have closed while that await was in flight
-        if (ear == null) {
+        const yaw = await detectHeadYaw(this.$refs.video);
+        if (this.phase !== 'camera') return; // guard against the frame closing mid-await
+        if (yaw == null) {
           this.noFaceStreak++;
+          this.centeredFrames = 0;
+          this.turnedFrames   = 0;
         } else {
           this.noFaceStreak = 0;
-          if (ear < EAR_BLINK_THRESHOLD) {
-            this.eyesWereClosed = true;
-          } else if (this.eyesWereClosed) {
-            this.capture();
-            return;
+          if (this.livenessStep === 'center') {
+            if (Math.abs(yaw) < CENTER_YAW_MAX) {
+              this.centeredFrames++;
+              if (this.centeredFrames >= CENTER_FRAMES_NEEDED) {
+                this.livenessStep   = 'turn';
+                this.turnedFrames   = 0;
+              }
+            } else {
+              this.centeredFrames = 0; // reset if they were already off-centre
+            }
+          } else {
+            // step === 'turn'
+            if (Math.abs(yaw) > TURN_YAW_MIN) {
+              this.turnedFrames++;
+              if (this.turnedFrames >= TURN_FRAMES_NEEDED) {
+                this.capture();
+                return;
+              }
+            } else {
+              this.turnedFrames = 0; // small wobble, not a committed turn yet
+            }
           }
         }
         if (Date.now() - startedAt > LIVENESS_HINT_MS) this.livenessHint = true;
@@ -204,11 +234,13 @@ export default {
           <video ref="video" class="w-full h-full object-cover -scale-x-100" muted playsinline autoplay></video>
           <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-900/85 to-transparent px-4 pt-8 pb-3 flex items-center justify-center gap-2">
             <svg class="w-4 h-4 text-sun-300 shrink-0 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-            <p class="text-xs font-semibold text-white text-center">{{ noFaceStreak > 6 ? "We can't see your face — center it in frame" : 'Look at the camera and blink naturally' }}</p>
+            <p class="text-xs font-semibold text-white text-center">
+              {{ noFaceStreak > 10 ? "We can't see your face — center it in frame" : livenessStep === 'center' ? 'Look straight at the camera' : 'Now slowly turn your head to either side' }}
+            </p>
           </div>
         </div>
-        <p class="text-xs text-slate-500 text-center">Captures itself the moment you blink — proof it's really you, live, not a photo.</p>
-        <p v-if="livenessHint" class="text-xs text-sun-700 bg-sun-50 border border-sun-200 rounded-xl px-3.5 py-2 text-center">Still waiting for a blink. Make sure your eyes are visible and well-lit, then blink normally.</p>
+        <p class="text-xs text-slate-500 text-center">Look straight ahead, then turn your head to the side — captures automatically.</p>
+        <p v-if="livenessHint" class="text-xs text-sun-700 bg-sun-50 border border-sun-200 rounded-xl px-3.5 py-2 text-center">Still waiting. Make sure your face is well-lit, look straight at the camera first, then turn your head clearly to one side.</p>
       </div>
 
       <div v-else-if="phase === 'review' || phase === 'checking' || phase === 'no-face' || phase === 'mismatch'" class="space-y-3">

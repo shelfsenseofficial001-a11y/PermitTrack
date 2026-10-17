@@ -136,12 +136,39 @@ if ($action === 'renewal_info' && $method === 'GET') {
     if (!$renewalType) {
         fail('This permit\'s renewal type is not set up yet.', 500);
     }
+
+    $docsStmt = db()->prepare("SELECT id, doc_name, original_filename, file_path, status FROM application_documents WHERE application_id = ? AND file_path IS NOT NULL ORDER BY id");
+    $docsStmt->execute([$app['id']]);
+    $priorDocs = $docsStmt->fetchAll();
+
+    $requiredDocs = required_documents_for_type((int)$renewalType['id']);
+    $matches = match_renewal_documents($requiredDocs, $priorDocs);
+
+    $prefilledDocs = [];
+    foreach ($matches as $docName => $matchedDoc) {
+        if ($matchedDoc) {
+            $prefilledDocs[$docName] = [
+                'id' => (int)$matchedDoc['id'],
+                'original_filename' => $matchedDoc['original_filename'],
+                'source_doc_name' => $matchedDoc['doc_name'],
+                'status' => $matchedDoc['status'],
+                'matched' => true,
+            ];
+        } else {
+            $prefilledDocs[$docName] = [
+                'matched' => false,
+            ];
+        }
+    }
+
     respond([
         'renewal_permit_type_id' => (int)$renewalType['id'],
         'renewal_permit_type_name' => $renewalType['name'],
         'property_address' => $app['property_address'],
         'barangay_id' => $app['barangay_id'] !== null ? (int)$app['barangay_id'] : null,
         'business_id' => $app['business_id'] !== null ? (int)$app['business_id'] : null,
+        'prefilled_documents' => $prefilledDocs,
+        'due_date' => 'January 20',
     ]);
 }
 
@@ -259,6 +286,29 @@ if ($action === 'detail' && $method === 'GET') {
         }
     }
 
+    // The registered address, pre-populated for the batch delivery form.
+    // If the application is filed under a business, auto-populate from the registered business account;
+    // otherwise auto-populate from the resident account's registered address.
+    if (!empty($app['business'])) {
+        $b = $app['business'];
+        $bParts = array_filter([
+            $b['address_line'] ?? '',
+            !empty($b['barangay']) ? 'Brgy. ' . $b['barangay'] : '',
+            $b['city'] ?? '',
+            $b['postal_code'] ?? '',
+        ]);
+        $app['applicant_address'] = implode(', ', $bParts);
+    } else {
+        $addr = $app['applicant'];
+        $addressParts = array_filter([
+            $addr['address_line'] ?? '',
+            !empty($addr['barangay']) ? 'Brgy. ' . $addr['barangay'] : '',
+            $addr['city'] ?? '',
+            $addr['postal_code'] ?? '',
+        ]);
+        $app['applicant_address'] = implode(', ', $addressParts);
+    }
+
     $docsStmt = db()->prepare('SELECT * FROM application_documents WHERE application_id = ? ORDER BY id');
     $docsStmt->execute([$id]);
     $documents = $docsStmt->fetchAll();
@@ -306,12 +356,22 @@ if ($action === 'detail' && $method === 'GET') {
     // ways as the whole-application choice below — soft copy (download in the portal, always
     // available, nothing to choose), or pickup/delivery/barangay pickup if they want a hard copy.
     foreach ($app['pipeline'] as &$step) {
+        if ($step['step_label'] === 'Issued directly by the barangay') {
+            $step['has_output'] = false;
+            $step['delivery_method'] = null;
+            $step['delivery_address'] = null;
+            $step['delivery_status'] = null;
+            $step['delivery_requested_at'] = null;
+            continue;
+        }
         $outStmt = db()->prepare(
-            "SELECT COUNT(*) FROM application_documents
+            "SELECT id, doc_name, original_filename, file_path FROM application_documents
               WHERE application_id = ? AND COALESCE(office_code, 'BARANGAY') = ? AND status = 'Verified'"
         );
         $outStmt->execute([$id, $step['office_code']]);
-        $step['has_output'] = $step['status'] === 'approved' && (int)$outStmt->fetchColumn() > 0;
+        $outputDocs = $outStmt->fetchAll();
+        $step['has_output'] = $step['status'] === 'approved' && count($outputDocs) > 0;
+        $step['output_documents'] = $outputDocs;
     }
     unset($step);
 
@@ -469,6 +529,9 @@ if ($action === 'set_node_delivery' && $method === 'POST') {
     if ($step['status'] !== 'approved') {
         fail('This step has not finished yet.', 409);
     }
+    if ($step['step_label'] === 'Issued directly by the barangay') {
+        fail('Delivery for this permit is handled through the main permit delivery.', 409);
+    }
     if (!empty($step['delivery_method'])) {
         fail('A delivery choice has already been made for this step.', 409);
     }
@@ -493,6 +556,87 @@ if ($action === 'set_node_delivery' && $method === 'POST') {
     db()->prepare(
         "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
     )->execute([(int)$step['application_id'], $user['id'], 'Applicant chose how to receive ' . $step['step_label'] . '\'s files: ' . DELIVERY_METHOD_LABELS[$method2] . '.']);
+
+    respond(['ok' => true]);
+}
+
+// Batch delivery: the applicant sets delivery method + address for ALL pipeline output
+// steps that have not yet been assigned a choice, in a single action. This replaces
+// the per-step 'set_node_delivery' flow on the applicant's side; staff tracking still
+// uses node_delivery_status per-step as before.
+if ($action === 'set_batch_delivery' && $method === 'POST') {
+    $user = require_role('applicant');
+    $in = json_input();
+    $app = own_application((int)($in['id'] ?? 0), $user);
+
+    $method2 = (string)($in['delivery_method'] ?? '');
+    if (!in_array($method2, ['delivery', 'barangay_pickup'], true)) {
+        fail('Choose barangay pickup or delivery to your address.');
+    }
+
+    $address = null;
+    $landmarks = trim((string)($in['delivery_landmarks'] ?? ''));
+    if ($method2 === 'delivery') {
+        $address = trim((string)($in['delivery_address'] ?? ''));
+        if ($address === '') {
+            fail('Please provide a delivery address.');
+        }
+    } elseif ($method2 === 'barangay_pickup') {
+        $address = trim((string)($in['delivery_address'] ?? ''));
+    }
+
+    $pdo = db();
+
+    // Find all pipeline output steps that do not yet have a delivery choice: approved
+    // steps that own at least one Verified document, excluding barangay-issued ones.
+    $stepStmt = $pdo->prepare(
+        "SELECT p.id, p.step_label, p.office_code FROM application_pipeline_progress p
+          WHERE p.application_id = ?
+            AND p.status = 'approved'
+            AND p.step_label <> 'Issued directly by the barangay'
+            AND (p.delivery_method IS NULL OR p.delivery_method = '')
+            AND EXISTS (
+              SELECT 1 FROM application_documents d
+               WHERE d.application_id = p.application_id
+                 AND COALESCE(d.office_code, 'BARANGAY') = p.office_code
+                 AND d.status = 'Verified'
+            )"
+    );
+    $stepStmt->execute([$app['id']]);
+    $steps = $stepStmt->fetchAll();
+
+    if (!$steps) {
+        fail('No output steps are waiting for a delivery choice.', 409);
+    }
+
+    // Check if the delivery_landmarks column exists (added by a migration); if not, skip it.
+    $hasLandmarks = false;
+    try {
+        $pdo->query("SELECT delivery_landmarks FROM application_pipeline_progress LIMIT 0");
+        $hasLandmarks = true;
+    } catch (Exception $e) {}
+
+    $updateSql = $hasLandmarks
+        ? 'UPDATE application_pipeline_progress SET delivery_method = ?, delivery_address = ?, delivery_landmarks = ?, delivery_status = ?, delivery_requested_at = NOW() WHERE id = ?'
+        : 'UPDATE application_pipeline_progress SET delivery_method = ?, delivery_address = ?, delivery_status = ?, delivery_requested_at = NOW() WHERE id = ?';
+
+    $updateStmt = $pdo->prepare($updateSql);
+    foreach ($steps as $step) {
+        if ($hasLandmarks) {
+            $updateStmt->execute([$method2, $address, $landmarks ?: null, 'preparing', $step['id']]);
+        } else {
+            $updateStmt->execute([$method2, $address, 'preparing', $step['id']]);
+        }
+    }
+
+    $stepLabels = implode(', ', array_column($steps, 'step_label'));
+    $body = $method2 === 'barangay_pickup'
+        ? 'Applicant chose to pick up all documents at their barangay hall (' . $stepLabels . ').'
+        : 'Applicant requested delivery to: ' . $address . ' for all ready documents (' . $stepLabels . ').'
+          . ($landmarks ? ' Landmarks: ' . $landmarks : '');
+    $pdo->prepare(
+        "INSERT INTO application_activity (application_id, sender_id, type, event, body) VALUES (?, ?, 'status_change', 'delivery', ?)"
+    )->execute([$app['id'], $user['id'], $body]);
 
     respond(['ok' => true]);
 }
@@ -582,10 +726,14 @@ if ($action === 'create_v2' && $method === 'POST') {
         }
         $businessName = $business['business_name'];
         $barangayId = $business['barangay_id'] !== null ? (int)$business['barangay_id'] : null;
-        if ($propertyAddress === '') {
-            // Postal code is optional, so trim rather than leave a dangling separator.
-            $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
+        if (!$barangayId && !empty($business['barangay'])) {
+            $matched = find_barangay($business['barangay']);
+            if ($matched) {
+                $barangayId = (int)$matched['id'];
+            }
         }
+        // When a business is selected, lock the location to what is registered in Business Location.
+        $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
     } else {
         foreach ($permitTypes as $pt) {
             if (!$pt['resident_eligible']) {
@@ -615,7 +763,7 @@ if ($action === 'create_v2' && $method === 'POST') {
             $needsAddress = true;
         }
     }
-    if ($needsAddress && $chosenBarangayId) {
+    if ($needsAddress && !$businessId && $chosenBarangayId) {
         $brgyStmt = db()->prepare('SELECT id FROM barangays WHERE id = ?');
         $brgyStmt->execute([$chosenBarangayId]);
         if (!$brgyStmt->fetchColumn()) {
@@ -703,7 +851,7 @@ if ($action === 'create_v2' && $method === 'POST') {
         // Renewal (section 2): pre-fill from the prior approved application's own outputs rather
         // than asking the applicant to upload everything again from scratch.
         if ($renewalPriorApp) {
-            prefill_renewal_documents($appId, $renewalPriorApp, $requiredDocs, $handlers);
+            prefill_renewal_documents($appId, $renewalPriorApp, $requiredDocs, $handlers, $_FILES);
         } else {
             $docStmt = $pdo->prepare(
                 'INSERT INTO application_documents (application_id, doc_name, office_code, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -823,10 +971,8 @@ if ($action === 'create' && $method === 'POST') {
             fail("A $permitType permit can't be filed for a business.");
         }
         $businessName = $business['business_name'];
-        if ($propertyAddress === '') {
-            // Postal code is optional, so trim rather than leave a dangling separator.
-            $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
-        }
+        // Locked to registered business location
+        $propertyAddress = rtrim("{$business['address_line']}, Brgy. {$business['barangay']}, {$business['city']} {$business['postal_code']}");
     } else {
         if (!$rule['resident']) {
             fail("A $permitType permit must be filed for one of your verified businesses.");

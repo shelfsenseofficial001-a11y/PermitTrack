@@ -31,7 +31,7 @@ if ($action === 'list' && $method === 'GET') {
     $stmt = db()->prepare(
         'SELECT act.*, u.full_name AS sender_name, u.role AS sender_role
          FROM application_activity act LEFT JOIN users u ON u.id = act.sender_id
-         WHERE act.application_id = ? ORDER BY act.id ASC'
+         WHERE act.application_id = ? ORDER BY act.created_at ASC, act.id ASC'
     );
     $stmt->execute([$appId]);
     respond(['activity' => $stmt->fetchAll()]);

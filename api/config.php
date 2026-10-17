@@ -55,6 +55,21 @@ function fail(string $message, int $status = 400): void
     respond(['error' => $message], $status);
 }
 
+/**
+ * Root base URL of the PermitTrack application, e.g. http://localhost/PermitTrack
+ */
+function app_base_url(): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+    $basePath = preg_replace('#/api$#i', '', $scriptDir);
+    if ($basePath === '/' || $basePath === '.') {
+        $basePath = '';
+    }
+    return $scheme . '://' . $host . $basePath;
+}
+
 /** At least 8 characters, with an uppercase letter, a number, and a special character. */
 function is_strong_password(string $password): bool
 {

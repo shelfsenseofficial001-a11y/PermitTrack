@@ -5,7 +5,7 @@ import { formatDate, backButtonClass, backIconClass, isValidEmail, numberFieldEr
 import Loader from './Loader.js?v=168';
 import SelectMenu from './SelectMenu.js?v=168';
 import FaceVerifyModal from './FaceVerifyModal.js?v=168';
-import { documentInstructions } from '../docInstructions.js?v=168';
+import { documentInstructions } from '../docInstructions.js?v=169';
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition';
 const inputErrorClass = 'w-full rounded-xl border border-red-400 bg-white px-4 py-2.5 text-sm placeholder:text-slate-400 focus:ring-4 focus:ring-red-500/15 focus:border-red-500 outline-none transition';

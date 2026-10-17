@@ -1,11 +1,11 @@
-import { apiGet, apiPost, apiPostForm } from '../api/client.js?v=168';
+import { apiGet, apiPost, apiPostForm, viewUrl } from '../api/client.js?v=168';
 import AppShell from './AppShell.js?v=168';
 import BaseModal from './BaseModal.js?v=168';
-import SelectMenu from './SelectMenu.js?v=168';
+import SelectMenu from './SelectMenu.js?v=171';
 import FaceVerifyModal from './FaceVerifyModal.js?v=168';
 import { authState } from '../store/auth.js?v=168';
-import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError, formatPeso } from '../util.js?v=168';
-import { documentInstructions } from '../docInstructions.js?v=168';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeError, formatPeso, RENEWAL_DUE_DATE } from '../util.js?v=168';
+import { documentInstructions } from '../docInstructions.js?v=169';
 
 // Mirrors MAX_UPLOAD_BYTES in api/applications.php — the server rejects anything larger, so
 // these two have to move together.
@@ -90,6 +90,7 @@ export default {
       catRight: false,  // …and past the right
       renewApplicationId: null, // set from ?renew=<id> — the prior approved application being renewed
       renewInfo: null,          // { renewal_permit_type_name, ... } once loaded
+      prefilledDocs: {},        // doc_name -> { id, original_filename, matched } pre-listed from prior permit
     };
   },
   computed: {
@@ -163,6 +164,13 @@ export default {
       }
       return opts;
     },
+    selectedBusiness() {
+      if (!this.form.business_id || !this.catalog || !this.catalog.businesses) return null;
+      return this.catalog.businesses.find((x) => String(x.id) === String(this.form.business_id)) || null;
+    },
+    isBusinessFiling() {
+      return !!this.selectedBusiness;
+    },
     // Branch questions across everything chosen, de-duplicated: two permits asking the same
     // question are answered once. Every one is forced, no default — see BREAKING_CHANGES.md #4.
     // Both the routing branch questions (t.questions — "yes" adds an office to the route) and the
@@ -215,10 +223,13 @@ export default {
       return map;
     },
     missingDocs() {
-      // Renewing: the prior approved application's own files pre-fill these server-side, so
-      // nothing is "missing" here even though the applicant hasn't chosen a file in this browser.
-      if (this.renewApplicationId) return [];
-      return this.requiredDocs.filter((d) => !this.files[this.fieldKey(d)]);
+      // Renewing: files from the prior approved application pre-fill server-side where matched.
+      // Only docs that have neither a newly chosen file nor a pre-listed match are missing.
+      return this.requiredDocs.filter((d) => {
+        if (this.files[this.fieldKey(d)]) return false;
+        if (this.renewApplicationId && this.prefilledDocs && this.prefilledDocs[d] && this.prefilledDocs[d].matched) return false;
+        return true;
+      });
     },
     hasFileErrors() {
       return Object.values(this.fileErrors).some(Boolean);
@@ -244,8 +255,9 @@ export default {
       if (this.needsAddress && !this.matchedBarangay) out.push({ label: 'Barangay (pick from the list)', target: 'prop-brgy' });
       this.requiredDocs.forEach((d) => {
         const k = this.fieldKey(d);
+        const hasPrefill = this.renewApplicationId && this.prefilledDocs && this.prefilledDocs[d] && this.prefilledDocs[d].matched;
         if (this.fileErrors[k]) out.push({ label: 'Replace ' + d, target: 'doc-' + k });
-        else if (!this.files[k]) out.push({ label: d, target: 'doc-' + k });
+        else if (!this.files[k] && !hasPrefill) out.push({ label: d, target: 'doc-' + k });
       });
       return out;
     },
@@ -275,12 +287,16 @@ export default {
       return this.selectedTypes.reduce((sum, t) => sum + this.feeDiscounted(t), 0);
     },
     // Barangay-level permits (standalone clearances, and the personal certificates the barangay
-    // issues directly) pay their own barangay's payment account; everything else pays Municipal
-    // Treasury. Mirrors payment_recipient_department_id() in api/lib/pipeline.php. Shown once, for
-    // the batch as a whole — a mixed-track multi-permit submission is an edge case this simplifies.
+    // issues directly) pay the Barangay Secretary Account; municipal-level permits pay Municipal
+    // Treasury. Mirrors payment_recipient_department_id() in api/lib/pipeline.php.
     paymentRecipientLabel() {
       const barangayLevel = this.selectedTypes.every((t) => t.track === 'barangay_standalone' || t.track === 'personal');
-      return barangayLevel ? ((this.matchedBarangay && this.matchedBarangay.name) ? 'Barangay ' + this.matchedBarangay.name : 'Your barangay') : 'Municipal Treasury';
+      if (barangayLevel) {
+        return (this.matchedBarangay && this.matchedBarangay.name)
+          ? 'Barangay ' + this.matchedBarangay.name + ' Secretary Account'
+          : 'Barangay Secretary Account';
+      }
+      return 'Municipal Treasury';
     },
     canSubmit() {
       return !this.blockingReason && !this.submitting && (this.totalFee === 0 || !!this.form.payment_method);
@@ -325,6 +341,11 @@ export default {
     },
   },
   async mounted() {
+    // Show an error if returning from a failed PayMongo authorisation
+    if (this.$route.query.payment_failed) {
+      this.error = 'Your payment was not completed at the gateway. Please choose your permit again and try paying once more.';
+      this.step = 'payment';
+    }
     if (this.canApply) {
       this.catalog = await apiGet('applications.php?action=permit_types');
       // Start on the barangay the applicant is registered in — the common case — while leaving it
@@ -339,6 +360,7 @@ export default {
         try {
           this.renewInfo = await apiGet('applications.php?action=renewal_info&application_id=' + renewId);
           this.renewApplicationId = Number(renewId);
+          this.prefilledDocs = this.renewInfo.prefilled_documents || {};
           const t = this.catalog.permit_types.find((x) => x.id === this.renewInfo.renewal_permit_type_id);
           if (t) {
             this.selectedIds = [t.id];
@@ -353,6 +375,10 @@ export default {
         } catch (e) {
           this.error = e.message;
         }
+      }
+      if (this.form.business_id && this.catalog && this.catalog.businesses) {
+        const b = this.catalog.businesses.find((x) => String(x.id) === String(this.form.business_id));
+        if (b) this.syncBusinessLocation(b);
       }
       this.$nextTick(this.updateCatScroll);
     }
@@ -373,13 +399,13 @@ export default {
       this.$nextTick(this.updateCatScroll);
     },
     'form.business_id'(id) {
-      const b = this.catalog && this.catalog.businesses.find((x) => String(x.id) === id);
+      const b = this.catalog && this.catalog.businesses.find((x) => String(x.id) === String(id));
       if (b) {
-        // Built from the parts that exist. Postal code is optional (and no longer collected), and
-        // a template literal would happily write the word "null" into the address.
-        this.form.property_address = [b.address_line, b.barangay ? 'Brgy. ' + b.barangay : '', [b.city, b.postal_code].filter(Boolean).join(' ')]
-          .filter(Boolean).join(', ');
-        if (b.barangay) this.form.barangay = b.barangay;
+        this.syncBusinessLocation(b);
+      } else if (this.catalog) {
+        this.form.property_address = '';
+        const mine = this.barangays.find((x) => x.id === this.catalog.default_barangay_id);
+        if (mine) this.form.barangay = mine.name;
       }
     },
     selectedIds() {
@@ -399,6 +425,14 @@ export default {
     },
   },
   methods: {
+    syncBusinessLocation(b) {
+      if (!b) return;
+      this.form.property_address = [b.address_line, b.barangay ? 'Brgy. ' + b.barangay : '', [b.city, b.postal_code].filter(Boolean).join(' ')]
+        .filter(Boolean).join(', ');
+      if (b.barangay) {
+        this.form.barangay = b.barangay;
+      }
+    },
     isSelected(id) {
       return this.selectedIds.includes(id);
     },
@@ -528,6 +562,7 @@ export default {
       return this.feeFor(t);
     },
     formatPeso,
+    viewUrl,
     // ---- documents ----
     fieldKey(docName) {
       return 'doc_' + docName.replace(/[^a-zA-Z0-9]+/g, '_');
@@ -613,6 +648,9 @@ export default {
       // However fast the server is, the flight gets long enough to read as one
       const beat = new Promise((r) => setTimeout(r, 1700));
       try {
+        if (this.isBusinessFiling && this.selectedBusiness) {
+          this.syncBusinessLocation(this.selectedBusiness);
+        }
         const fd = new FormData();
         fd.append('permit_type_ids', JSON.stringify(this.selectedIds));
         fd.append('property_address', this.form.property_address);
@@ -629,18 +667,30 @@ export default {
         const res = await apiPostForm('applications.php?action=create_v2', fd);
 
         // Section 3: a nonzero fee means the application was created at 'Payment Pending' and its
-        // pipeline isn't built yet — this simulated PayMongo checkout is what unblocks it (once a
-        // payment-bridge staff account confirms receipt; see api/payments.php). A zero fee (e.g.
-        // first-time job seeker) skips this entirely — payment_required is already false.
+        // pipeline isn't built yet. When a real PayMongo key is configured the checkout action
+        // returns requires_redirect=true with a checkout_url — we must redirect the browser there
+        // for 3DS / OTP authorisation. After authorisation PayMongo redirects back to
+        // payments_callback.php, which verifies the PI and brings the user back to the SPA.
+        // The simulated path (no key configured) resolves inline as before.
         if (res.payment_required) {
           this.paying = true;
           try {
             const payRes = await apiPost('payments.php?action=checkout', {
               application_ids: res.application_ids,
               method: this.form.payment_method,
+              // 'simulate' is only honoured when no real PayMongo key is configured
               simulate: 'success',
             });
-            if (!payRes.succeeded) {
+
+            // Real PayMongo: redirect to the gateway for 3DS / OTP authorisation.
+            // The overlay stays visible — the browser is about to navigate away.
+            if (payRes.requires_redirect && payRes.checkout_url) {
+              window.location.href = payRes.checkout_url;
+              return; // stop here; the page will navigate away
+            }
+
+            // Simulation / already-succeeded path
+            if (!payRes.succeeded && !payRes.requires_redirect) {
               throw new Error(payRes.message || 'Payment did not go through. Please try again.');
             }
           } finally {
@@ -709,7 +759,7 @@ export default {
             <p class="mt-1 text-sm text-slate-500">{{ currentStep.hint }}</p>
             <div v-if="renewApplicationId" class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full px-3 py-1.5">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-              Renewing — your prior permit's files are pre-filled where we found a match
+              Renewing — files from your approved permit are pre-listed below · Due every year by January 20
             </div>
 
             <!-- After the first step, what's being filed stays in view -->
@@ -966,25 +1016,47 @@ export default {
 
               <!-- Where -->
               <section v-if="needsAddress" class="space-y-3">
-                <p class="text-sm font-bold text-ink-700">Where is it?</p>
+                <div class="flex items-center justify-between">
+                  <p class="text-sm font-bold text-ink-700">Where is it?</p>
+                  <span v-if="isBusinessFiling" class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 px-2.5 py-0.5 rounded-lg">
+                    <svg class="w-3.5 h-3.5 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Locked to registered business location
+                  </span>
+                </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1" for="prop-address">Property address</label>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-semibold text-slate-600" for="prop-address">Property address</label>
+                    <span v-if="isBusinessFiling" class="text-xs text-slate-400">Registered address</span>
+                  </div>
                   <input id="prop-address" v-model="form.property_address" type="text" placeholder="123 Aguinaldo Hwy"
-                    class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition"
-                    :class="flashing === 'prop-address' ? 'ring-4 ring-sun-300' : ''" />
+                    :readonly="isBusinessFiling"
+                    class="w-full rounded-xl border px-3 py-2.5 text-sm transition outline-none"
+                    :class="[
+                      isBusinessFiling ? 'bg-slate-100/80 border-slate-200 text-slate-600 cursor-not-allowed select-none' : 'bg-white border-slate-300 focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600',
+                      flashing === 'prop-address' ? 'ring-4 ring-sun-300' : ''
+                    ]" />
                 </div>
                 <!-- Picked from the barangays table, not free text: this is what sends the permit to
                      a barangay secretariat, and it is the property's barangay, not the applicant's. -->
                 <div>
-                  <label id="prop-brgy-label" class="block text-xs font-semibold text-slate-600 mb-1" for="prop-brgy">Barangay</label>
+                  <div class="flex items-center justify-between mb-1">
+                    <label id="prop-brgy-label" class="block text-xs font-semibold text-slate-600" for="prop-brgy">Barangay</label>
+                    <span v-if="isBusinessFiling" class="text-xs text-slate-400">Registered barangay</span>
+                  </div>
                   <SelectMenu id="prop-brgy" labelledby="prop-brgy-label" v-model="form.barangay" :options="barangayOptions"
+                    :disabled="isBusinessFiling"
                     placeholder="Choose a barangay…"
                     :class="['rounded-xl', flashing === 'prop-brgy' ? 'ring-4 ring-sun-300' : '']" />
                   <p v-if="form.barangay.trim() && !matchedBarangay" class="text-xs text-red-600 mt-1">
                     Not one of the {{ barangays.length }} barangays of Dasmariñas — pick one from the list.
                   </p>
                   <p v-else-if="matchedBarangay" class="text-xs text-slate-500 mt-1">
-                    Reviewed first by the {{ matchedBarangay.name }} barangay secretariat.
+                    <template v-if="isBusinessFiling">
+                      Reviewed first by the {{ matchedBarangay.name }} barangay secretariat (registered location of {{ selectedBusiness ? selectedBusiness.business_name : 'business' }}).
+                    </template>
+                    <template v-else>
+                      Reviewed first by the {{ matchedBarangay.name }} barangay secretariat.
+                    </template>
                   </p>
                 </div>
               </section>
@@ -1010,21 +1082,27 @@ export default {
                       class="flex items-center gap-3 rounded-xl border-2 border-dashed px-3.5 py-3 cursor-pointer transition"
                       :class="fileErrors[fieldKey(doc)] ? 'border-red-300 bg-red-50'
                         : files[fieldKey(doc)] ? 'border-emerald-300 bg-emerald-50'
+                        : (prefilledDocs[doc] && prefilledDocs[doc].matched) ? 'border-emerald-300 bg-emerald-50/60'
                         : 'border-slate-300 hover:border-brand-300 hover:bg-slate-50'">
-                      <svg v-if="files[fieldKey(doc)]" class="w-5 h-5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                      <svg v-if="files[fieldKey(doc)] || (prefilledDocs[doc] && prefilledDocs[doc].matched)" class="w-5 h-5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
                       <svg v-else-if="fileErrors[fieldKey(doc)]" class="w-5 h-5 text-red-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
                       <svg v-else class="w-5 h-5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
 
                       <span class="min-w-0 flex-1">
                         <span class="block text-sm font-semibold truncate"
-                          :class="fileErrors[fieldKey(doc)] ? 'text-red-700' : files[fieldKey(doc)] ? 'text-emerald-700' : 'text-slate-600'">
-                          {{ files[fieldKey(doc)] ? files[fieldKey(doc)].name : doc }}
+                          :class="fileErrors[fieldKey(doc)] ? 'text-red-700' : (files[fieldKey(doc)] || (prefilledDocs[doc] && prefilledDocs[doc].matched)) ? 'text-emerald-700' : 'text-slate-600'">
+                          <template v-if="files[fieldKey(doc)]">{{ files[fieldKey(doc)].name }}</template>
+                          <template v-else-if="prefilledDocs[doc] && prefilledDocs[doc].matched">
+                            {{ prefilledDocs[doc].original_filename }}
+                            <span class="text-xs font-normal text-slate-500 block">({{ doc }})</span>
+                          </template>
+                          <template v-else>{{ doc }}</template>
                         </span>
                         <span class="block text-xs mt-0.5"
-                          :class="fileErrors[fieldKey(doc)] ? 'text-red-600' : files[fieldKey(doc)] ? 'text-emerald-600' : 'text-slate-400'">
-                          {{ files[fieldKey(doc)] ? formatSize(files[fieldKey(doc)].size) + ' · tap to replace'
-                            : isIdDoc(doc) ? "Tap to upload · a live selfie confirms it's you · max " + maxUploadMb + ' MB'
-                            : 'Tap to upload · max ' + maxUploadMb + ' MB' + ((docUsedBy[doc] || []).length > 1 ? ' · used for ' + docUsedBy[doc].length + ' permits' : '') }}
+                          :class="fileErrors[fieldKey(doc)] ? 'text-red-600' : (files[fieldKey(doc)] || (prefilledDocs[doc] && prefilledDocs[doc].matched)) ? 'text-emerald-600' : 'text-slate-400'">
+                          <template v-if="files[fieldKey(doc)]">{{ formatSize(files[fieldKey(doc)].size) }} · tap to replace</template>
+                          <template v-else-if="prefilledDocs[doc] && prefilledDocs[doc].matched">Pre-listed from earlier approved permit · tap to replace if needed</template>
+                          <template v-else>{{ isIdDoc(doc) ? "Tap to upload · a live selfie confirms it's you · max " + maxUploadMb + ' MB' : 'Tap to upload · max ' + maxUploadMb + ' MB' + ((docUsedBy[doc] || []).length > 1 ? ' · used for ' + docUsedBy[doc].length + ' permits' : '') }}</template>
                         </span>
                         <span v-if="faceVerifiedDocs[fieldKey(doc)]" class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mt-1">
                           <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
@@ -1032,10 +1110,17 @@ export default {
                         </span>
                       </span>
 
-                      <button v-if="files[fieldKey(doc)]" type="button" @click.prevent.stop="clearFile(doc)"
-                        class="shrink-0 p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-100 transition" :aria-label="'Remove ' + doc">
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                      </button>
+                      <div class="flex items-center gap-1.5 shrink-0" @click.stop>
+                        <a v-if="prefilledDocs[doc] && prefilledDocs[doc].matched && !files[fieldKey(doc)] && prefilledDocs[doc].id"
+                          :href="viewUrl(prefilledDocs[doc].id)" target="_blank" rel="noopener"
+                          class="text-xs font-semibold text-brand-700 bg-white border border-brand-200 hover:bg-brand-50 px-2.5 py-1 rounded-lg transition">
+                          View
+                        </a>
+                        <button v-if="files[fieldKey(doc)]" type="button" @click.prevent.stop="clearFile(doc)"
+                          class="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-100 transition" :aria-label="'Remove ' + doc">
+                          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                      </div>
                       <input type="file" class="hidden" :accept="docAccept(doc)" @change="onFile(doc, $event)" />
                     </label>
                     <p v-if="fileErrors[fieldKey(doc)]" class="text-xs text-red-600 mt-1 px-1">{{ fileErrors[fieldKey(doc)] }}</p>
@@ -1114,7 +1199,7 @@ export default {
                     </label>
                   </div>
                 </div>
-                <p class="text-xs text-slate-400">A simulated PayMongo checkout (test mode) — no real charge is made.</p>
+                <p class="text-xs text-slate-400">PayMongo sandbox (test mode) — you will be redirected to authorise the payment. No real charge is made.</p>
               </section>
               <section v-else class="rounded-2xl bg-brand-50 border border-brand-200 px-4 py-3">
                 <p class="text-sm font-semibold text-brand-700">No payment needed — this submits for free.</p>

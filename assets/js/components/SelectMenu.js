@@ -21,6 +21,7 @@ export default {
     // Names the control for screen readers; pair with the visible <label>'s id via labelledby
     labelledby: { type: String, default: '' },
     id: { type: String, default: '' },
+    disabled: { type: Boolean, default: false },
   },
   emits: ['update:modelValue'],
   data() {
@@ -45,9 +46,11 @@ export default {
   },
   methods: {
     toggle() {
+      if (this.disabled) return;
       this.open ? this.close() : this.openList();
     },
     openList() {
+      if (this.disabled) return;
       this.open = true;
       this.active = Math.max(0, this.options.findIndex((o) => o.value === this.modelValue));
       this.$nextTick(() => this.scrollActiveIntoView());
@@ -57,25 +60,28 @@ export default {
       if (refocus) this.$nextTick(() => this.$refs.button && this.$refs.button.focus());
     },
     pick(i) {
+      if (this.disabled) return;
       const option = this.options[i];
       if (!option) return;
       this.$emit('update:modelValue', option.value);
       this.close(true);
     },
     move(delta) {
+      if (this.disabled) return;
       if (!this.open) { this.openList(); return; }
       const last = this.options.length - 1;
       this.active = Math.min(last, Math.max(0, this.active + delta));
       this.scrollActiveIntoView();
     },
     jump(to) {
+      if (this.disabled) return;
       if (!this.open) this.openList();
       this.active = to === 'start' ? 0 : this.options.length - 1;
       this.scrollActiveIntoView();
     },
     // Typing letters jumps through the list, the way a native select does
     onKeyChar(e) {
-      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.disabled || e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
       const now = Date.now();
       this.typed = now - this.typedAt > 800 ? e.key : this.typed + e.key;
       this.typedAt = now;
@@ -94,17 +100,22 @@ export default {
   },
   template: `
   <div class="relative">
-    <button type="button" ref="button" :id="id"
+    <button type="button" ref="button" :id="id" :disabled="disabled"
       @click="toggle" @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)"
       @keydown.home.prevent="jump('start')" @keydown.end.prevent="jump('end')"
       @keydown.enter.prevent="open ? pick(active) : openList()"
       @keydown.space.prevent="open ? pick(active) : openList()"
       @keydown.esc="close(true)" @keydown="onKeyChar"
-      aria-haspopup="listbox" :aria-expanded="open" :aria-labelledby="labelledby || undefined"
-      class="w-full flex items-center justify-between gap-2 text-left bg-white border rounded-xl px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30"
-      :class="open ? 'border-brand-600 ring-2 ring-brand-600/20' : 'border-slate-300 hover:border-brand-300'">
-      <span :class="selected ? 'text-slate-800 font-medium' : 'text-slate-400'">{{ label }}</span>
-      <svg class="w-4 h-4 shrink-0 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''"
+      aria-haspopup="listbox" :aria-expanded="open" :aria-disabled="disabled ? 'true' : undefined" :aria-labelledby="labelledby || undefined"
+      class="w-full flex items-center justify-between gap-2 text-left border rounded-xl px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30"
+      :class="disabled
+        ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-not-allowed select-none'
+        : open
+          ? 'bg-white border-brand-600 ring-2 ring-brand-600/20'
+          : 'bg-white border-slate-300 hover:border-brand-300 cursor-pointer'">
+      <span :class="disabled ? 'text-slate-600 font-medium' : selected ? 'text-slate-800 font-medium' : 'text-slate-400'">{{ label }}</span>
+      <svg v-if="disabled" class="w-4 h-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <svg v-else class="w-4 h-4 shrink-0 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''"
            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     </button>
 

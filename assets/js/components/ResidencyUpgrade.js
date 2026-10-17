@@ -12,6 +12,12 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function fiveYearsAgo() {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 5);
+  return d.toISOString().slice(0, 10);
+}
+
 export default {
   name: 'ResidencyUpgrade',
   setup: () => ({ backButtonClass, backIconClass }),
@@ -35,6 +41,7 @@ export default {
       submitting: false,
       error: '',
       today: today(),
+      fiveYearsAgo: fiveYearsAgo(),
       shake: {},
       inputClass, labelClass, digitsOnly,
     };
@@ -158,6 +165,7 @@ export default {
         const t = this.typeInfo(p.doc_type);
         if (!t) return `Please choose the document type for proof #${i + 1}.`;
         if (t.max_age_days && !p.issued_on) return `Please enter the date issued for proof #${i + 1}.`;
+        if (p.issued_on && p.issued_on < this.fiveYearsAgo) return `The date issued for proof #${i + 1} cannot be more than 5 years ago.`;
         if (!p.file) return `Please upload a file for proof #${i + 1}.`;
       }
       if (this.proofs[0].doc_type === this.proofs[1].doc_type) return 'Your two proofs must be different types of documents.';

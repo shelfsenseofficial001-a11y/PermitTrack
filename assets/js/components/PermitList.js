@@ -235,14 +235,15 @@ export default {
         app.status === 'Withdrawn' ? (isOpen(app.id) ? 'bg-white' : 'bg-slate-50/70 opacity-60 hover:opacity-100 hover:bg-white') : 'bg-white']">
 
       <!-- Row header — click anywhere on it to open the permit -->
-      <button type="button" @click="toggle(app.id)" :aria-expanded="isOpen(app.id)" :aria-controls="'permit-panel-' + app.id"
-        class="w-full flex items-center gap-3 sm:gap-4 p-4 text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40">
+      <div @click="toggle(app.id)" :aria-expanded="isOpen(app.id)" :aria-controls="'permit-panel-' + app.id"
+        role="button" tabindex="0" @keydown.enter.self="toggle(app.id)"
+        class="w-full flex items-center gap-3 sm:gap-4 p-4 text-left rounded-2xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40 hover:bg-slate-50/50 transition">
         <div class="w-11 h-11 rounded-lg flex items-center justify-center shrink-0"
-          :class="app.status === 'Withdrawn' ? 'bg-slate-100 text-slate-400' : permitIconClass(app.permit_type)">
+          :class="app.status === 'Withdrawn' ? 'bg-slate-100 text-slate-400' : permitIconClass(app.permit_type_name || app.permit_type)">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
         </div>
         <div class="min-w-0 flex-1">
-          <div class="font-bold truncate" :class="app.status === 'Withdrawn' ? 'text-slate-500' : 'text-ink-700'">{{ permitLabel(app.permit_type) }}</div>
+          <div class="font-bold truncate" :class="app.status === 'Withdrawn' ? 'text-slate-500' : 'text-ink-700'">{{ permitLabel(app.permit_type_name || app.permit_type) }}</div>
           <!-- personal and barangay permits have no address; they store 'N/A', which is noise here -->
           <div class="text-sm text-slate-500 truncate">
             <template v-if="app.property_address && app.property_address !== 'N/A'">{{ app.property_address }} &middot; </template>Permit #{{ permitNumber(app) }}
@@ -258,16 +259,27 @@ export default {
         </div>
         </transition>
 
-        <span class="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full"
-          :class="app.blocked ? 'bg-red-100 text-red-700'
-            : app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
-            : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-500'
-            : 'bg-sun-100 text-sun-700'"
-        >{{ app.blocked ? 'Action needed' : app.status }}</span>
+        <div class="flex items-center gap-2 shrink-0">
+          <!-- Quick Renew button directly on approved card header -->
+          <router-link v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type_name || app.permit_type)"
+            :to="'/applications/new?renew=' + app.id"
+            @click.stop
+            class="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-full transition shadow-sm">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            Renew
+          </router-link>
+
+          <span class="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full"
+            :class="app.blocked ? 'bg-red-100 text-red-700'
+              : app.status === 'Approved' ? 'bg-brand-100 text-brand-700'
+              : app.status === 'Rejected' || app.status === 'Withdrawn' ? 'bg-slate-200 text-slate-500'
+              : 'bg-sun-100 text-sun-700'"
+          >{{ app.blocked ? 'Action needed' : app.status }}</span>
+        </div>
 
         <svg class="w-4 h-4 text-slate-400 shrink-0 transition-transform" :class="isOpen(app.id) ? 'rotate-180' : ''"
           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
+      </div>
 
       <!-- Everything about the permit, revealed on open -->
       <transition name="expand">
@@ -384,19 +396,26 @@ export default {
         </div>
         </template>
 
-        <div class="flex justify-end items-center gap-2 mt-6">
-          <!-- Renewable base permit, approved, with a renewal type set up (section 2) -->
-          <router-link v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type_name || app.permit_type)"
-            :to="'/applications/new?renew=' + app.id"
-            class="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-sm">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-            Renew
-          </router-link>
-          <router-link v-if="showDetailsLink" :to="'/applications/' + app.id"
-            class="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 border border-brand-200 bg-white hover:bg-brand-50 hover:border-brand-300 px-4 py-2 rounded-xl transition">
-            View Details
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
-          </router-link>
+        <div class="flex flex-wrap justify-between items-center gap-2 mt-6">
+          <div v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type_name || app.permit_type)"
+            class="text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full px-3 py-1.5 inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            Renewable annually · Due every year by January 20
+          </div>
+          <div class="flex items-center gap-2 ml-auto">
+            <!-- Renewable base permit, approved, with a renewal type set up (section 2) -->
+            <router-link v-if="app.status === 'Approved' && isRenewableBaseType(app.permit_type_name || app.permit_type)"
+              :to="'/applications/new?renew=' + app.id"
+              class="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-xl transition shadow-sm">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              Renew
+            </router-link>
+            <router-link v-if="showDetailsLink" :to="'/applications/' + app.id"
+              class="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 border border-brand-200 bg-white hover:bg-brand-50 hover:border-brand-300 px-4 py-2 rounded-xl transition">
+              View Details
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+            </router-link>
+          </div>
         </div>
       </div>
       </transition>

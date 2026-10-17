@@ -1,5 +1,5 @@
-import { apiGet, apiPost, viewUrl, downloadUrl } from '../api/client.js?v=168';
-import StaffShell from './StaffShell.js?v=168';
+import { apiGet, apiPost, apiPostForm, viewUrl, downloadUrl } from '../api/client.js?v=169';
+import StaffShell from './StaffShell.js?v=169';
 import { permitNumber, formatDate, formatDateTime, backButtonClass, backIconClass, permitLabel, DOCUMENT_REJECT_REASONS, rejectReasonLabel, DELIVERY_STATUS_STEPS, formatPeso, USER_REPORT_CATEGORIES } from '../util.js?v=168';
 import { inputClass } from './AuthLayout.js?v=168';
 import Loader from './Loader.js?v=168';
@@ -36,6 +36,18 @@ export default {
       deliverySteps: DELIVERY_STATUS_STEPS,
       deliverySaving: false,
       deliveryError: '',
+      // Delivery action modal state (for the 3 stages in wireframe)
+      deliveryActionTarget: null, // { kind: 'app' | 'step', stepId?: number, currentStatus: string, targetStatus: string, title: string }
+      deliveryForm: {
+        courier_name: '',
+        courier_phone: '',
+        courier_plate_number: '',
+        courier_license_file: null,
+        delivery_proof_file: null,
+        delivered_photo_file: null,
+      },
+      deliveryFormError: '',
+      deliveryPreviewUrl: null,
       nodePrompt: null,  // 'freeze' | 'revise' while that confirmation dialog is open
       nodeNotes: '',
       expandedHistory: {}, // document id -> bool, which version-history lists are open
@@ -157,6 +169,12 @@ export default {
       // Legacy apps carry no pipeline rows to check against; the server is the actual judge there.
       if (!this.isPipelineApp) return true;
       return !!(this.deliveryHandlingStep && Number(u.department_id) === Number(this.deliveryHandlingStep.department_id));
+    },
+    deliveryHandlingOfficeName() {
+      return this.deliveryHandlingStep ? this.deliveryHandlingStep.department_name : "the applicant's barangay secretariat";
+    },
+    courierLicensePromptLabel() {
+      return this.deliveryForm.courier_license_file ? this.deliveryForm.courier_license_file.name : 'Attach photo of driver license';
     },
   },
   watch: {
@@ -415,37 +433,90 @@ export default {
         this.reportSaving = false;
       }
     },
-    async setDeliveryStatus(status) {
-      if (this.deliverySaving) return;
-      this.deliveryError = '';
+    openDeliveryAction(kind, step, targetStatus) {
+      this.deliveryFormError = '';
+      this.deliveryPreviewUrl = null;
+      const current = step ? (step.delivery_status || 'preparing') : (this.app.delivery_status || 'preparing');
+      this.deliveryActionTarget = {
+        kind,
+        step,
+        stepId: step ? step.id : null,
+        currentStatus: current,
+        targetStatus,
+      };
+      this.deliveryForm = {
+        courier_name: step ? (step.courier_name || '') : (this.app.courier_name || ''),
+        courier_phone: step ? (step.courier_phone || '') : (this.app.courier_phone || ''),
+        courier_plate_number: step ? (step.courier_plate_number || '') : (this.app.courier_plate_number || ''),
+        courier_license_file: null,
+        delivery_proof_file: null,
+        delivered_photo_file: null,
+      };
+    },
+    onDeliveryFileSelected(key, event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.deliveryForm[key] = file;
+      if (file.type.startsWith('image/')) {
+        this.deliveryPreviewUrl = URL.createObjectURL(file);
+      } else {
+        this.deliveryPreviewUrl = null;
+      }
+    },
+    async submitDeliveryAction() {
+      if (!this.deliveryActionTarget) return;
+      this.deliveryFormError = '';
+      const { kind, stepId, targetStatus } = this.deliveryActionTarget;
+
+      // Validation according to the wireframe stages:
+      if (targetStatus === 'out_for_delivery') {
+        if (!this.deliveryForm.courier_name.trim()) {
+          this.deliveryFormError = 'Please enter the Courier Name.';
+          return;
+        }
+        if (!this.deliveryForm.courier_phone.trim()) {
+          this.deliveryFormError = 'Please enter the courier contact number.';
+          return;
+        }
+      } else if (targetStatus === 'delivered') {
+        // Delivered stage: photo at location
+        if (!this.deliveryForm.delivered_photo_file && !((this.deliveryActionTarget.step && this.deliveryActionTarget.step.delivered_photo) || this.app.delivered_photo)) {
+          this.deliveryFormError = 'Please attach an image of the delivered document at location.';
+          return;
+        }
+      }
+
       this.deliverySaving = true;
+      const fd = new FormData();
+      if (kind === 'step') {
+        fd.append('step_id', stepId);
+      } else {
+        fd.append('application_id', this.app.id);
+      }
+      fd.append('delivery_status', targetStatus);
+      if (this.deliveryForm.courier_name) fd.append('courier_name', this.deliveryForm.courier_name);
+      if (this.deliveryForm.courier_phone) fd.append('courier_phone', this.deliveryForm.courier_phone);
+      if (this.deliveryForm.courier_plate_number) fd.append('courier_plate_number', this.deliveryForm.courier_plate_number);
+      if (this.deliveryForm.courier_license_file) fd.append('courier_license', this.deliveryForm.courier_license_file);
+      if (this.deliveryForm.delivery_proof_file) fd.append('delivery_proof', this.deliveryForm.delivery_proof_file);
+      if (this.deliveryForm.delivered_photo_file) fd.append('delivered_photo', this.deliveryForm.delivered_photo_file);
+
+      const endpoint = kind === 'step' ? 'reviewer.php?action=node_delivery_status' : 'reviewer.php?action=delivery_status';
       try {
-        await apiPost('reviewer.php?action=delivery_status', {
-          application_id: this.app.id,
-          delivery_status: status,
-        });
+        await apiPostForm(endpoint, fd);
+        this.deliveryActionTarget = null;
         await this.refresh(true);
       } catch (e) {
-        this.deliveryError = e.message;
+        this.deliveryFormError = e.message;
       } finally {
         this.deliverySaving = false;
       }
     },
+    async setDeliveryStatus(status) {
+      this.openDeliveryAction('app', null, status);
+    },
     async setNodeDeliveryStatus(step, status) {
-      if (this.deliverySaving) return;
-      this.deliveryError = '';
-      this.deliverySaving = true;
-      try {
-        await apiPost('reviewer.php?action=node_delivery_status', {
-          step_id: step.id,
-          delivery_status: status,
-        });
-        await this.refresh(true);
-      } catch (e) {
-        this.deliveryError = e.message;
-      } finally {
-        this.deliverySaving = false;
-      }
+      this.openDeliveryAction('step', step, status);
     },
   },
   template: `
@@ -602,9 +673,37 @@ export default {
               <template v-else>To <span class="font-semibold text-slate-700">{{ app.delivery_address }}</span>.</template>
             </p>
             <div v-if="!canManageDelivery" class="rounded-xl bg-sun-50 border border-sun-200 px-4 py-3 text-sm text-sun-700">
-              Delivery for this permit is handled by <strong>{{ deliveryHandlingStep ? deliveryHandlingStep.department_name : "the applicant's barangay secretariat" }}</strong> — not your office.
+              Delivery for this permit is handled by <strong>{{ deliveryHandlingOfficeName }}</strong> — not your office.
             </div>
-            <div v-else class="flex flex-wrap gap-2 mb-2">
+            <div v-if="app.courier_name" class="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+              <div class="font-bold text-slate-700 flex items-center justify-between">
+                <span>Courier: {{ app.courier_name }}</span>
+                <span v-if="app.courier_plate_number" class="text-slate-500 font-mono">Plate: {{ app.courier_plate_number }}</span>
+              </div>
+              <div v-if="app.courier_phone" class="text-slate-600">Contact: {{ app.courier_phone }}</div>
+              <div v-if="app.courier_license_photo" class="pt-1">
+                <a :href="app.courier_license_photo" target="_blank" class="text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  View Driver's License
+                </a>
+              </div>
+            </div>
+
+            <!-- Proof of withheld files / delivered photo -->
+            <div v-if="app.delivery_proof_photo || app.delivered_photo" class="mt-2.5 flex flex-wrap gap-2 text-xs">
+              <a v-if="app.delivery_proof_photo" :href="app.delivery_proof_photo" target="_blank"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200">
+                <svg class="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Proof of Withheld Files
+              </a>
+              <a v-if="app.delivered_photo" :href="app.delivered_photo" target="_blank"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 hover:bg-emerald-100">
+                <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                Delivered Document Photo
+              </a>
+            </div>
+
+            <div v-if="canManageDelivery" class="flex flex-wrap gap-2 mb-2 mt-3">
               <button v-for="(s, i) in deliverySteps" :key="s.value" type="button"
                 :disabled="deliverySaving || i <= deliveryStepIndex"
                 @click="setDeliveryStatus(s.value)"
@@ -618,17 +717,60 @@ export default {
             <p v-if="deliveryError" class="text-sm text-red-600 mt-2">{{ deliveryError }}</p>
           </div>
 
-          <!-- Section 5: per-node delivery — a node can produce a hard-copy choice before the
-               whole application is Approved. Only shown for this office's own node(s). -->
-          <div v-for="step in (app.pipeline || []).filter(s => s.delivery_method && Number(s.department_id) === myDepartmentId)"
+          <!-- Deliveries ready for physical dispatch:
+               All approved papers from the municipality go through the Barangay first before heading to the applicant.
+               The Barangay Secretariat or issuing department tracks the dispatch progress here. -->
+          <div v-for="step in (app.pipeline || []).filter(s => s.delivery_method && s.step_label !== 'Issued directly by the barangay' && (Number(s.department_id) === myDepartmentId || canManageDelivery))"
             :key="'node-delivery-' + step.id" class="bg-white rounded-2xl border border-brand-100 p-6">
-            <h2 class="font-bold text-ink-700 mb-1">Delivery — {{ step.step_label }}</h2>
-            <p class="text-sm text-slate-500 mb-4">
-              <template v-if="step.delivery_method === 'delivery'">To <span class="font-semibold text-slate-700">{{ step.delivery_address }}</span>.</template>
-              <template v-else-if="step.delivery_method === 'barangay_pickup'">Pickup at the applicant's barangay hall.</template>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <h2 class="font-bold text-ink-700">Delivery — {{ step.step_label }}</h2>
+              <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                {{ step.delivery_method === 'barangay_pickup' ? 'Barangay Pickup' : 'Address Delivery' }}
+              </span>
+            </div>
+
+            <p class="text-sm text-slate-600 mb-3 leading-relaxed">
+              <template v-if="step.delivery_method === 'delivery'">
+                Deliver to: <span class="font-semibold text-slate-800">{{ step.delivery_address }}</span>
+                <span v-if="step.delivery_landmarks" class="block text-xs text-slate-500 mt-0.5">
+                  Landmarks: {{ step.delivery_landmarks }}
+                </span>
+              </template>
+              <template v-else-if="step.delivery_method === 'barangay_pickup'">
+                Hold for pickup at: <span class="font-semibold text-slate-800">{{ step.delivery_address || 'Barangay Hall' }}</span>
+              </template>
               <template v-else>Pickup at the office.</template>
             </p>
-            <div class="flex flex-wrap gap-2">
+
+            <div v-if="step.courier_name" class="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+              <div class="font-bold text-slate-700 flex items-center justify-between">
+                <span>Courier: {{ step.courier_name }}</span>
+                <span v-if="step.courier_plate_number" class="text-slate-500 font-mono">Plate: {{ step.courier_plate_number }}</span>
+              </div>
+              <div v-if="step.courier_phone" class="text-slate-600">Contact: {{ step.courier_phone }}</div>
+              <div v-if="step.courier_license_photo" class="pt-1">
+                <a :href="step.courier_license_photo" target="_blank" class="text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  View Driver's License
+                </a>
+              </div>
+            </div>
+
+            <!-- Proof of withheld files / delivered photo -->
+            <div v-if="step.delivery_proof_photo || step.delivered_photo" class="mt-2.5 flex flex-wrap gap-2 text-xs">
+              <a v-if="step.delivery_proof_photo" :href="step.delivery_proof_photo" target="_blank"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200">
+                <svg class="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Proof of Withheld Files
+              </a>
+              <a v-if="step.delivered_photo" :href="step.delivered_photo" target="_blank"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 hover:bg-emerald-100">
+                <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                Delivered Document Photo
+              </a>
+            </div>
+
+            <div class="flex flex-wrap gap-2 mt-4">
               <button v-for="(s, i) in deliverySteps" :key="s.value" type="button"
                 :disabled="deliverySaving || i <= deliverySteps.findIndex(x => x.value === step.delivery_status)"
                 @click="setNodeDeliveryStatus(step, s.value)"
@@ -876,6 +1018,97 @@ export default {
         <button type="button" @click="submitReport" :disabled="reportSaving"
           class="ml-auto text-sm font-semibold text-white px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
           {{ reportSaving ? 'Sending…' : 'Submit report' }}
+        </button>
+      </template>
+    </BaseModal>
+
+    <!-- Delivery Action Modal: exactly follows wireframe 4 stages -->
+    <BaseModal v-if="deliveryActionTarget"
+      :title="deliveryActionTarget.targetStatus === 'out_for_delivery' ? 'Dispatch Courier' : (deliveryActionTarget.targetStatus === 'delivered' ? 'Mark as Delivered' : 'Confirm Delivery Stage')"
+      :eyebrow="deliveryActionTarget.targetStatus === 'out_for_delivery' ? 'Preparing stage → Out for delivery' : (deliveryActionTarget.targetStatus === 'delivered' ? 'Delivered stage' : 'Out for delivery stage')"
+      tone="brand"
+      @close="deliveryActionTarget = null">
+
+      <template #icon>
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+        </svg>
+      </template>
+
+      <!-- Stage 1 (Preparing stage -> out for delivery): Contact details & Courier info -->
+      <div v-if="deliveryActionTarget.targetStatus === 'out_for_delivery'" class="space-y-3.5">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Contact Details</p>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1" for="courier-name">Courier Name</label>
+          <input id="courier-name" v-model="deliveryForm.courier_name" type="text" placeholder="e.g. Juan dela Cruz"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1" for="courier-phone">Courier Contact Number</label>
+          <input id="courier-phone" v-model="deliveryForm.courier_phone" type="tel" placeholder="0917 123 4567"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1" for="courier-plate">Plate Number</label>
+          <input id="courier-plate" v-model="deliveryForm.courier_plate_number" type="text" placeholder="e.g. ABC 1234 / MV-9876"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm focus:ring-4 focus:ring-brand-600/15 focus:border-brand-600 outline-none transition" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Driver's License Attachment</label>
+          <label class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-brand-400 hover:bg-slate-50 transition">
+            <div class="flex flex-col items-center justify-center pt-3 pb-3">
+              <svg class="w-6 h-6 text-slate-400 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <p class="text-xs text-slate-500 font-semibold">{{ courierLicensePromptLabel }}</p>
+            </div>
+            <input type="file" accept="image/*,.pdf" class="hidden" @change="onDeliveryFileSelected('courier_license_file', $event)" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Stage 2: Out for delivery stage (Proof of withheld documents / files) -->
+      <div v-else-if="deliveryActionTarget.targetStatus === 'out_for_delivery_proof' || deliveryActionTarget.currentStatus === 'preparing'" class="space-y-3.5">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Proof of Withheld Documents / Files</p>
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+          <div v-if="deliveryPreviewUrl" class="mb-3">
+            <img :src="deliveryPreviewUrl" alt="Proof preview" class="max-h-48 mx-auto rounded-lg shadow-sm" />
+          </div>
+          <label class="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-xl bg-white border border-slate-300 hover:border-brand-400 text-ink-700 cursor-pointer transition shadow-sm">
+            <svg class="w-4 h-4 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            {{ deliveryForm.delivery_proof_file ? deliveryForm.delivery_proof_file.name : 'Attach photo' }}
+            <input type="file" accept="image/*,.pdf" class="hidden" @change="onDeliveryFileSelected('delivery_proof_file', $event)" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Stage 3: Delivered stage (Image of delivered document at location) -->
+      <div v-else-if="deliveryActionTarget.targetStatus === 'delivered'" class="space-y-3.5">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Image of Delivered Document at Location</p>
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+          <div v-if="deliveryPreviewUrl" class="mb-3">
+            <img :src="deliveryPreviewUrl" alt="Delivery preview" class="max-h-48 mx-auto rounded-lg shadow-sm" />
+          </div>
+          <label class="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-xl bg-white border border-slate-300 hover:border-brand-400 text-ink-700 cursor-pointer transition shadow-sm">
+            <svg class="w-4 h-4 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            {{ deliveryForm.delivered_photo_file ? deliveryForm.delivered_photo_file.name : 'Attach photo' }}
+            <input type="file" accept="image/*,.pdf" class="hidden" @change="onDeliveryFileSelected('delivered_photo_file', $event)" />
+          </label>
+          <p class="text-xs text-slate-400 mt-2">Take a photo of the received papers with the recipient or at their door/address.</p>
+        </div>
+      </div>
+
+      <p v-if="deliveryFormError" class="text-xs text-red-600 mt-3" role="alert">{{ deliveryFormError }}</p>
+
+      <template #footer>
+        <button type="button" @click="deliveryActionTarget = null" class="text-sm font-semibold text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-200/60 transition">
+          Cancel
+        </button>
+        <button type="button" @click="submitDeliveryAction" :disabled="deliverySaving"
+          class="ml-auto text-sm font-bold text-white px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 transition shadow-sm">
+          {{ deliverySaving ? 'Saving…' : (deliveryActionTarget.targetStatus === 'out_for_delivery' ? 'Send for delivery' : (deliveryActionTarget.targetStatus === 'delivered' ? 'Mark as delivered' : 'Ready to deliver')) }}
         </button>
       </template>
     </BaseModal>

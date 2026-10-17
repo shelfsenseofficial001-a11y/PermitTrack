@@ -19,9 +19,93 @@ const RENEWABLE_PERMITS = [
     'Market Stall/Vending Permit' => 'Market Stall/Vending Permit Renewal',
     'MTOP/TODA Permit' => 'MTOP/TODA Permit Renewal',
     'Sign Permit' => 'Sign Permit Renewal',
+    'Sign' => 'Sign Permit Renewal',
     'Barangay Business Clearance (New)' => 'Barangay Business Clearance (Renewal)',
+    'Barangay Business Clearance' => 'Barangay Business Clearance (Renewal)',
     'Barangay Clearance for Tricycles (TODA)' => 'Barangay Clearance for Tricycles (TODA) Renewal',
+    'Barangay Clearance for Tricycles' => 'Barangay Clearance for Tricycles (TODA) Renewal',
+    'Building Permit' => 'Building Permit Renewal',
+    // Allow renewing an existing renewal permit in subsequent years:
+    'Business Permit Renewal' => 'Business Permit Renewal',
+    'Food Service (Sanitary) Renewal' => 'Food Service (Sanitary) Renewal',
+    'Liquor/Tobacco License Renewal' => 'Liquor/Tobacco License Renewal',
+    'Market Stall/Vending Permit Renewal' => 'Market Stall/Vending Permit Renewal',
+    'MTOP/TODA Permit Renewal' => 'MTOP/TODA Permit Renewal',
+    'Sign Permit Renewal' => 'Sign Permit Renewal',
+    'Barangay Business Clearance (Renewal)' => 'Barangay Business Clearance (Renewal)',
+    'Barangay Clearance for Tricycles (TODA) Renewal' => 'Barangay Clearance for Tricycles (TODA) Renewal',
+    'Building Permit Renewal' => 'Building Permit Renewal',
 ];
+
+/**
+ * Matches required renewal documents against documents from the applicant's prior approved application.
+ * Returns an array: docName => priorDocRow (or null if unmatched).
+ */
+function match_renewal_documents(array $requiredDocs, array $priorDocs): array
+{
+    $matches = [];
+    $used = [];
+
+    // Pass 1: exact or close name / substring match
+    foreach ($requiredDocs as $docName) {
+        $core = preg_replace('/^(Previous|Updated)\s+/i', '', $docName);
+        $core = preg_replace('/\s*\([^)]*\)\s*$/', '', $core);
+        $core = trim($core);
+
+        $matchedIdx = null;
+        foreach ($priorDocs as $i => $old) {
+            if (isset($used[$i])) {
+                continue;
+            }
+            $oldName = trim((string)$old['doc_name']);
+            if (strcasecmp($oldName, $core) === 0
+                || strcasecmp($oldName, $docName) === 0
+                || stripos($oldName, $core) !== false
+                || stripos($core, $oldName) !== false) {
+                $matchedIdx = $i;
+                break;
+            }
+        }
+        if ($matchedIdx !== null) {
+            $used[$matchedIdx] = true;
+            $matches[$docName] = $priorDocs[$matchedIdx];
+        }
+    }
+
+    // Pass 2: for any still-unmatched required docs, fall back to unused verified documents
+    foreach ($requiredDocs as $docName) {
+        if (isset($matches[$docName])) {
+            continue;
+        }
+        $matchedIdx = null;
+        foreach ($priorDocs as $i => $old) {
+            if (isset($used[$i])) {
+                continue;
+            }
+            if ($old['status'] === 'Verified') {
+                $matchedIdx = $i;
+                break;
+            }
+        }
+        if ($matchedIdx === null) {
+            foreach ($priorDocs as $i => $old) {
+                if (isset($used[$i])) {
+                    continue;
+                }
+                $matchedIdx = $i;
+                break;
+            }
+        }
+        if ($matchedIdx !== null) {
+            $used[$matchedIdx] = true;
+            $matches[$docName] = $priorDocs[$matchedIdx];
+        } else {
+            $matches[$docName] = null;
+        }
+    }
+
+    return $matches;
+}
 
 /**
  * Finds the applicant's most recent Approved application of $basePermitTypeName (the permit this
@@ -47,9 +131,9 @@ function latest_approved_application_for_renewal(int $applicantId, string $baseP
 }
 
 /**
- * Which payment-bridge department (migration 040) receives a given permit's fee: the applicant's
- * own barangay's payment account for a barangay-level permit (barangay_standalone or personal
- * track — both are issued directly by the barangay), Municipal Treasury for everything else.
+ * Which department receives a given permit's fee: the applicant's own barangay's
+ * Barangay Secretary Account for a barangay-level permit (barangay_standalone or personal
+ * track — both are issued directly by the barangay), Municipal Treasury for municipal-level permits.
  */
 function payment_recipient_department_id(array $permitType, ?int $barangayId): ?int
 {
@@ -57,11 +141,20 @@ function payment_recipient_department_id(array $permitType, ?int $barangayId): ?
         if ($barangayId === null) {
             return null;
         }
-        $stmt = db()->prepare("SELECT id FROM departments WHERE barangay_id = ? AND purpose = 'payment' LIMIT 1");
+        // Barangay level permits: Payment goes to Barangay Secretary Account
+        $stmt = db()->prepare("SELECT id FROM departments WHERE barangay_id = ? AND code LIKE 'BRGY-%' AND code NOT LIKE 'BRGY-PAY-%' LIMIT 1");
         $stmt->execute([$barangayId]);
         $row = $stmt->fetch();
-        return $row ? (int)$row['id'] : null;
+        if ($row) {
+            return (int)$row['id'];
+        }
+        // Fallback to purpose='payment' if review secretariat department is not found
+        $stmt2 = db()->prepare("SELECT id FROM departments WHERE barangay_id = ? AND purpose = 'payment' LIMIT 1");
+        $stmt2->execute([$barangayId]);
+        $row2 = $stmt2->fetch();
+        return $row2 ? (int)$row2['id'] : null;
     }
+    // Municipal level permits: Payment goes to Municipal Treasury
     $row = db()->query("SELECT id FROM departments WHERE code = 'TREASURY_PAY' LIMIT 1")->fetch();
     return $row ? (int)$row['id'] : null;
 }
@@ -88,65 +181,59 @@ function latest_approved_application_for_renewal_by_id(int $priorApplicationId, 
  * original approved permit". This system has no separate generated-certificate artifact, so the
  * practical proxy is the prior application's own submitted (and since-verified) files: a
  * "Previous <X>" required doc is matched by name against the old application's documents, falling
- * back to the next not-yet-used verified document when nothing matches by name. Anything left
- * unmatched simply stays 'Missing' and the applicant uploads it like any other required document.
+ * back to the next not-yet-used verified document when nothing matches by name.
+ * If the applicant submitted an uploaded file for a document ($files), that new file takes precedence.
+ * Anything left unmatched simply stays 'Missing' and the applicant uploads it like any other required document.
  */
-function prefill_renewal_documents(int $newApplicationId, array $priorApp, array $requiredDocs, array $handlers): void
+function prefill_renewal_documents(int $newApplicationId, array $priorApp, array $requiredDocs, array $handlers, array $files = []): void
 {
-    $priorDocs = $priorApp['documents'];
-    $used = [];
+    $priorDocs = $priorApp['documents'] ?? [];
+    $matches = match_renewal_documents($requiredDocs, $priorDocs);
     $pdo = db();
     $docStmt = $pdo->prepare(
         'INSERT INTO application_documents (application_id, doc_name, office_code, file_path, original_filename, status, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
 
+    $destDir = __DIR__ . '/../../uploads/' . $newApplicationId;
+    if (!is_dir($destDir)) {
+        mkdir($destDir, 0777, true);
+    }
+
     foreach ($requiredDocs as $docName) {
-        $match = null;
-        // "Previous X" / "Updated X" / "Official Receipt of last year's ..." all name what they're
-        // standing in for — strip the common prefixes and look for that phrase in the old doc_name.
-        $core = preg_replace('/^(Previous|Updated)\s+/i', '', $docName);
-        $core = preg_replace('/\s*\([^)]*\)\s*$/', '', $core); // drop a trailing "(Food Service)" qualifier
-        foreach ($priorDocs as $i => $old) {
-            if (isset($used[$i])) {
-                continue;
+        $fileKey = 'doc_' . preg_replace('/[^a-zA-Z0-9]+/', '_', $docName);
+        $newRelPath = null;
+        $originalFilename = null;
+
+        // 1. If applicant uploaded a fresh/replacement file for this document:
+        if (isset($files[$fileKey]) && !empty($files[$fileKey]['tmp_name']) && is_uploaded_file($files[$fileKey]['tmp_name'])) {
+            $f = $files[$fileKey];
+            $originalFilename = (string)$f['name'];
+            $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalFilename);
+            if (move_uploaded_file($f['tmp_name'], $destDir . '/' . $safeName)) {
+                $newRelPath = 'uploads/' . $newApplicationId . '/' . $safeName;
             }
-            if (stripos($old['doc_name'], $core) !== false || stripos($core, $old['doc_name']) !== false) {
-                $match = $i;
-                break;
-            }
-        }
-        if ($match === null) {
-            foreach ($priorDocs as $i => $old) {
-                if (!isset($used[$i]) && $old['status'] === 'Verified') {
-                    $match = $i;
-                    break;
+        } elseif (!empty($matches[$docName])) {
+            // 2. Pre-fill from the prior approved application:
+            $old = $matches[$docName];
+            $originalFilename = (string)$old['original_filename'];
+            $srcPath = __DIR__ . '/../../' . $old['file_path'];
+            if (is_file($srcPath)) {
+                $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalFilename);
+                if (copy($srcPath, $destDir . '/' . $safeName)) {
+                    $newRelPath = 'uploads/' . $newApplicationId . '/' . $safeName;
                 }
             }
         }
 
-        if ($match !== null) {
-            $used[$match] = true;
-            $old = $priorDocs[$match];
-            // Copy the file itself so the old application keeps its own, untouched.
-            $srcPath = __DIR__ . '/../../' . $old['file_path'];
-            $destDir = __DIR__ . '/../../uploads/' . $newApplicationId;
-            if (!is_dir($destDir)) {
-                mkdir($destDir, 0777, true);
-            }
-            $newRelPath = null;
-            if (is_file($srcPath)) {
-                $safeName = uniqid('doc_', true) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', (string)$old['original_filename']);
-                copy($srcPath, $destDir . '/' . $safeName);
-                $newRelPath = 'uploads/' . $newApplicationId . '/' . $safeName;
-            }
-            $docStmt->execute([
-                $newApplicationId, $docName, $handlers[$docName] ?? null,
-                $newRelPath, $old['original_filename'], $newRelPath ? 'Pending Review' : 'Missing',
-                $newRelPath ? date('Y-m-d H:i:s') : null,
-            ]);
-        } else {
-            $docStmt->execute([$newApplicationId, $docName, $handlers[$docName] ?? null, null, null, 'Missing', null]);
-        }
+        $docStmt->execute([
+            $newApplicationId,
+            $docName,
+            $handlers[$docName] ?? null,
+            $newRelPath,
+            $originalFilename,
+            $newRelPath ? 'Pending Review' : 'Missing',
+            $newRelPath ? date('Y-m-d H:i:s') : null,
+        ]);
     }
 }
 

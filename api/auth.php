@@ -683,6 +683,10 @@ if ($action === 'demo_accounts' && $method === 'GET') {
             $key = 'admin';
             $detail = $row['department_name'] ?: 'All offices';
         } elseif ($row['role'] === 'staff') {
+            // Barangay level payments go directly to the Barangay Secretary Account
+            if ($row['dept_barangay_id'] !== null && str_starts_with((string)$row['email'], 'payments.')) {
+                continue;
+            }
             $key = $row['dept_barangay_id'] !== null ? 'barangay' : 'office';
             $detail = $row['department_name'] ?: 'No office assigned';
         } elseif ($row['account_type'] === 'business') {

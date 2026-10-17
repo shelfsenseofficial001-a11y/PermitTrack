@@ -78,6 +78,7 @@ const PERMIT_ELIGIBILITY = [
     'MTOP/TODA Permit Renewal' => ['resident' => false, 'business' => true],
     'Sign Permit Renewal' => ['resident' => false, 'business' => true],
     'Barangay Clearance for Tricycles (TODA) Renewal' => ['resident' => true, 'business' => false],
+    'Building Permit Renewal' => ['resident' => true, 'business' => true],
 ];
 
 /**
